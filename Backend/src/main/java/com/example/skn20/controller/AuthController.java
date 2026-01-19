@@ -1,8 +1,9 @@
 package com.example.skn20.controller;
 
-import com.example.skn20.classes.UserDetailsImpl;
+import com.example.skn20.classes.UD;
 import com.example.skn20.entity.User;
 import com.example.skn20.security.JwtUtil;
+import com.example.skn20.service.MailService;
 import com.example.skn20.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final UserService userService;
     private final JwtUtil jwtUtil;
+    private final MailService mailService;
 
     // 이메일 중복 검사
     @PostMapping("/check-email")
@@ -124,6 +126,40 @@ public class AuthController {
         User user = userService.findByEmail(userDetails.getEmail());
         return ResponseEntity.ok(user);
     }
+	// 인증 이메일 전송
+	@PostMapping("/mailSend")
+	public HashMap<String, Object> mailSend(@RequestParam String email) {
+		HashMap<String, Object> map = new HashMap<>();
+		try {
+			mailService.sendMail(email);
+			map.put("success", true);
+			map.put("message", "인증 메일이 발송되었습니다.");
+		} catch (Exception e) {
+			map.put("success", false);
+			map.put("error", "메일 발송 중 오류가 발생했습니다. 관리자에게 문의하세요.");
+		}
+
+		return map;
+	}
+
+	// 인증번호 확인
+	@GetMapping("/mailCheck")
+	public ResponseEntity<HashMap<String, Object>> mailCheck(@RequestParam String mail, @RequestParam int userNumber) {
+		HashMap<String, Object> response = new HashMap<>();
+
+		boolean isMatch = mailService.checkVerificationNumber(mail, userNumber);
+
+		if (isMatch) {
+			response.put("success", true);
+			response.put("message", "인증이 성공적으로 완료되었습니다.");
+			return ResponseEntity.ok(response); // 200 OK
+		} else {
+			response.put("success", false);
+			response.put("message", "인증 번호가 일치하지 않습니다.");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response); // 400 Bad Request
+		}
+	}
+
 
     // 응답 DTO
     public record ApiResponse(boolean success, String message, String code) {
