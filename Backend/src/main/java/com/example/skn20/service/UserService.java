@@ -40,6 +40,7 @@ public class UserService implements UserDetailsService {
                 .pw(passwordEncoder.encode(password))
                 .name(name)
                 .phonenumber(phonenumber)
+                .create_at(LocalDate.now())
                 .role("USER")
                 .build();
 
@@ -55,7 +56,7 @@ public class UserService implements UserDetailsService {
 
         user.setName(name);
         user.setPhonenumber(phonenumber);
-        user.setEditInfo(LocalDate.now());
+        user.setUpdate_at(LocalDate.now());
 
         return userRepository.save(user);
     }
@@ -71,6 +72,7 @@ public class UserService implements UserDetailsService {
             throw new UsernameNotFoundException("User not found: " + email);
         }
         user.setPw(passwordEncoder.encode(newPassword));
+        user.setUpdate_at(LocalDate.now());
         userRepository.save(user);
     }
 }

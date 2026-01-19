@@ -36,11 +36,11 @@ public class User {
     @Builder.Default
     private String role = "USER"; // USER, ADMIN
 
-    @Column(name = "first_signup")
-    private LocalDate firstSignup; // 첫 가입 일자
+    @Column(name = "create_at", updatable = false)
+    private LocalDate create_at; // 첫 가입 일자
 
-    @Column(name = "edit_info")
-    private LocalDate editInfo; // 정보 수정 일자
+    @Column(name = "update_at")
+    private LocalDate update_at; // 정보 수정 일자
 
 }
 
