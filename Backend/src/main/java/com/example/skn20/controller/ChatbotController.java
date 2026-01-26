@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.skn20.classes.UD;
@@ -47,7 +48,7 @@ public class ChatbotController {
 
 // 해당 방을 클릭시 history를 가져옵니다
 	@PostMapping("/roomhistory")
-	public ResponseEntity<List<ChatHistory>> RoomHistory(@AuthenticationPrincipal UD user, Long chatRoomId) {
+	public ResponseEntity<List<ChatHistory>> RoomHistory(@AuthenticationPrincipal UD user, @RequestParam Long chatRoomId) {
 		User userinfo = userservice.findByEmail(user.getEmail());
 		ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
 		if (chatRoom.getUser().getId() != userinfo.getId()) {
@@ -60,7 +61,7 @@ public class ChatbotController {
 //	해당 유저의 정보의 질문을 받고 LLM에 보낸뒤 값을 반환해줍니다.
 	@PostMapping("/chat")
 	@Transactional
-	public ResponseEntity<String> question2answer(@AuthenticationPrincipal UD user, Long chatRoomId ,String question) {
+	public ResponseEntity<String> question2answer(@AuthenticationPrincipal UD user, @RequestParam(required = false) Long chatRoomId, @RequestParam String question) {
 		User userinfo = userservice.findByEmail(user.getEmail());
         Map<String, String> result = chatbotService.question2answer(userinfo, question);
         String answer =  result.get("answer");
@@ -90,7 +91,7 @@ public class ChatbotController {
 	
 //  방 이름 수정
 	@PostMapping("/editroomname")
-	public ResponseEntity<String> editRoomName(@AuthenticationPrincipal UD user, Long chatRoomId ,String newName) {
+	public ResponseEntity<String> editRoomName(@AuthenticationPrincipal UD user, @RequestParam Long chatRoomId, @RequestParam String newName) {
 		User userinfo = userservice.findByEmail(user.getEmail());
 		ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
 		if (chatRoom.getUser().getId() != userinfo.getId()) {
@@ -103,7 +104,7 @@ public class ChatbotController {
 
 	// 방 삭제
 	@PostMapping("/deleteroom")
-	public ResponseEntity<String> deleteRoom(@AuthenticationPrincipal UD user, Long chatRoomId) {
+	public ResponseEntity<String> deleteRoom(@AuthenticationPrincipal UD user, @RequestParam Long chatRoomId) {
 		User userinfo = userservice.findByEmail(user.getEmail());
 		ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
 		if (chatRoom.getUser().getId() != userinfo.getId()) {
