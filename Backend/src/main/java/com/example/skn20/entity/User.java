@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "users")
 @Data
@@ -37,6 +39,7 @@ public class User {
     private String role = "USER"; // USER, ADMIN
 
     @Column(name = "create_at", updatable = false)
+    @CreationTimestamp
     private LocalDate create_at; // 첫 가입 일자
 
     @Column(name = "update_at")
