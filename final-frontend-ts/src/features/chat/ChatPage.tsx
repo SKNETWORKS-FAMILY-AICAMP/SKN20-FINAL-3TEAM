@@ -24,8 +24,8 @@ import styles from './ChatPage.module.css';
 // API 타입 → UI 타입 변환 함수
 // ============================================
 const convertRoomToSession = (room: ChatRoom): ChatSession => ({
-  id: String(room.chatRoomId),
-  title: room.roomName || '새로운 채팅',
+  id: String(room.id),
+  title: room.name || '새로운 채팅',
   messages: [],
   createdAt: new Date(room.createdAt),
 });
@@ -81,7 +81,7 @@ const ChatPage: React.FC = () => {
 
       // 첫 번째 방 선택
       if (rooms.length > 0) {
-        setCurrentRoomId(rooms[0].chatRoomId);
+        setCurrentRoomId(rooms[0].id);
       }
     } catch (error) {
       console.error('채팅방 목록 로드 실패:', error);

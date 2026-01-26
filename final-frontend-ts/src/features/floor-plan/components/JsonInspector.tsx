@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { FiChevronDown, FiChevronRight, FiBox, FiHome, FiSquare } from 'react-icons/fi';
 import type { HoverableItem, RoomInfo, StructureInfo, ObjectInfo, FloorPlanUploadResponse } from '../types';
+import { parseBbox } from '../types';
 import styles from './JsonInspector.module.css';
 
 interface JsonInspectorProps {
@@ -95,28 +96,28 @@ const JsonInspector: React.FC<JsonInspectorProps> = ({ data, onHover, hoveredIte
     );
   }
 
-  // RoomInfo → HoverableItem 변환
+  // RoomInfo → HoverableItem 변환 (bbox 문자열 파싱)
   const roomItems: HoverableItem[] = data.rooms.map((room: RoomInfo) => ({
     id: room.id,
     type: 'room' as const,
     name: room.spcname || room.ocrname,
-    bbox: room.bbox,
+    bbox: parseBbox(room.bbox),
   }));
 
-  // StructureInfo → HoverableItem 변환
+  // StructureInfo → HoverableItem 변환 (bbox 문자열 파싱)
   const structureItems: HoverableItem[] = (data.structures || []).map((str: StructureInfo) => ({
     id: str.id,
     type: 'structure' as const,
     name: str.name,
-    bbox: str.bbox,
+    bbox: parseBbox(str.bbox),
   }));
 
-  // ObjectInfo → HoverableItem 변환
+  // ObjectInfo → HoverableItem 변환 (bbox 문자열 파싱)
   const objectItems: HoverableItem[] = (data.objects || []).map((obj: ObjectInfo) => ({
     id: obj.id,
     type: 'object' as const,
     name: obj.name,
-    bbox: obj.bbox,
+    bbox: parseBbox(obj.bbox),
   }));
 
   const isItemHovered = (item: HoverableItem) =>

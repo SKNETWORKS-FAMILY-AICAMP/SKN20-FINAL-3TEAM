@@ -37,9 +37,9 @@ export function UsersPage() {
       console.error('유저 목록 로드 실패:', error);
       // 백엔드 연결 안 되면 더미 데이터
       setUsers([
-        { id: 1, email: 'admin@example.com', name: '관리자', phonenumber: 1012345678, role: 'admin', created_at: '2025-01-01', update_at: '2025-01-01' },
-        { id: 2, email: 'user1@example.com', name: '홍길동', phonenumber: 1023456789, role: 'user', created_at: '2025-01-10', update_at: '2025-01-10' },
-        { id: 3, email: 'user2@example.com', name: '김철수', phonenumber: 1034567890, role: 'user', created_at: '2025-01-12', update_at: '2025-01-12' },
+        { id: 1, email: 'admin@example.com', name: '관리자', phonenumber: 1012345678, role: 'admin', create_at: '2025-01-01', update_at: '2025-01-01' },
+        { id: 2, email: 'user1@example.com', name: '홍길동', phonenumber: 1023456789, role: 'user', create_at: '2025-01-10', update_at: '2025-01-10' },
+        { id: 3, email: 'user2@example.com', name: '김철수', phonenumber: 1034567890, role: 'user', create_at: '2025-01-12', update_at: '2025-01-12' },
       ]);
     } finally {
       setIsLoading(false);
@@ -98,8 +98,8 @@ export function UsersPage() {
       console.error('채팅 기록 조회 실패:', error);
       // 더미 데이터
       setChatHistory([
-        { chatRoomId: 1, roomName: '도면 분석 문의', createdAt: '2025-01-20', user },
-        { chatRoomId: 2, roomName: '일반 상담', createdAt: '2025-01-18', user },
+        { id: 1, name: '도면 분석 문의', createdAt: '2025-01-20', user },
+        { id: 2, name: '일반 상담', createdAt: '2025-01-18', user },
       ]);
     } finally {
       setIsHistoryLoading(false);
@@ -248,7 +248,7 @@ export function UsersPage() {
                         {user.role === 'admin' ? '관리자' : '사용자'}
                       </span>
                     </td>
-                    <td>{user.created_at?.split('T')[0]}</td>
+                    <td>{user.create_at?.split('T')[0]}</td>
                     <td>
                       <div className={styles.actions}>
                         <button className={styles.actionBtn} title="상세 보기" onClick={() => handleViewDetail(user.id)}>
@@ -310,7 +310,7 @@ export function UsersPage() {
               </div>
               <div className={styles.formGroup}>
                 <label>가입일</label>
-                <input type="text" value={detailUser.created_at?.split('T')[0]} disabled />
+                <input type="text" value={detailUser.create_at?.split('T')[0]} disabled />
               </div>
               <div className={styles.formGroup}>
                 <label>최근 수정일</label>
@@ -342,9 +342,9 @@ export function UsersPage() {
               ) : (
                 <div className={styles.historyList}>
                   {chatHistory.map((chat) => (
-                    <div key={chat.chatRoomId} className={styles.historyItem}>
+                    <div key={chat.id} className={styles.historyItem}>
                       <div className={styles.historyInfo}>
-                        <span className={styles.historyName}>{chat.roomName}</span>
+                        <span className={styles.historyName}>{chat.name}</span>
                         <span className={styles.historyDate}>{chat.createdAt?.split('T')[0]}</span>
                       </div>
                     </div>

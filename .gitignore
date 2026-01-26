@@ -1,0 +1,12 @@
+# Claude Code 설정
+.claude/
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

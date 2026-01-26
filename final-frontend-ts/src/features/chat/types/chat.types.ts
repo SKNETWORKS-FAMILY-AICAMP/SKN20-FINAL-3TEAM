@@ -6,10 +6,10 @@
 // API Request/Response Types
 // ============================================
 
-// 채팅방 (ChatRoom)
+// 채팅방 (ChatRoom) - 백엔드 엔티티와 일치
 export interface ChatRoom {
-  chatRoomId: number;
-  roomName: string;
+  id: number;
+  name: string;
   createdAt: string;
 }
 
