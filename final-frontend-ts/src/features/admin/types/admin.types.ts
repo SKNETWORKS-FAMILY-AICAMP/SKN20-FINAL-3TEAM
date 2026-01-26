@@ -12,7 +12,7 @@ export interface AdminUser {
   name: string;
   phonenumber: number;
   role: string;
-  created_at: string;
+  create_at: string;
   update_at: string;
 }
 
@@ -44,7 +44,7 @@ export interface AdminFloorPlan {
   name: string;
   imageUrl: string;
   user: AdminUser;
-  created_at: string;
+  createdAt: string;
   rooms?: AdminRoom[];
   objs?: AdminObject[];
   strs?: AdminStructure[];
@@ -93,12 +93,12 @@ export interface FloorPlanDetailRequest {
 }
 
 // ============================================
-// ChatRoom 관련 타입 (유저 채팅 기록용)
+// ChatRoom 관련 타입 (유저 채팅 기록용) - 백엔드 엔티티와 일치
 // ============================================
 
 export interface AdminChatRoom {
-  chatRoomId: number;
-  roomName: string;
+  id: number;
+  name: string;
   createdAt: string;
   user: AdminUser;
 }

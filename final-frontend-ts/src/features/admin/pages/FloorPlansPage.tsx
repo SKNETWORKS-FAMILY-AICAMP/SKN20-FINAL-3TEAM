@@ -44,9 +44,9 @@ export function FloorPlansPage() {
       console.error('도면 목록 로드 실패:', error);
       // 백엔드 연결 안 되면 더미 데이터
       setFloorPlans([
-        { id: 1, name: '강남역 오피스빌딩 1층', imageUrl: '/images/plan1.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', created_at: '', update_at: '' }, created_at: '2025-01-20' },
-        { id: 2, name: '판교 테크노밸리 3층', imageUrl: '/images/plan2.png', user: { id: 2, email: 'user2@example.com', name: '김철수', phonenumber: 0, role: 'user', created_at: '', update_at: '' }, created_at: '2025-01-19' },
-        { id: 3, name: '홍대입구 상가 B1층', imageUrl: '/images/plan3.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', created_at: '', update_at: '' }, created_at: '2025-01-18' },
+        { id: 1, name: '강남역 오피스빌딩 1층', imageUrl: '/images/plan1.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-20' },
+        { id: 2, name: '판교 테크노밸리 3층', imageUrl: '/images/plan2.png', user: { id: 2, email: 'user2@example.com', name: '김철수', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-19' },
+        { id: 3, name: '홍대입구 상가 B1층', imageUrl: '/images/plan3.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-18' },
       ]);
     } finally {
       setIsLoading(false);
@@ -352,7 +352,7 @@ export function FloorPlansPage() {
                       </div>
                     </td>
                     <td>{plan.user?.email || '-'}</td>
-                    <td>{plan.created_at?.split('T')[0]}</td>
+                    <td>{plan.createdAt?.split('T')[0]}</td>
                     <td>
                       <div className={styles.actions}>
                         <button className={styles.actionBtn} title="보기" onClick={() => handleViewDetail(plan.id)}>
@@ -396,7 +396,7 @@ export function FloorPlansPage() {
               </div>
               <div className={styles.formGroup}>
                 <label>업로드일</label>
-                <input type="text" value={detailPlan.created_at?.split('T')[0]} disabled />
+                <input type="text" value={detailPlan.createdAt?.split('T')[0]} disabled />
               </div>
               <div className={styles.formGroup}>
                 <label>이미지 URL</label>
