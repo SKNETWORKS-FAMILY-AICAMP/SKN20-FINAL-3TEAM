@@ -7,6 +7,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 @Entity
 @Table(name = "room")
@@ -32,10 +36,19 @@ public class Room {
 
     float areapercent;
 
-    @ManyToOne
-    @JoinColumn(name = "floor_plan_id", nullable = false)
-    private FloorPlan floorPlan; // 연관된 FloorPlan 엔티티
+    @OneToMany
+    @JoinColumn(name = "STR_id")
+    @JsonManagedReference
+    private List<STR> strs;
 
+    @OneToMany
+    @JoinColumn(name = "OBJ_id")
+    @JsonManagedReference
+    private List<OBJ> objs;
     
+    @ManyToOne
+    @JoinColumn(name = "floorplan_id")
+    @JsonBackReference
+    private FloorPlan floorPlan;
     
 }

@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
 @Entity
 @Table(name = "strs")
 @Data
@@ -29,8 +31,8 @@ public class STR {
     private String area;
 
     @ManyToOne
-    @JoinColumn(name = "room_id", nullable = false)
-    private Room room; // 연관된 Room 엔티티
-    
+    @JoinColumn(name = "room_id")
+    @JsonBackReference
+    private ChatRoom chatRoom;
     
 }

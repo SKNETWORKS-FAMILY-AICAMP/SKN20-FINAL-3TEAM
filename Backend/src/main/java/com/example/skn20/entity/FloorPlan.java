@@ -7,6 +7,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 @Entity
 @Table(name = "floor_plans")
@@ -31,6 +34,9 @@ public class FloorPlan {
     @Column(name = "created_at", nullable = false)
     private LocalDate createdAt; // 생성 일자
 
-    
+    @OneToMany
+    @JoinColumn(name = "floor_plan_id")
+    @JsonManagedReference
+    private List<Room> rooms;
     
 }
