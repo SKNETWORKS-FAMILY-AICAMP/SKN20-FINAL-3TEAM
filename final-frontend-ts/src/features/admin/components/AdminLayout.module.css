@@ -1,0 +1,254 @@
+/* ============================================
+   AdminLayout Styles
+   ============================================ */
+
+.container {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--admin-bg);
+}
+
+/* ============================================
+   Sidebar
+   ============================================ */
+
+.sidebar {
+  width: 240px;
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+.sidebarHeader {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.logo {
+  font-size: 24px;
+  color: var(--primary);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Navigation
+   ============================================ */
+
+.nav {
+  flex: 1;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.navItem:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.navItem.active {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.navIcon {
+  font-size: 18px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  flex: 1;
+}
+
+/* ============================================
+   Sidebar Footer
+   ============================================ */
+
+.sidebarFooter {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.footerBtn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--hover-bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.footerBtn:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Main Area
+   ============================================ */
+
+.main {
+  flex: 1;
+  margin-left: 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ============================================
+   Header
+   ============================================ */
+
+.header {
+  height: 64px;
+  padding: 0 24px;
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.pageTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.adminBadge {
+  padding: 6px 12px;
+  background-color: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+}
+
+/* ============================================
+   Content Area
+   ============================================ */
+
+.content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* ============================================
+   Light Theme
+   ============================================ */
+
+.light {
+  --admin-bg: #F3F4F6;
+  --sidebar-bg: #FFFFFF;
+  --card-bg: #FFFFFF;
+  --border-color: #E5E7EB;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --hover-bg: #F3F4F6;
+  --primary: #FF8C42;
+  --primary-light: #FFF3EB;
+}
+
+/* ============================================
+   Dark Theme
+   ============================================ */
+
+.dark {
+  --admin-bg: #111827;
+  --sidebar-bg: #1F2937;
+  --card-bg: #1F2937;
+  --border-color: #374151;
+  --text-primary: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --hover-bg: #374151;
+  --primary: #FF8C42;
+  --primary-light: #3D2817;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 60px;
+  }
+
+  .sidebarHeader .title,
+  .navLabel,
+  .footerBtn {
+    display: none;
+  }
+
+  .sidebarHeader {
+    justify-content: center;
+  }
+
+  .navItem {
+    justify-content: center;
+    padding: 12px;
+  }
+
+  .navIcon {
+    width: auto;
+  }
+
+  .main {
+    margin-left: 60px;
+  }
+
+  .sidebarFooter {
+    display: none;
+  }
+}
