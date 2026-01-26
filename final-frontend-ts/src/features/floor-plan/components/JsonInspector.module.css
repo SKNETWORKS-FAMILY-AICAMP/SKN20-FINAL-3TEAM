@@ -1,0 +1,140 @@
+/* ============================================
+   JsonInspector Styles
+   ============================================ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background-color: #FFFFFF;
+  border-radius: 8px;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9CA3AF;
+  font-size: 14px;
+}
+
+/* 요약 정보 */
+.summary {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.summaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summaryLabel {
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.summaryValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* 섹션 */
+.section {
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  background-color: #FAFAFA;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s;
+}
+
+.sectionHeader:hover {
+  background-color: #F3F4F6;
+}
+
+.expandIcon {
+  color: #6B7280;
+  display: flex;
+  align-items: center;
+}
+
+.sectionIcon {
+  display: flex;
+  align-items: center;
+}
+
+.sectionTitle {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.sectionCount {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #FFFFFF;
+  border-radius: 10px;
+}
+
+.sectionContent {
+  padding: 4px 0;
+}
+
+/* 아이템 Row */
+.itemRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px 8px 40px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.1s ease-out;
+}
+
+.itemRow:hover {
+  background-color: #F3F4F6;
+}
+
+.itemHovered {
+  background-color: #EFF6FF;
+}
+
+.itemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.itemId {
+  font-size: 11px;
+  color: #9CA3AF;
+  font-family: monospace;
+}
+
+.itemName {
+  font-size: 13px;
+  color: #111827;
+  font-weight: 500;
+}
+
+.itemBbox {
+  font-size: 11px;
+  color: #9CA3AF;
+  font-family: monospace;
+}
