@@ -36,3 +36,6 @@ api명세서.md
 
 ### Law folder ###
 law/
+
+### JVM crash logs ###
+hs_err_pid*.log
