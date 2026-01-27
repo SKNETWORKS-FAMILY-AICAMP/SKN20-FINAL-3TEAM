@@ -5,8 +5,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FiEdit2, FiTrash2, FiX, FiEye, FiMessageSquare } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
-import { getUsers, searchUsers, editUser, deleteEntities, getUserDetail, getUserHistory } from '../api';
-import type { AdminUser, AdminChatRoom } from '../types';
+import { getUsers, searchUsers, editUser, deleteEntities, getUserDetail, getUserHistory } from '../api/admin.api';
+import type { AdminUser, AdminChatRoom } from '../types/admin.types';
 import styles from './AdminPages.module.css';
 
 export function UsersPage() {

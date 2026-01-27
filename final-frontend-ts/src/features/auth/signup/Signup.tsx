@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { FiMail, FiLock, FiKey } from 'react-icons/fi';
 import { BsCheckCircle } from 'react-icons/bs';
-import { Input, Button } from '@/shared/components';
-import { useTheme } from '@/shared/contexts';
-import { checkEmail, sendVerificationMail, verifyMailCode, signup } from '@/features/auth/api';
-import type { AuthView, SignupStep, SignupFormData } from '@/features/auth/types';
-import { initialSignupData } from '@/features/auth/types';
+import Input from '@/shared/components/Input/Input';
+import Button from '@/shared/components/Button/Button';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import { checkEmail, sendVerificationMail, verifyMailCode, signup } from '@/features/auth/api/auth.api';
+import type { AuthView, SignupStep, SignupFormData } from '@/features/auth/types/auth.types';
+import { initialSignupData } from '@/features/auth/types/auth.types';
 import styles from './Signup.module.css';
 
 interface SignupProps {
@@ -80,7 +81,7 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
         name: formData.name,
         email: formData.email,
         pw: formData.password,
-        phonenumber: formData.phone,
+        phonenumber: formData.phone.replace(/-/g, ''),
       });
       setStep('complete');
     } catch (err: any) {

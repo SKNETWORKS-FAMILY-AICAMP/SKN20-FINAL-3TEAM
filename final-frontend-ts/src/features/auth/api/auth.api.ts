@@ -2,8 +2,8 @@
 // Auth Feature - API Functions
 // ============================================
 
-import { apiClient } from '@/shared/api';
-import { setToken, setUserInfo } from '@/shared/utils';
+import apiClient from '@/shared/api/axios';
+import { setToken, setUserInfo } from '@/shared/utils/tokenManager';
 import type {
   LoginRequest,
   LoginResponse,
@@ -19,18 +19,17 @@ import type {
   ProfileUpdateResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
-} from '../types';
+} from '../types/auth.types';
 
 const AUTH_BASE = '/api/auth';
 
 // ============================================
 // 1. 이메일 중복 검사
 // ============================================
-export const checkEmail = async (params: CheckEmailRequest): Promise<string> => {
+export const checkEmail = async (data: CheckEmailRequest): Promise<string> => {
   const response = await apiClient.post<string>(
     `${AUTH_BASE}/check-email`,
-    null,
-    { params }
+    data
   );
   return response.data;
 };
@@ -38,11 +37,10 @@ export const checkEmail = async (params: CheckEmailRequest): Promise<string> => 
 // ============================================
 // 2. 회원가입
 // ============================================
-export const signup = async (params: SignupRequest): Promise<SignupResponse> => {
+export const signup = async (data: SignupRequest): Promise<SignupResponse> => {
   const response = await apiClient.post<SignupResponse>(
     `${AUTH_BASE}/signup`,
-    null,
-    { params }
+    data
   );
   return response.data;
 };
@@ -50,26 +48,25 @@ export const signup = async (params: SignupRequest): Promise<SignupResponse> => 
 // ============================================
 // 3. 로그인
 // ============================================
-export const login = async (params: LoginRequest): Promise<LoginResponse> => {
+export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   const response = await apiClient.post<LoginResponse>(
     `${AUTH_BASE}/login`,
-    null,
-    { params }
+    data
   );
 
-  const data = response.data;
+  const result = response.data;
 
   // 로그인 성공 시 토큰 저장
-  if (data.token) {
-    setToken(data.token);
+  if (result.token) {
+    setToken(result.token);
     setUserInfo({
-      email: data.email,
-      username: data.username,
-      role: data.role,
+      email: result.email,
+      username: result.username,
+      role: result.role,
     });
   }
 
-  return data;
+  return result;
 };
 
 // ============================================
@@ -84,12 +81,11 @@ export const getCurrentUser = async (): Promise<UserInfoResponse> => {
 // 5. 프로필 수정
 // ============================================
 export const updateProfile = async (
-  params: ProfileUpdateRequest
+  data: ProfileUpdateRequest
 ): Promise<ProfileUpdateResponse> => {
   const response = await apiClient.post<ProfileUpdateResponse>(
     `${AUTH_BASE}/profile`,
-    null,
-    { params }
+    data
   );
   return response.data;
 };
@@ -98,12 +94,11 @@ export const updateProfile = async (
 // 6. 비밀번호 변경
 // ============================================
 export const changePassword = async (
-  params: ChangePasswordRequest
+  data: ChangePasswordRequest
 ): Promise<ChangePasswordResponse> => {
   const response = await apiClient.post<ChangePasswordResponse>(
     `${AUTH_BASE}/change-password`,
-    null,
-    { params }
+    data
   );
   return response.data;
 };
@@ -112,12 +107,11 @@ export const changePassword = async (
 // 7. 인증 이메일 발송
 // ============================================
 export const sendVerificationMail = async (
-  params: MailSendRequest
+  data: MailSendRequest
 ): Promise<MailSendResponse> => {
   const response = await apiClient.post<MailSendResponse>(
     `${AUTH_BASE}/mailSend`,
-    null,
-    { params }
+    data
   );
   return response.data;
 };

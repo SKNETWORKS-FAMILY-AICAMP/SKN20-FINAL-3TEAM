@@ -2,7 +2,7 @@
 // Profile Feature - Mock Data
 // ============================================
 
-import type { User } from '../types';
+import type { User } from '../types/profile.types';
 
 // Mock 사용자 데이터
 export const mockUser: User = {

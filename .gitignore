@@ -10,3 +10,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# law 폴더
+law/

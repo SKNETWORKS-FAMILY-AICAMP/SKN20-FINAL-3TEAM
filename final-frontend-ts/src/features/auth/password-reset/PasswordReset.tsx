@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { FiLock, FiMail, FiKey } from 'react-icons/fi';
 import { BsCheckCircle } from 'react-icons/bs';
-import { Input, Button } from '@/shared/components';
-import { useTheme } from '@/shared/contexts';
-import { sendVerificationMail, verifyMailCode, changePassword } from '@/features/auth/api';
-import type { AuthView, PasswordResetStep, PasswordResetFormData } from '@/features/auth/types';
-import { initialPasswordResetData } from '@/features/auth/types';
+import Input from '@/shared/components/Input/Input';
+import Button from '@/shared/components/Button/Button';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import { sendVerificationMail, verifyMailCode, changePassword } from '@/features/auth/api/auth.api';
+import type { AuthView, PasswordResetStep, PasswordResetFormData } from '@/features/auth/types/auth.types';
+import { initialPasswordResetData } from '@/features/auth/types/auth.types';
 import styles from './PasswordReset.module.css';
 
 interface PasswordResetProps {

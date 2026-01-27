@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiHome, FiMessageSquare, FiUser } from 'react-icons/fi';
-import { useTheme } from '@/shared/contexts';
-import { logout as logoutUtil } from '@/shared/utils';
-import { updateProfile } from '@/features/auth/api';
-import type { User } from './types';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import { logout as logoutUtil } from '@/shared/utils/tokenManager';
+import { updateProfile } from '@/features/auth/api/auth.api';
+import type { User } from './types/profile.types';
 import styles from './ProfilePage.module.css';
 
 const ProfilePage: React.FC = () => {

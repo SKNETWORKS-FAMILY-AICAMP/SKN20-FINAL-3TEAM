@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button } from '@/shared/components';
-import { useTheme } from '@/shared/contexts';
-import { login } from '@/features/auth/api';
-import type { AuthView, LoginFormData } from '@/features/auth/types';
-import { initialLoginData } from '@/features/auth/types';
+import Input from '@/shared/components/Input/Input';
+import Button from '@/shared/components/Button/Button';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import { login } from '@/features/auth/api/auth.api';
+import type { AuthView, LoginFormData } from '@/features/auth/types/auth.types';
+import { initialLoginData } from '@/features/auth/types/auth.types';
 import styles from './Login.module.css';
 
 interface LoginProps {

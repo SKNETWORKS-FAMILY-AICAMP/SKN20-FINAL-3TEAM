@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n프론트엔드 프로젝트 추가 \\(React + TypeScript\\)\n\n- 인증 \\(로그인, 회원가입, 비밀번호 재설정\\)\n- 채팅 기능\n- 도면 업로드 및 뷰어\n- 프로필 페이지\n- 관리자 페이지\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git commit:*)",
+      "Bash(python build_regulation_db.py:*)",
+      "Bash(ls:*)",
+      "Bash(python parse_building_restrictions.py:*)"
     ]
   }
 }
