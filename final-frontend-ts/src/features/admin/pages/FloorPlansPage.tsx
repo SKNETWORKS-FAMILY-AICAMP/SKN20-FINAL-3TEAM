@@ -5,8 +5,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FiSearch, FiTrash2, FiX, FiFilter, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
-import { getFloorPlans, searchFloorPlans, getFloorPlanDetail, deleteEntities } from '../api';
-import type { AdminFloorPlan, SearchFloorPlanRequest } from '../types';
+import { getFloorPlans, searchFloorPlans, getFloorPlanDetail, deleteEntities } from '../api/admin.api';
+import type { AdminFloorPlan, SearchFloorPlanRequest } from '../types/admin.types';
 import styles from './AdminPages.module.css';
 
 export function FloorPlansPage() {

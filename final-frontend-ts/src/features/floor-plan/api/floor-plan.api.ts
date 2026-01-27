@@ -2,11 +2,11 @@
 // FloorPlan Feature - API Functions
 // ============================================
 
-import { apiClient } from '@/shared/api';
+import apiClient from '@/shared/api/axios';
 import type {
   FloorPlanUploadResponse,
   FloorPlanSaveResponse,
-} from '../types';
+} from '../types/floor-plan.types';
 
 const FLOORPLAN_BASE = '/api/floorplan';
 

@@ -3,14 +3,18 @@
 // ============================================
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from '@/shared/contexts';
+import { ThemeProvider } from '@/shared/contexts/ThemeContext';
 
 // Feature Pages
-import { AuthPage } from '@/features/auth';
-import { ChatPage } from '@/features/chat';
-import { ProfilePage } from '@/features/profile';
-import { FileUploadPage } from '@/features/floor-plan';
-import { DashboardPage, UsersPage, FloorPlansPage, LogsPage, SettingsPage } from '@/features/admin';
+import AuthPage from '@/features/auth/AuthPage';
+import ChatPage from '@/features/chat/ChatPage';
+import ProfilePage from '@/features/profile/ProfilePage';
+import FileUploadPage from '@/features/floor-plan/FileUploadPage';
+import { DashboardPage } from '@/features/admin/pages/DashboardPage';
+import { UsersPage } from '@/features/admin/pages/UsersPage';
+import { FloorPlansPage } from '@/features/admin/pages/FloorPlansPage';
+import { LogsPage } from '@/features/admin/pages/LogsPage';
+import { SettingsPage } from '@/features/admin/pages/SettingsPage';
 
 function App() {
   return (

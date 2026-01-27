@@ -72,7 +72,7 @@ export interface SignupRequest {
   email: string;
   pw: string;
   name: string;
-  phonenumber: string;
+  phonenumber: number;
 }
 
 export interface CheckEmailRequest {
@@ -90,7 +90,7 @@ export interface MailCheckRequest {
 
 export interface ProfileUpdateRequest {
   name: string;
-  phonenumber: string;
+  phonenumber: number;
 }
 
 export interface ChangePasswordRequest {

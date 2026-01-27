@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { IoSend } from 'react-icons/io5';
-import { useTheme } from '@/shared/contexts';
-import { Logo } from '@/shared/components';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import Logo from '@/shared/components/Logo/Logo';
 import ChatSidebar from './ChatSidebar';
 import ChatMessage from './ChatMessage';
 import {
@@ -11,13 +11,13 @@ import {
   deleteRoom,
   editRoomName,
   deleteAllRooms,
-} from './api';
+} from './api/chat.api';
 import type {
   ChatSession,
   ChatMessage as ChatMessageType,
   ChatRoom,
   ChatHistory,
-} from './types';
+} from './types/chat.types';
 import styles from './ChatPage.module.css';
 
 // ============================================

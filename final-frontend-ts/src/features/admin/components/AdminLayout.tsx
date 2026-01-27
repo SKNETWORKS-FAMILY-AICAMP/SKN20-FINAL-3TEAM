@@ -14,7 +14,7 @@ import {
   FiArrowLeft,
   FiShield
 } from 'react-icons/fi';
-import { useTheme } from '@/shared/contexts';
+import { useTheme } from '@/shared/contexts/ThemeContext';
 import styles from './AdminLayout.module.css';
 
 interface AdminLayoutProps {

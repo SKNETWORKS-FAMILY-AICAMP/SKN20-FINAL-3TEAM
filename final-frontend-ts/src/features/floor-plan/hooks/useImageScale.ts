@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { RefObject } from 'react';
-import type { Bbox } from '../types';
+import type { Bbox } from '../types/floor-plan.types';
 
 interface ImageScale {
   scaleX: number;

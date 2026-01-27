@@ -1,8 +1,8 @@
 import React from 'react';
 import { FiUser } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
-import { useTheme } from '@/shared/contexts';
-import type { ChatMessageProps } from './types';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import type { ChatMessageProps } from './types/chat.types';
 import styles from './ChatMessage.module.css';
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {

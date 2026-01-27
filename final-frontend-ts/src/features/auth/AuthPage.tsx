@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import AuthLayout from './AuthLayout';
-import { Login } from './login';
-import { Signup } from './signup';
-import { PasswordReset } from './password-reset';
-import type { AuthView } from './types';
+import Login from './login/Login';
+import Signup from './signup/Signup';
+import PasswordReset from './password-reset/PasswordReset';
+import type { AuthView } from './types/auth.types';
 
 const AuthPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<AuthView>('login');

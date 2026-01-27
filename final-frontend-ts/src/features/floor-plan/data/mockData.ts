@@ -2,7 +2,7 @@
 // FloorPlan Feature - Mock Data
 // ============================================
 
-import type { FloorPlanUploadResponse, RoomInfo, StructureInfo, ObjectInfo } from '../types';
+import type { FloorPlanUploadResponse, RoomInfo, StructureInfo, ObjectInfo } from '../types/floor-plan.types';
 
 // Mock 방 데이터 (DB 구조 기반 - bbox는 JSON 문자열)
 const mockRooms: RoomInfo[] = [

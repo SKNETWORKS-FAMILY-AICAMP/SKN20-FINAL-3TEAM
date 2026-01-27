@@ -5,8 +5,8 @@
 import { useState, useEffect } from 'react';
 import { FiUsers, FiFolder, FiBarChart2, FiActivity } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
-import { getAdminStats } from '../api';
-import type { AdminStats } from '../types';
+import { getAdminStats } from '../api/admin.api';
+import type { AdminStats } from '../types/admin.types';
 import styles from './AdminPages.module.css';
 
 export function DashboardPage() {

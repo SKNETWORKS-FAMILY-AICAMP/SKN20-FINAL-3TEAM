@@ -5,8 +5,8 @@
 
 import React, { useState } from 'react';
 import { FiChevronDown, FiChevronRight, FiBox, FiHome, FiSquare } from 'react-icons/fi';
-import type { HoverableItem, RoomInfo, StructureInfo, ObjectInfo, FloorPlanUploadResponse } from '../types';
-import { parseBbox } from '../types';
+import type { HoverableItem, RoomInfo, StructureInfo, ObjectInfo, FloorPlanUploadResponse } from '../types/floor-plan.types';
+import { parseBbox } from '../types/floor-plan.types';
 import styles from './JsonInspector.module.css';
 
 interface JsonInspectorProps {
