@@ -57,7 +57,7 @@ public class AdminController {
 
 	// 유저 정보 수정
 	@PostMapping("/edituser")
-	public ResponseEntity<String> editUser(@RequestParam Long userid, @RequestParam(required = false) String name, @RequestParam(required = false) Integer phone, @RequestParam(required = false) String role) {
+	public ResponseEntity<String> editUser(@RequestParam Long userid, @RequestParam(required = false) String name, @RequestParam(required = false) String phone, @RequestParam(required = false) String role) {
 		User user = userRep.findById(userid).orElse(null);
 		if (user == null) {
 			return ResponseEntity.badRequest().body("해당 유저가 존재하지 않습니다.");

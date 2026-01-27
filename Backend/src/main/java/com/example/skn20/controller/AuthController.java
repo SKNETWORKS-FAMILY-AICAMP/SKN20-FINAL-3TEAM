@@ -49,7 +49,7 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse> signup(@RequestParam String email, @RequestParam String pw, @RequestParam String name, @RequestParam String phonenumber) {
         try {
-            userService.registerUser(email, pw, name, Integer.parseInt(phonenumber));
+            userService.registerUser(email, pw, name, phonenumber);
             return ResponseEntity.ok(new ApiResponse(true, "회원가입 성공"));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -90,7 +90,7 @@ public class AuthController {
     @PostMapping("/profile")
     public ResponseEntity<ApiResponse> setProfile(
             @RequestParam String name,
-            @RequestParam Integer phonenumber,
+            @RequestParam String phonenumber,
             @AuthenticationPrincipal UD userDetails) {
         try {
             userService.updateProfile(userDetails.getEmail(), name, phonenumber);
