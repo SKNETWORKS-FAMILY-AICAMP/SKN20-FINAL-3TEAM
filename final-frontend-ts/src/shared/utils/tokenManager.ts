@@ -67,13 +67,18 @@ export const logout = (): void => {
  */
 export const formatPhoneNumber = (phone: number | undefined): string => {
   if (!phone) return '';
-  const str = phone.toString();
+  let str = phone.toString();
+
+  // 10자리면 앞에 0 추가 (010으로 시작하는 번호가 Integer로 저장되면서 앞 0이 사라진 경우)
   if (str.length === 10) {
-    return `${str.slice(0, 3)}-${str.slice(3, 6)}-${str.slice(6)}`;
+    str = '0' + str;
   }
+
+  // 11자리: 010-1234-5678
   if (str.length === 11) {
     return `${str.slice(0, 3)}-${str.slice(3, 7)}-${str.slice(7)}`;
   }
+
   return str;
 };
 
