@@ -56,3 +56,31 @@ export const logout = (): void => {
   removeToken();
   // 필요 시 추가 정리 작업
 };
+
+// ============================================
+// 전화번호 유틸리티
+// ============================================
+
+/**
+ * 전화번호를 화면 표시용 형식으로 변환
+ * 1012345678 → 010-1234-5678
+ */
+export const formatPhoneNumber = (phone: number | undefined): string => {
+  if (!phone) return '';
+  const str = phone.toString();
+  if (str.length === 10) {
+    return `${str.slice(0, 3)}-${str.slice(3, 6)}-${str.slice(6)}`;
+  }
+  if (str.length === 11) {
+    return `${str.slice(0, 3)}-${str.slice(3, 7)}-${str.slice(7)}`;
+  }
+  return str;
+};
+
+/**
+ * 전화번호 문자열을 숫자로 변환 (API 전송용)
+ * 010-1234-5678 → 1012345678
+ */
+export const parsePhoneNumber = (phone: string): number => {
+  return parseInt(phone.replace(/-/g, ''), 10) || 0;
+};

@@ -2,8 +2,8 @@
 // Auth Feature - API Functions
 // ============================================
 
-import { apiClient } from '@/shared/api';
-import { setToken, setUserInfo } from '@/shared/utils';
+import apiClient from '@/shared/api/axios';
+import { setToken, setUserInfo } from '@/shared/utils/tokenManager';
 import type {
   LoginRequest,
   LoginResponse,
@@ -19,7 +19,7 @@ import type {
   ProfileUpdateResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
-} from '../types';
+} from '../types/auth.types';
 
 const AUTH_BASE = '/api/auth';
 

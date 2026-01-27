@@ -2,7 +2,7 @@
 // Admin Feature - API Functions
 // ============================================
 
-import { apiClient } from '@/shared/api';
+import apiClient from '@/shared/api/axios';
 import type {
   AdminUser,
   AdminFloorPlan,
@@ -14,7 +14,7 @@ import type {
   UserHistoryRequest,
   SearchFloorPlanRequest,
   FloorPlanDetailRequest,
-} from '../types';
+} from '../types/admin.types';
 
 const ADMIN_BASE = '/api/admin';
 

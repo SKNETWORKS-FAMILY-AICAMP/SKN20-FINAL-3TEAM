@@ -4,9 +4,9 @@ import { FiHome, FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/f
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
-import { useTheme } from '@/shared/contexts';
+import { useTheme } from '@/shared/contexts/ThemeContext';
 import { mockFloorPlanResult } from './data/mockData';
-import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types';
+import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
 import styles from './FileUploadPage.module.css';
 
 const FileUploadPage: React.FC = () => {
