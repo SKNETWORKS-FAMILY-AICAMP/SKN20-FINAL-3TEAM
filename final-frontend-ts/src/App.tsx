@@ -3,7 +3,10 @@
 // ============================================
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from '@/shared/contexts/ThemeContext';
+import { AuthProvider } from '@/shared/contexts/AuthContext';
+import ProtectedRoute from '@/shared/components/ProtectedRoute/ProtectedRoute';
 
 // Feature Pages
 import AuthPage from '@/features/auth/AuthPage';
@@ -18,36 +21,39 @@ import { SettingsPage } from '@/features/admin/pages/SettingsPage';
 
 function App() {
   return (
-    <ThemeProvider>
-      <Router>
-        <Routes>
-          {/* Default route redirects to auth */}
-          <Route path="/" element={<Navigate to="/auth" replace />} />
+    <AuthProvider>
+      <ThemeProvider>
+        <Toaster />
+        <Router>
+          <Routes>
+            {/* Default route redirects to auth */}
+            <Route path="/" element={<Navigate to="/auth" replace />} />
 
-          {/* Unified authentication page */}
-          <Route path="/auth" element={<AuthPage />} />
+            {/* Unified authentication page */}
+            <Route path="/auth" element={<AuthPage />} />
 
-          {/* Legacy routes redirect to auth */}
-          <Route path="/login" element={<Navigate to="/auth" replace />} />
-          <Route path="/signup" element={<Navigate to="/auth" replace />} />
-          <Route path="/forgot-password" element={<Navigate to="/auth" replace />} />
-          <Route path="/reset-password" element={<Navigate to="/auth" replace />} />
-          <Route path="/password-reset-success" element={<Navigate to="/auth" replace />} />
+            {/* Legacy routes redirect to auth */}
+            <Route path="/login" element={<Navigate to="/auth" replace />} />
+            <Route path="/signup" element={<Navigate to="/auth" replace />} />
+            <Route path="/forgot-password" element={<Navigate to="/auth" replace />} />
+            <Route path="/reset-password" element={<Navigate to="/auth" replace />} />
+            <Route path="/password-reset-success" element={<Navigate to="/auth" replace />} />
 
-          {/* Main app pages */}
-          <Route path="/main" element={<ChatPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/file-upload" element={<FileUploadPage />} />
+            {/* Main app pages - Protected */}
+            <Route path="/main" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/file-upload" element={<ProtectedRoute><FileUploadPage /></ProtectedRoute>} />
 
-          {/* Admin pages */}
-          <Route path="/admin" element={<DashboardPage />} />
-          <Route path="/admin/users" element={<UsersPage />} />
-          <Route path="/admin/floor-plans" element={<FloorPlansPage />} />
-          <Route path="/admin/logs" element={<LogsPage />} />
-          <Route path="/admin/settings" element={<SettingsPage />} />
-        </Routes>
-      </Router>
-    </ThemeProvider>
+            {/* Admin pages - Protected */}
+            <Route path="/admin" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+            <Route path="/admin/floor-plans" element={<ProtectedRoute><FloorPlansPage /></ProtectedRoute>} />
+            <Route path="/admin/logs" element={<ProtectedRoute><LogsPage /></ProtectedRoute>} />
+            <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          </Routes>
+        </Router>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 
