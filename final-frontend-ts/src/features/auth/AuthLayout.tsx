@@ -1,6 +1,6 @@
 import React from 'react';
-import { Logo } from '@/shared/components';
-import { useTheme } from '@/shared/contexts';
+import Logo from '@/shared/components/Logo/Logo';
+import { useTheme } from '@/shared/contexts/ThemeContext';
 import styles from './AuthLayout.module.css';
 
 interface AuthLayoutProps {

@@ -2,7 +2,7 @@
 // Chat Feature - Mock Data
 // ============================================
 
-import type { ChatSession, ChatMessage } from '../types';
+import type { ChatSession, ChatMessage } from '../types/chat.types';
 
 // Mock 채팅 메시지
 const mockMessages: ChatMessage[] = [

@@ -5,7 +5,7 @@
 
 import React, { useRef, useMemo } from 'react';
 import { useImageScale } from '../hooks/useImageScale';
-import type { HoverableItem } from '../types';
+import type { HoverableItem } from '../types/floor-plan.types';
 import styles from './FloorPlanViewer.module.css';
 
 interface FloorPlanViewerProps {

@@ -2,7 +2,7 @@
 // Chat Feature - API Functions
 // ============================================
 
-import { apiClient } from '@/shared/api';
+import apiClient from '@/shared/api/axios';
 import type {
   ChatRoom,
   ChatHistory,
@@ -11,7 +11,7 @@ import type {
   EditRoomNameRequest,
   DeleteRoomRequest,
   RoomHistoryRequest,
-} from '../types';
+} from '../types/chat.types';
 
 const CHATBOT_BASE = '/api/chatbot';
 

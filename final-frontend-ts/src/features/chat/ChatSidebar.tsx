@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { BiChat } from 'react-icons/bi';
 import { FiTrash2 } from 'react-icons/fi';
-import { useTheme } from '@/shared/contexts';
-import type { ChatSidebarProps } from './types';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import type { ChatSidebarProps } from './types/chat.types';
 import styles from './ChatSidebar.module.css';
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({

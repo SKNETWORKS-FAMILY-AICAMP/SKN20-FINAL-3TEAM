@@ -2,14 +2,15 @@
 // Profile Feature - Type Definitions
 // ============================================
 
-// 사용자 타입
+// 사용자 타입 (백엔드 User 엔티티와 일치)
 export interface User {
-  id: string;
-  name: string;
+  id: number;
   email: string;
-  position: string;
-  phone: string;
-  record?: string;
+  name: string;
+  phonenumber: number;
+  role: string;
+  create_at?: string;
+  update_at?: string;
 }
 
 // 프로필 편집 상태
