@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Input from '@/shared/components/Input/Input';
 import Button from '@/shared/components/Button/Button';
 import { useTheme } from '@/shared/contexts/ThemeContext';
-import { login } from '@/features/auth/api/auth.api';
+import { useAuth } from '@/shared/contexts/AuthContext';
+import { login as loginApi } from '@/features/auth/api/auth.api';
 import type { AuthView, LoginFormData } from '@/features/auth/types/auth.types';
 import { initialLoginData } from '@/features/auth/types/auth.types';
 import styles from './Login.module.css';
@@ -15,6 +16,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onViewChange }) => {
   const navigate = useNavigate();
   const { colors } = useTheme();
+  const { login } = useAuth();
   const [formData, setFormData] = useState<LoginFormData>(initialLoginData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -25,10 +27,18 @@ const Login: React.FC<LoginProps> = ({ onViewChange }) => {
     setLoading(true);
 
     try {
-      await login({
+      const response = await loginApi({
         email: formData.email,
         password: formData.password,
       });
+
+      // AuthContext에 로그인 정보 저장
+      login(response.token, {
+        email: response.email,
+        username: response.username,
+        role: response.role,
+      });
+
       navigate('/main');
     } catch (err: any) {
       console.error('Login failed:', err);

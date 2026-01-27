@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiHome, FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/fi';
+import { FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/fi';
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -411,9 +411,6 @@ const FileUploadPage: React.FC = () => {
         className={styles.iconSidebar}
         style={{ backgroundColor: colors.sidebarBg, borderRight: `1px solid ${colors.border}` }}
       >
-        <div onClick={() => navigate('/')} title="홈" className={styles.iconBtn}>
-          <FiHome size={20} />
-        </div>
         <div onClick={() => navigate('/main')} title="채팅" className={styles.iconBtn}>
           <FiMessageSquare size={20} />
         </div>

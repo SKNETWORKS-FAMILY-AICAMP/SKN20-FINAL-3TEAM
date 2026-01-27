@@ -327,7 +327,7 @@ const ChatPage: React.FC = () => {
           <form onSubmit={handleSendMessage} className={styles.inputForm}>
             <input
               type="text"
-              placeholder="예: 방 3개, 30평, 거실 넓은 구조"
+              placeholder="메시지를 입력하세요..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               disabled={isSending}
