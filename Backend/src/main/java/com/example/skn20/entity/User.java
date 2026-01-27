@@ -32,7 +32,7 @@ public class User {
     private String name; // 이름
 
     @Column(length = 15)
-    private Integer phonenumber; // 전화번호
+    private String phonenumber; // 전화번호
 
     @Column(nullable = false)
     @Builder.Default

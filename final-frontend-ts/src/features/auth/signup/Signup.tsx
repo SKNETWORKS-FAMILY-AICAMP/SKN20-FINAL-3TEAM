@@ -113,8 +113,8 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
         return (
           <form onSubmit={handleUserInfoSubmit}>
             <Input label="이름" type="text" placeholder="이름을 입력하세요" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-            <Input label="이메일" type="email" placeholder="example@email.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
-            <Input label="전화번호" type="tel" placeholder="010-0000-0000" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
+            <Input label="이메일" type="email" placeholder="이메일을 입력하세요" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+            <Input label="전화번호" type="tel" placeholder="전화번호를 입력하세요" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
             <Button type="submit" fullWidth disabled={loading}>{loading ? '확인 중...' : '다음'}</Button>
           </form>
         );

@@ -30,7 +30,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public User registerUser(String email, String password, String name, Integer phonenumber) {
+    public User registerUser(String email, String password, String name, String phonenumber) {
         if (userRepository.existsByEmail(email)) {
             throw new RuntimeException("이미 존재하는 이메일입니다.");
         }
@@ -48,7 +48,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public User updateProfile(String email, String name, Integer phonenumber) {
+    public User updateProfile(String email, String name, String phonenumber) {
         User user = userRepository.findByEmail(email);
         if (user == null) {
             throw new UsernameNotFoundException("User not found: " + email);
