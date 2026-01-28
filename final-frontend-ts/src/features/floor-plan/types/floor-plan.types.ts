@@ -9,6 +9,9 @@
 // Bbox 타입: UI에서 사용하는 배열 형태
 export type Bbox = [number, number, number, number];
 
+// Segmentation 타입: 폴리곤 좌표 배열 [x1, y1, x2, y2, ...]
+export type Segmentation = number[];
+
 // Bbox 문자열 파싱 유틸리티
 export const parseBbox = (bboxStr: string): Bbox => {
   try {
@@ -18,12 +21,23 @@ export const parseBbox = (bboxStr: string): Bbox => {
   }
 };
 
+// Segmentation 문자열 파싱 유틸리티
+export const parseSegmentation = (segStr: string): Segmentation | null => {
+  try {
+    const parsed = JSON.parse(segStr);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 // Hover 가능한 아이템 (JSON Inspector에서 사용)
 export interface HoverableItem {
   id: number;
   type: 'room' | 'structure' | 'object';
   name: string;
   bbox: Bbox;
+  segmentation?: Segmentation;  // 폴리곤 좌표 (ㄱ자 등 복잡한 형태용)
 }
 
 // ============================================
@@ -37,6 +51,7 @@ export interface StructureInfo {
   bbox: string;          // 바운딩 박스 좌표 (JSON 문자열)
   centroid: string;      // 중심점 좌표
   area: string;          // 면적 (VARCHAR)
+  segmentation?: string; // 폴리곤 좌표 (JSON 문자열)
 }
 
 // 객체 정보 (OBJ 엔티티 - 가구, 설비 등)
@@ -56,6 +71,7 @@ export interface RoomInfo {
   centroid: string;      // 중심점 좌표
   area: number;          // 면적
   areapercent: number;   // 면적 비율
+  segmentation?: string; // 폴리곤 좌표 (JSON 문자열) - ㄱ자 등 복잡한 형태용
   strs?: StructureInfo[];  // 구조물 목록
   objs?: ObjectInfo[];     // 객체 목록
 }
