@@ -6,6 +6,10 @@ import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { mockFloorPlanResult } from './data/mockData';
+import { convertCocoToFloorPlan } from './utils/cocoParser';
+import type { CocoData } from './utils/cocoParser';
+import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyParser';
+import type { TopologyData } from './utils/topologyParser';
 import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
 import styles from './FileUploadPage.module.css';
 
@@ -21,6 +25,7 @@ const FileUploadPage: React.FC = () => {
   const [aiSummary, setAiSummary] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
 
   // Hover 상태
   const [hoveredItem, setHoveredItem] = useState<HoverableItem | null>(null);
@@ -48,53 +53,45 @@ const FileUploadPage: React.FC = () => {
     }
   }, [selectedFile]);
 
-  // 이미지 스케일 계산
+  // 이미지 스케일 계산 (실제 렌더링 크기 기준)
   const updateImageScale = useCallback(() => {
-    const container = imageContainerRef.current;
     const image = imageRef.current;
-    if (!container || !image || !image.naturalWidth) return;
+    if (!image || !image.naturalWidth) return;
 
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
+    // 실제 렌더링된 이미지 크기
+    const renderedWidth = image.clientWidth;
+    const renderedHeight = image.clientHeight;
     const naturalWidth = image.naturalWidth;
     const naturalHeight = image.naturalHeight;
 
-    const containerRatio = containerWidth / containerHeight;
-    const imageRatio = naturalWidth / naturalHeight;
-
-    let renderedWidth: number;
-    let renderedHeight: number;
-
-    if (imageRatio > containerRatio) {
-      renderedWidth = containerWidth;
-      renderedHeight = containerWidth / imageRatio;
-    } else {
-      renderedHeight = containerHeight;
-      renderedWidth = containerHeight * imageRatio;
-    }
-
-    const offsetX = (containerWidth - renderedWidth) / 2;
-    const offsetY = (containerHeight - renderedHeight) / 2;
+    // 원본 대비 스케일 계산
     const scaleX = renderedWidth / naturalWidth;
     const scaleY = renderedHeight / naturalHeight;
 
-    setImageScale({ scaleX, scaleY, offsetX, offsetY });
+    // 오버레이는 이미지 위에 직접 배치되므로 offset 불필요
+    setImageScale({ scaleX, scaleY, offsetX: 0, offsetY: 0 });
+
+    console.log('이미지 스케일 계산:', {
+      natural: `${naturalWidth}x${naturalHeight}`,
+      rendered: `${renderedWidth}x${renderedHeight}`,
+      scale: `${scaleX.toFixed(4)}, ${scaleY.toFixed(4)}`,
+    });
   }, []);
 
   useEffect(() => {
     const image = imageRef.current;
-    const container = imageContainerRef.current;
-    if (!image || !container) return;
+    if (!image) return;
 
     image.addEventListener('load', updateImageScale);
-    const resizeObserver = new ResizeObserver(updateImageScale);
-    resizeObserver.observe(container);
+
+    // 윈도우 리사이즈 시에도 스케일 재계산
+    window.addEventListener('resize', updateImageScale);
 
     if (image.complete) updateImageScale();
 
     return () => {
       image.removeEventListener('load', updateImageScale);
-      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateImageScale);
     };
   }, [imageUrl, updateImageScale]);
 
@@ -133,30 +130,96 @@ const FileUploadPage: React.FC = () => {
   };
 
   // ============================================
-  // 도면 분석 (Mock 데이터 사용)
+  // 도면 분석 (public 폴더의 JSON 사용 또는 Mock 데이터)
   // ============================================
-  const startAnalysis = async (_file: File) => {
+  const startAnalysis = async (file: File) => {
     setAnalysisStatus('analyzing');
     setJsonResult('');
     setAiSummary('');
     setAnalysisResult(null);
     setHoveredItem(null);
+    setTopologyGraphUrl(null);
 
-    // Mock: 1.5초 후 결과 반환
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // 파일명에서 기본 ID 추출 (확장자, _OBJ, _topology 등 제거)
+    const baseName = file.name.replace(/\.(png|jpg|jpeg)$/i, '');
+    const baseId = baseName.replace(/(_OBJ|_topology|_SPA|_STR|_OCR)$/i, '');
+
+    // 경로 생성
+    const jsonPath = `/annotations/${baseId}_topology.json`;
+    const graphPath = `/result/${baseId}_topology.png`;
+
+    console.log('=== 도면 분석 시작 ===');
+    console.log('원본 파일명:', file.name);
+    console.log('baseId:', baseId);
+    console.log('JSON 경로:', jsonPath);
+    console.log('그래프 경로:', graphPath);
 
     try {
-      // TODO: 백엔드 연결 시 아래 주석 해제
-      // const result = await uploadFloorPlan(file);
+      // public 폴더에서 JSON 로드 시도
+      const response = await fetch(jsonPath);
+      console.log('fetch 응답 상태:', response.status, response.ok);
 
-      const result = mockFloorPlanResult;
+      if (response.ok) {
+        // JSON 파일 로드
+        const jsonData = await response.json();
+        console.log('JSON 데이터 로드됨:', jsonData);
 
-      setAnalysisResult(result);
-      setAnalysisStatus('completed');
-      setJsonResult(JSON.stringify(result, null, 2));
+        let result: FloorPlanUploadResponse;
 
-      const summary = generateSummary(result);
-      setAiSummary(summary);
+        // 형식 감지: Topology vs COCO
+        if (isTopologyFormat(jsonData)) {
+          console.log('Topology 형식 감지됨');
+          console.log('nodes 수:', jsonData.nodes?.length);
+          result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
+        } else {
+          console.log('COCO 형식 감지됨');
+          console.log('카테고리 수:', jsonData.categories?.length);
+          console.log('어노테이션 수:', jsonData.annotations?.length);
+          result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
+        }
+
+        console.log('변환 결과:', result);
+        console.log('rooms:', result.rooms?.length);
+        console.log('structures:', result.structures?.length);
+        console.log('objects:', result.objects?.length);
+
+        setAnalysisResult(result);
+        setAnalysisStatus('completed');
+        setJsonResult(JSON.stringify(result, null, 2));
+
+        const summary = generateSummary(result);
+        setAiSummary(summary);
+
+        // 공간 위상 그래프 이미지 로드 시도
+        try {
+          const graphResponse = await fetch(graphPath);
+          if (graphResponse.ok) {
+            setTopologyGraphUrl(graphPath);
+            console.log('그래프 이미지 로드 성공:', graphPath);
+          } else {
+            setTopologyGraphUrl(null);
+            console.log('그래프 이미지 없음:', graphPath);
+          }
+        } catch {
+          setTopologyGraphUrl(null);
+        }
+
+        setToastMessage('JSON 파일에서 분석 결과를 로드했습니다.');
+      } else {
+        // JSON 파일이 없으면 Mock 데이터 사용 (fallback)
+        console.log('JSON 파일 없음, Mock 데이터 사용:', jsonPath);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        const result = mockFloorPlanResult;
+
+        setAnalysisResult(result);
+        setAnalysisStatus('completed');
+        setJsonResult(JSON.stringify(result, null, 2));
+
+        const summary = generateSummary(result);
+        setAiSummary(summary);
+        setToastMessage('Mock 데이터를 사용합니다.');
+      }
     } catch (error) {
       console.error('도면 분석 실패:', error);
       setAnalysisStatus('error');
@@ -201,6 +264,7 @@ const FileUploadPage: React.FC = () => {
     setJsonResult('');
     setAiSummary('');
     setHoveredItem(null);
+    setTopologyGraphUrl(null);
   };
 
   const renderStatusBadge = () => {
@@ -363,7 +427,7 @@ const FileUploadPage: React.FC = () => {
         id: entry.item.id,
         type: entry.type,
         name: entry.type === 'room' ? (entry.item.spcname || entry.item.ocrname) : entry.item.name,
-        bbox: entry.item.bbox,
+        bbox: typeof entry.item.bbox === 'string' ? JSON.parse(entry.item.bbox) : entry.item.bbox,
       };
 
       const isHovered = hoveredItem?.id === hoverItem.id && hoveredItem?.type === hoverItem.type;
@@ -438,7 +502,6 @@ const FileUploadPage: React.FC = () => {
 
           {/* 도면 업로드/미리보기 영역 */}
           <div
-            ref={imageContainerRef}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
@@ -447,48 +510,51 @@ const FileUploadPage: React.FC = () => {
             style={{
               borderColor: dragActive ? colors.primary : colors.border,
               backgroundColor: dragActive ? colors.inputBg : '#FFFFFF',
-              position: 'relative',
             }}
           >
             {selectedFile && imageUrl ? (
               <div className={styles.imageWrapper}>
-                <img
-                  ref={imageRef}
-                  src={imageUrl}
-                  alt="도면 미리보기"
-                  className={styles.previewImage}
-                />
-                {/* Bbox Overlay */}
-                {hoveredItem && (
-                  <div
-                    className={styles.bboxOverlay}
-                    style={{
-                      left: transformBbox(hoveredItem.bbox).left,
-                      top: transformBbox(hoveredItem.bbox).top,
-                      width: transformBbox(hoveredItem.bbox).width,
-                      height: transformBbox(hoveredItem.bbox).height,
-                      backgroundColor: getOverlayColor(hoveredItem.type).fill,
-                      borderColor: getOverlayColor(hoveredItem.type).stroke,
-                    }}
-                  >
-                    <span
-                      className={styles.bboxLabel}
-                      style={{ backgroundColor: getOverlayColor(hoveredItem.type).stroke }}
+                <div ref={imageContainerRef} className={styles.imageContainer}>
+                  <img
+                    ref={imageRef}
+                    src={imageUrl}
+                    alt="도면 미리보기"
+                    className={styles.previewImage}
+                  />
+                  {/* Bbox Overlay */}
+                  {hoveredItem && (
+                    <div
+                      className={styles.bboxOverlay}
+                      style={{
+                        left: transformBbox(hoveredItem.bbox).left,
+                        top: transformBbox(hoveredItem.bbox).top,
+                        width: transformBbox(hoveredItem.bbox).width,
+                        height: transformBbox(hoveredItem.bbox).height,
+                        backgroundColor: getOverlayColor(hoveredItem.type).fill,
+                        borderColor: getOverlayColor(hoveredItem.type).stroke,
+                      }}
                     >
-                      {hoveredItem.name}
-                    </span>
-                  </div>
-                )}
-                <p className={styles.fileName} style={{ color: colors.textPrimary }}>
-                  {selectedFile.name}
-                </p>
-                <button
-                  onClick={handleReset}
-                  className={styles.resetBtn}
-                  style={{ border: `1px solid ${colors.border}`, color: colors.textSecondary }}
-                >
-                  다른 파일 선택
-                </button>
+                      <span
+                        className={styles.bboxLabel}
+                        style={{ backgroundColor: getOverlayColor(hoveredItem.type).stroke }}
+                      >
+                        {hoveredItem.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className={styles.fileInfo}>
+                  <p className={styles.fileName} style={{ color: colors.textPrimary }}>
+                    {selectedFile.name}
+                  </p>
+                  <button
+                    onClick={handleReset}
+                    className={styles.resetBtn}
+                    style={{ border: `1px solid ${colors.border}`, color: colors.textSecondary }}
+                  >
+                    다른 파일 선택
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -547,12 +613,20 @@ const FileUploadPage: React.FC = () => {
                 </div>
               )}
               {analysisStatus === 'completed' && (
-                <div style={{ textAlign: 'center' }}>
-                  <div className={styles.statusIcon}><AiOutlineHome size={32} /></div>
-                  <p style={{ color: colors.textSecondary, fontSize: '0.875rem' }}>
-                    그래프 시각화 영역<br />(CV 연동 후 렌더링 예정)
-                  </p>
-                </div>
+                topologyGraphUrl ? (
+                  <img
+                    src={topologyGraphUrl}
+                    alt="공간 위상 그래프"
+                    className={styles.topologyGraphImage}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <div className={styles.statusIcon}><AiOutlineHome size={32} /></div>
+                    <p style={{ color: colors.textSecondary, fontSize: '0.875rem' }}>
+                      그래프 이미지가 없습니다
+                    </p>
+                  </div>
+                )
               )}
               {analysisStatus === 'error' && (
                 <div style={{ textAlign: 'center' }}>

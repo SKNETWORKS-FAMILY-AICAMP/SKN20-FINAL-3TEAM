@@ -13,7 +13,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User, rememberMe?: boolean) => void;
   logout: () => void;
 }
 
@@ -36,11 +36,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(false);
   }, []);
 
-  const login = (newToken: string, newUser: User) => {
+  const login = (newToken: string, newUser: User, rememberMe: boolean = false) => {
     setToken(newToken);
     setUser(newUser);
-    saveToken(newToken);
-    setUserInfo(newUser);
+    saveToken(newToken, rememberMe);
+    setUserInfo(newUser, rememberMe);
   };
 
   const logout = () => {
