@@ -28,6 +28,7 @@ const ProfilePage: React.FC = () => {
           name: userInfo.name,
           phonenumber: userInfo.phonenumber,
           role: userInfo.role,
+          create_at: userInfo.create_at,
         });
         setPhoneDisplay(formatPhoneNumber(userInfo.phonenumber));
       } catch (err) {
@@ -137,7 +138,7 @@ const ProfilePage: React.FC = () => {
 
           {/* 입력 필드 영역 */}
           <div className={styles.formSection}>
-            {/* 2열 배치: 이름, 역할 */}
+            {/* 2열 배치: 이름, 전화번호 */}
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
                 <label className={styles.label} style={{ color: colors.textPrimary }}>
@@ -158,23 +159,25 @@ const ProfilePage: React.FC = () => {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} style={{ color: colors.textPrimary }}>
-                  역할
+                  전화번호
                 </label>
                 <input
-                  type="text"
-                  value={user.role === 'ADMIN' ? '관리자' : '사용자'}
-                  disabled
+                  type="tel"
+                  value={phoneDisplay}
+                  onChange={(e) => setPhoneDisplay(e.target.value)}
+                  placeholder="010-0000-0000"
+                  disabled={!isEditing}
                   className={styles.input}
                   style={{
                     border: `1px solid ${colors.border}`,
-                    backgroundColor: colors.inputBg,
+                    backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
                     color: colors.textPrimary,
                   }}
                 />
               </div>
             </div>
 
-            {/* 2열 배치: 이메일, 전화번호 */}
+            {/* 2열 배치: 이메일, 가입일 */}
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
                 <label className={styles.label} style={{ color: colors.textPrimary }}>
@@ -194,18 +197,16 @@ const ProfilePage: React.FC = () => {
               </div>
               <div className={styles.formGroup}>
                 <label className={styles.label} style={{ color: colors.textPrimary }}>
-                  전화번호
+                  가입일
                 </label>
                 <input
-                  type="tel"
-                  value={phoneDisplay}
-                  onChange={(e) => setPhoneDisplay(e.target.value)}
-                  placeholder="010-0000-0000"
-                  disabled={!isEditing}
+                  type="text"
+                  value={user.create_at || '-'}
+                  disabled
                   className={styles.input}
                   style={{
                     border: `1px solid ${colors.border}`,
-                    backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
+                    backgroundColor: colors.inputBg,
                     color: colors.textPrimary,
                   }}
                 />
