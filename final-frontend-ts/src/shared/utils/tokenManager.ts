@@ -4,27 +4,44 @@
 
 const TOKEN_KEY = 'auth_token';
 const USER_INFO_KEY = 'user_info';
+const REMEMBER_KEY = 'remember_me';
 
 /**
- * 토큰을 localStorage에 저장
+ * 저장소 선택 (rememberMe에 따라 localStorage 또는 sessionStorage)
  */
-export const setToken = (token: string): void => {
-  localStorage.setItem(TOKEN_KEY, token);
+const getStorage = (): Storage => {
+  const remember = localStorage.getItem(REMEMBER_KEY) === 'true';
+  return remember ? localStorage : sessionStorage;
 };
 
 /**
- * localStorage에서 토큰 가져오기
+ * 토큰 저장 (rememberMe에 따라 저장소 선택)
+ */
+export const setToken = (token: string, rememberMe: boolean = false): void => {
+  // rememberMe 설정 저장 (항상 localStorage에)
+  localStorage.setItem(REMEMBER_KEY, String(rememberMe));
+
+  // 토큰은 선택된 저장소에
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem(TOKEN_KEY, token);
+};
+
+/**
+ * 토큰 가져오기 (두 저장소 모두 확인)
  */
 export const getToken = (): string | null => {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 };
 
 /**
- * 토큰 삭제 (로그아웃 시)
+ * 토큰 삭제 (로그아웃 시 - 양쪽 저장소 모두)
  */
 export const removeToken = (): void => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_INFO_KEY);
+  localStorage.removeItem(REMEMBER_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_INFO_KEY);
 };
 
 /**
@@ -37,15 +54,16 @@ export const hasToken = (): boolean => {
 /**
  * 사용자 정보 저장
  */
-export const setUserInfo = (userInfo: any): void => {
-  localStorage.setItem(USER_INFO_KEY, JSON.stringify(userInfo));
+export const setUserInfo = (userInfo: any, rememberMe: boolean = false): void => {
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem(USER_INFO_KEY, JSON.stringify(userInfo));
 };
 
 /**
  * 사용자 정보 가져오기
  */
 export const getUserInfo = (): any | null => {
-  const userInfo = localStorage.getItem(USER_INFO_KEY);
+  const userInfo = localStorage.getItem(USER_INFO_KEY) || sessionStorage.getItem(USER_INFO_KEY);
   return userInfo ? JSON.parse(userInfo) : null;
 };
 
@@ -54,7 +72,6 @@ export const getUserInfo = (): any | null => {
  */
 export const logout = (): void => {
   removeToken();
-  // 필요 시 추가 정리 작업
 };
 
 // ============================================
