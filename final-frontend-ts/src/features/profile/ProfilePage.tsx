@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiHome, FiMessageSquare, FiUser } from 'react-icons/fi';
+import { FiMessageSquare, FiUser } from 'react-icons/fi';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { logout as logoutUtil, formatPhoneNumber, parsePhoneNumber } from '@/shared/utils/tokenManager';
 import { updateProfile, getCurrentUser } from '@/features/auth/api/auth.api';
@@ -80,9 +80,6 @@ const ProfilePage: React.FC = () => {
         className={styles.sidebar}
         style={{ backgroundColor: colors.sidebarBg, borderRight: `1px solid ${colors.border}` }}
       >
-        <div onClick={() => navigate('/')} title="홈" className={styles.iconBtn}>
-          <FiHome size={20} />
-        </div>
         <div onClick={() => navigate('/main')} title="채팅" className={styles.iconBtn}>
           <FiMessageSquare size={20} />
         </div>

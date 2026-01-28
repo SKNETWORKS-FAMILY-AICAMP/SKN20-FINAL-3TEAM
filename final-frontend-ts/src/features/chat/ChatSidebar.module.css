@@ -103,13 +103,25 @@
   margin-top: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 14px;
 }
 
 .navBtn {
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  width: 100%;
+  height: 48px;
+  border-radius: 24px;
+  background-color: #ffffff;
+  border: 1px solid #e6e9ef;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.navBtn:hover {
+  background-color: #f9fafb;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
 }
