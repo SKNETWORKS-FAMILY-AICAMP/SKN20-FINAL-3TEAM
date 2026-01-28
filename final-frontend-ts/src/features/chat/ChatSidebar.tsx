@@ -92,22 +92,12 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         <button
           onClick={() => window.location.href = '/file-upload'}
           className={styles.navBtn}
-          style={{
-            backgroundColor: colors.inputBg,
-            border: `1px solid ${colors.border}`,
-            color: colors.textPrimary,
-          }}
         >
           내 도면 올리기
         </button>
         <button
           onClick={() => window.location.href = '/profile'}
           className={styles.navBtn}
-          style={{
-            backgroundColor: colors.inputBg,
-            border: `1px solid ${colors.border}`,
-            color: colors.textPrimary,
-          }}
         >
           내 계정
         </button>
