@@ -428,6 +428,7 @@ const FileUploadPage: React.FC = () => {
         type: entry.type,
         name: entry.type === 'room' ? (entry.item.spcname || entry.item.ocrname) : entry.item.name,
         bbox: typeof entry.item.bbox === 'string' ? JSON.parse(entry.item.bbox) : entry.item.bbox,
+        segmentation: entry.item.segmentation ? JSON.parse(entry.item.segmentation) : undefined,
       };
 
       const isHovered = hoveredItem?.id === hoverItem.id && hoveredItem?.type === hoverItem.type;
@@ -521,26 +522,71 @@ const FileUploadPage: React.FC = () => {
                     alt="도면 미리보기"
                     className={styles.previewImage}
                   />
-                  {/* Bbox Overlay */}
+                  {/* Segmentation Polygon 또는 Bbox Overlay */}
                   {hoveredItem && (
-                    <div
-                      className={styles.bboxOverlay}
-                      style={{
-                        left: transformBbox(hoveredItem.bbox).left,
-                        top: transformBbox(hoveredItem.bbox).top,
-                        width: transformBbox(hoveredItem.bbox).width,
-                        height: transformBbox(hoveredItem.bbox).height,
-                        backgroundColor: getOverlayColor(hoveredItem.type).fill,
-                        borderColor: getOverlayColor(hoveredItem.type).stroke,
-                      }}
-                    >
-                      <span
-                        className={styles.bboxLabel}
-                        style={{ backgroundColor: getOverlayColor(hoveredItem.type).stroke }}
+                    hoveredItem.segmentation ? (
+                      // Segmentation이 있으면 SVG 폴리곤으로 렌더링
+                      <svg
+                        className={styles.segmentationOverlay}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          pointerEvents: 'none',
+                        }}
                       >
-                        {hoveredItem.name}
-                      </span>
-                    </div>
+                        <polygon
+                          points={
+                            // segmentation [x1, y1, x2, y2, ...] → "x1,y1 x2,y2 ..." 형식으로 변환
+                            hoveredItem.segmentation
+                              .reduce((acc: string[], coord, i, arr) => {
+                                if (i % 2 === 0 && i + 1 < arr.length) {
+                                  const x = coord * imageScale.scaleX;
+                                  const y = arr[i + 1] * imageScale.scaleY;
+                                  acc.push(`${x},${y}`);
+                                }
+                                return acc;
+                              }, [])
+                              .join(' ')
+                          }
+                          fill={getOverlayColor(hoveredItem.type).fill}
+                          stroke={getOverlayColor(hoveredItem.type).stroke}
+                          strokeWidth="2"
+                        />
+                        {/* 라벨 표시 */}
+                        <text
+                          x={hoveredItem.bbox[0] * imageScale.scaleX}
+                          y={hoveredItem.bbox[1] * imageScale.scaleY - 5}
+                          fill={getOverlayColor(hoveredItem.type).stroke}
+                          fontSize="12"
+                          fontWeight="bold"
+                        >
+                          {hoveredItem.name}
+                        </text>
+                      </svg>
+                    ) : (
+                      // Segmentation이 없으면 기존 Bbox 사각형으로 렌더링
+                      <div
+                        className={styles.bboxOverlay}
+                        style={{
+                          left: transformBbox(hoveredItem.bbox).left,
+                          top: transformBbox(hoveredItem.bbox).top,
+                          width: transformBbox(hoveredItem.bbox).width,
+                          height: transformBbox(hoveredItem.bbox).height,
+                          backgroundColor: getOverlayColor(hoveredItem.type).fill,
+                          borderColor: getOverlayColor(hoveredItem.type).stroke,
+                        }}
+                      >
+                        <span
+                          className={styles.bboxLabel}
+                          style={{ backgroundColor: getOverlayColor(hoveredItem.type).stroke }}
+                        >
+                          {hoveredItem.name}
+                        </span>
+                      </div>
+                    )
                   )}
                 </div>
                 <div className={styles.fileInfo}>
