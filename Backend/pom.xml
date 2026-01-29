@@ -116,9 +116,21 @@
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
+			<groupId>org.hibernate.orm</groupId>
+			<artifactId>hibernate-vector</artifactId>
+			<version>6.4.1.Final</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.hibernate.orm</groupId>
+			<artifactId>hibernate-community-dialects</artifactId>
+			<version>6.4.1.Final</version>
+		</dependency>
+
+		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<version>42.7.3</version>
+			<scope>runtime</scope>
 		</dependency>
 	</dependencies>
 
