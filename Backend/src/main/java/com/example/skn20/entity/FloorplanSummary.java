@@ -31,12 +31,7 @@ public class FloorplanSummary {
     @JoinColumn(name = "floorplan_id", nullable = true)
     private FloorPlan floorPlan;
     
-    private String summary;
-    
-    // 메타데이터 (JSONB 자료형)
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private String metadata;
+    private String eval;
     
     // 임베딩 값 (VECTOR 자료형)
     // 1536은 OpenAI embedding-3-small 모델 기준입니다.
