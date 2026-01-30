@@ -9,6 +9,9 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 @Entity
@@ -34,9 +37,9 @@ public class FloorPlan {
     @Column(name = "created_at", nullable = false)
     private LocalDate createdAt; // 생성 일자
 
-    @OneToMany
-    @JoinColumn(name = "floor_plan_id")
-    @JsonManagedReference
-    private List<Room> rooms;
+    // 메타데이터 (JSONB 자료형)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String elementJson;
     
 }
