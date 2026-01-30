@@ -1,51 +1,51 @@
 package com.example.skn20.controller;
 
-import java.io.File;
-import java.nio.file.Files;
-
+import com.example.skn20.classes.UD;
+import com.example.skn20.entity.User;
+import com.example.skn20.service.FloorPlanService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.skn20.entity.FloorPlan;
-import com.example.skn20.service.FloorPlanService;
-
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/floorplan")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:8000" })
+@CrossOrigin(origins = "http://localhost:3000")
 public class FloorPlanController {
 
 	private final FloorPlanService floorPlanService;
 
+	// [Step 1] 도면 분석: 프론트 이미지 -> 파이썬 -> 분석결과 반환
 	@PostMapping("/analyze")
 	public ResponseEntity<?> analyze(@RequestParam("file") MultipartFile file) {
-		if (file.isEmpty())
-			return ResponseEntity.badRequest().body("파일이 없습니다.");
-
 		try {
-			// 분석 결과를 바로 DTO 형태로 프론트에 전달
-			FloorPlan result = floorPlanService.analyzeFloorPlan(file);
+			// 파이썬 서버 호출 및 결과(JSON, 그래프이미지, 평가, 임베딩) 반환
+			Map<String, Object> result = floorPlanService.analyzeWithPython(file);
 			return ResponseEntity.ok(result);
 		} catch (Exception e) {
-			return ResponseEntity.status(500).body("FastAPI 분석 요청 중 오류 발생: " + e.getMessage());
+			return ResponseEntity.status(500).body("분석 중 오류 발생: " + e.getMessage());
 		}
 	}
 
+// [Step 2] 최종 저장: 유저 승인 후 데이터 분산 저장
 	@PostMapping("/save")
-	public ResponseEntity<?> saveFloorPlan(@RequestBody FloorPlan finalData) {
+	public ResponseEntity<?> save(@RequestBody Map<String, Object> saveRequest,
+			@AuthenticationPrincipal UD principalDetails // 인증된 유저 정보 주입
+	) {
 		try {
-			floorPlanService.saveFloorPlanData(finalData);
-			return ResponseEntity.ok("엔티티에 데이터 저장 완료!");
+			// 1. Principal에서 유저 엔티티 또는 ID 추출
+			User user = principalDetails.getUser();
+
+			// 2. 서비스 호출 시 유저 정보를 같이 넘겨줌
+			floorPlanService.saveToDatabase(saveRequest, user);
+
+			return ResponseEntity.ok("성공적으로 저장되었습니다.");
 		} catch (Exception e) {
-			return ResponseEntity.status(500).body("저장 실패: " + e.getMessage());
+			return ResponseEntity.status(500).body("저장 중 오류 발생: " + e.getMessage());
 		}
 	}
 }
