@@ -1,58 +1,51 @@
 package com.example.skn20.controller;
 
-import java.io.File;
-import java.nio.file.Files;
-
+import com.example.skn20.classes.UD;
+import com.example.skn20.entity.User;
+import com.example.skn20.service.FloorPlanService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.skn20.service.FloorPlanService;
-
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/floorplan")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:8000" })
+@CrossOrigin(origins = "http://localhost:3000")
 public class FloorPlanController {
-	
+
 	private final FloorPlanService floorPlanService;
-	
-    // 도면 이미지 업로드 및 FastAPI 분석 결과 반환
-    @PostMapping("/imgupload")
-    public ResponseEntity<?> imageUpload(@RequestParam("file") MultipartFile file) {
-        try {
-            // 1. 파일 임시 저장 (예: /tmp 또는 지정 경로)
-            String tempPath = Files.createTempFile("floorplan_", file.getOriginalFilename()).toString();
-            file.transferTo(new File(tempPath));
 
-            // 2. FastAPI 서비스 호출 (분석 결과 받기)
-            String analysisResult = floorPlanService.analyzeFloorPlan(tempPath);
+	// [Step 1] 도면 분석: 프론트 이미지 -> 파이썬 -> 분석결과 반환
+	@PostMapping("/analyze")
+	public ResponseEntity<?> analyze(@RequestParam("file") MultipartFile file) {
+		try {
+			// 파이썬 서버 호출 및 결과(JSON, 그래프이미지, 평가, 임베딩) 반환
+			Map<String, Object> result = floorPlanService.analyzeWithPython(file);
+			return ResponseEntity.ok(result);
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body("분석 중 오류 발생: " + e.getMessage());
+		}
+	}
 
-            // 3. 임시 파일 삭제
-            new File(tempPath).delete();
+// [Step 2] 최종 저장: 유저 승인 후 데이터 분산 저장
+	@PostMapping("/save")
+	public ResponseEntity<?> save(@RequestBody Map<String, Object> saveRequest,
+			@AuthenticationPrincipal UD principalDetails // 인증된 유저 정보 주입
+	) {
+		try {
+			// 1. Principal에서 유저 엔티티 또는 ID 추출
+			User user = principalDetails.getUser();
 
-            // 4. 결과 반환
-            return ResponseEntity.ok(analysisResult);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("분석 실패: " + e.getMessage());
-        }
-    }
-    
-    // 도면 분석 결과(예: JSON) 저장
-    @PostMapping("/save")
-    public ResponseEntity<?> saveFloorPlan(@RequestParam("data") String floorPlanData) {
-        try {
-            floorPlanService.saveFloorPlanData(floorPlanData);
-            return ResponseEntity.ok("저장 완료");
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("저장 실패: " + e.getMessage());
-        }
-    }
+			// 2. 서비스 호출 시 유저 정보를 같이 넘겨줌
+			floorPlanService.saveToDatabase(saveRequest, user);
+
+			return ResponseEntity.ok("성공적으로 저장되었습니다.");
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body("저장 중 오류 발생: " + e.getMessage());
+		}
+	}
 }
