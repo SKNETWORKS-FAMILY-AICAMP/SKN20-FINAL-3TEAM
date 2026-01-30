@@ -33,3 +33,5 @@ build/
 .vscode/
 
 api명세서.md
+
+__pycache__/
