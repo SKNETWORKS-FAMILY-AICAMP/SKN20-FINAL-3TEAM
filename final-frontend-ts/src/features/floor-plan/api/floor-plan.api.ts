@@ -20,7 +20,7 @@ export const uploadFloorPlan = async (
   formData.append('file', file);
 
   const response = await apiClient.post<FloorPlanUploadResponse>(
-    `${FLOORPLAN_BASE}/imgupload`,
+    `${FLOORPLAN_BASE}/analyze`,
     formData,
     {
       headers: {
@@ -39,12 +39,7 @@ export const saveFloorPlan = async (
 ): Promise<FloorPlanSaveResponse> => {
   const response = await apiClient.post<FloorPlanSaveResponse>(
     `${FLOORPLAN_BASE}/save`,
-    null,
-    {
-      params: {
-        data: JSON.stringify(data),
-      },
-    }
+    data
   );
   return response.data;
 };

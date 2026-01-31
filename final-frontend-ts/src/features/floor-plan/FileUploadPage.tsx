@@ -11,6 +11,7 @@ import type { CocoData } from './utils/cocoParser';
 import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyParser';
 import type { TopologyData } from './utils/topologyParser';
 import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
+import { uploadFloorPlan, saveFloorPlan } from './api/floor-plan.api';
 import styles from './FileUploadPage.module.css';
 
 const FileUploadPage: React.FC = () => {
@@ -130,7 +131,7 @@ const FileUploadPage: React.FC = () => {
   };
 
   // ============================================
-  // 도면 분석 (public 폴더의 JSON 사용 또는 Mock 데이터)
+  // 도면 분석 (백엔드 API 호출 → Python 서버 분석)
   // ============================================
   const startAnalysis = async (file: File) => {
     setAnalysisStatus('analyzing');
@@ -140,91 +141,115 @@ const FileUploadPage: React.FC = () => {
     setHoveredItem(null);
     setTopologyGraphUrl(null);
 
-    // 파일명에서 기본 ID 추출 (확장자, _OBJ, _topology 등 제거)
-    const baseName = file.name.replace(/\.(png|jpg|jpeg)$/i, '');
-    const baseId = baseName.replace(/(_OBJ|_topology|_SPA|_STR|_OCR)$/i, '');
-
-    // 경로 생성
-    const jsonPath = `/annotations/${baseId}_topology.json`;
-    const graphPath = `/result/${baseId}_topology.png`;
-
     console.log('=== 도면 분석 시작 ===');
-    console.log('원본 파일명:', file.name);
-    console.log('baseId:', baseId);
-    console.log('JSON 경로:', jsonPath);
-    console.log('그래프 경로:', graphPath);
+    console.log('파일명:', file.name);
 
     try {
-      // public 폴더에서 JSON 로드 시도
-      const response = await fetch(jsonPath);
-      console.log('fetch 응답 상태:', response.status, response.ok);
+      // 1. 백엔드 API 호출 (Python 서버에서 실시간 분석)
+      console.log('백엔드 API 호출 중...');
+      const apiResult = await uploadFloorPlan(file);
+      console.log('API 응답:', apiResult);
 
-      if (response.ok) {
-        // JSON 파일 로드
-        const jsonData = await response.json();
-        console.log('JSON 데이터 로드됨:', jsonData);
+      // API 응답에서 필요한 데이터 추출
+      let result: FloorPlanUploadResponse;
 
-        let result: FloorPlanUploadResponse;
+      // 백엔드 응답 형식에 따라 파싱
+      if (apiResult.elementJson) {
+        // 백엔드가 { elementJson, topologyImage, eval, embedding } 형태로 반환하는 경우
+        const jsonData = typeof apiResult.elementJson === 'string'
+          ? JSON.parse(apiResult.elementJson)
+          : apiResult.elementJson;
 
-        // 형식 감지: Topology vs COCO
         if (isTopologyFormat(jsonData)) {
-          console.log('Topology 형식 감지됨');
-          console.log('nodes 수:', jsonData.nodes?.length);
           result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
         } else {
-          console.log('COCO 형식 감지됨');
-          console.log('카테고리 수:', jsonData.categories?.length);
-          console.log('어노테이션 수:', jsonData.annotations?.length);
           result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
         }
 
-        console.log('변환 결과:', result);
-        console.log('rooms:', result.rooms?.length);
-        console.log('structures:', result.structures?.length);
-        console.log('objects:', result.objects?.length);
-
-        setAnalysisResult(result);
-        setAnalysisStatus('completed');
-        setJsonResult(JSON.stringify(result, null, 2));
-
-        const summary = generateSummary(result);
-        setAiSummary(summary);
-
-        // 공간 위상 그래프 이미지 로드 시도
-        try {
-          const graphResponse = await fetch(graphPath);
-          if (graphResponse.ok) {
-            setTopologyGraphUrl(graphPath);
-            console.log('그래프 이미지 로드 성공:', graphPath);
-          } else {
-            setTopologyGraphUrl(null);
-            console.log('그래프 이미지 없음:', graphPath);
-          }
-        } catch {
-          setTopologyGraphUrl(null);
+        // 위상 그래프 이미지가 있으면 설정
+        if (apiResult.topologyImage) {
+          setTopologyGraphUrl(`data:image/png;base64,${apiResult.topologyImage}`);
         }
 
-        setToastMessage('JSON 파일에서 분석 결과를 로드했습니다.');
+        // AI 평가가 있으면 설정
+        if (apiResult.eval) {
+          setAiSummary(apiResult.eval);
+        } else {
+          setAiSummary(generateSummary(result));
+        }
+      } else if (apiResult.rooms) {
+        // 이미 변환된 형태로 반환된 경우
+        result = apiResult;
+        setAiSummary(generateSummary(result));
       } else {
-        // JSON 파일이 없으면 Mock 데이터 사용 (fallback)
-        console.log('JSON 파일 없음, Mock 데이터 사용:', jsonPath);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const result = mockFloorPlanResult;
-
-        setAnalysisResult(result);
-        setAnalysisStatus('completed');
-        setJsonResult(JSON.stringify(result, null, 2));
-
-        const summary = generateSummary(result);
-        setAiSummary(summary);
-        setToastMessage('Mock 데이터를 사용합니다.');
+        // 형식 감지: Topology vs COCO
+        if (isTopologyFormat(apiResult)) {
+          result = convertTopologyToFloorPlan(apiResult as unknown as TopologyData, file.name);
+        } else {
+          result = convertCocoToFloorPlan(apiResult as unknown as CocoData, file.name);
+        }
+        setAiSummary(generateSummary(result));
       }
-    } catch (error) {
-      console.error('도면 분석 실패:', error);
-      setAnalysisStatus('error');
-      setJsonResult('');
-      setToastMessage('도면 분석에 실패했습니다.');
+
+      console.log('변환 결과:', result);
+      setAnalysisResult(result);
+      setAnalysisStatus('completed');
+      setJsonResult(JSON.stringify(result, null, 2));
+      setToastMessage('도면 분석이 완료되었습니다.');
+
+    } catch (apiError) {
+      console.warn('API 호출 실패, 로컬 파일 fallback 시도:', apiError);
+
+      // 2. API 실패 시 로컬 파일 fallback (개발용)
+      try {
+        const baseName = file.name.replace(/\.(png|jpg|jpeg)$/i, '');
+        const baseId = baseName.replace(/(_OBJ|_topology|_SPA|_STR|_OCR)$/i, '');
+        const jsonPath = `/annotations/${baseId}_topology.json`;
+        const graphPath = `/result/${baseId}_topology.png`;
+
+        const response = await fetch(jsonPath);
+
+        if (response.ok) {
+          const jsonData = await response.json();
+          let result: FloorPlanUploadResponse;
+
+          if (isTopologyFormat(jsonData)) {
+            result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
+          } else {
+            result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
+          }
+
+          setAnalysisResult(result);
+          setAnalysisStatus('completed');
+          setJsonResult(JSON.stringify(result, null, 2));
+          setAiSummary(generateSummary(result));
+
+          // 그래프 이미지 로드 시도
+          try {
+            const graphResponse = await fetch(graphPath);
+            if (graphResponse.ok) {
+              setTopologyGraphUrl(graphPath);
+            }
+          } catch {
+            setTopologyGraphUrl(null);
+          }
+
+          setToastMessage('로컬 JSON 파일에서 로드했습니다. (API 연결 안됨)');
+        } else {
+          // Mock 데이터 사용
+          const result = mockFloorPlanResult;
+          setAnalysisResult(result);
+          setAnalysisStatus('completed');
+          setJsonResult(JSON.stringify(result, null, 2));
+          setAiSummary(generateSummary(result));
+          setToastMessage('Mock 데이터 사용 중. (서버 연결 확인 필요)');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback도 실패:', fallbackError);
+        setAnalysisStatus('error');
+        setJsonResult('');
+        setToastMessage('도면 분석에 실패했습니다. 서버 연결을 확인하세요.');
+      }
     }
   };
 
@@ -245,8 +270,15 @@ const FileUploadPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      // TODO: 백엔드 연결 시 실제 API 호출
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // 백엔드에 저장 요청
+      const saveData = {
+        name: analysisResult.name,
+        imageUrl: imageUrl,
+        elementJson: analysisResult,
+        eval: aiSummary,
+        embedding: analysisResult.embedding || null,
+      };
+      await saveFloorPlan(saveData);
       setToastMessage('DB에 저장되었습니다');
     } catch (error) {
       console.error('저장 실패:', error);
