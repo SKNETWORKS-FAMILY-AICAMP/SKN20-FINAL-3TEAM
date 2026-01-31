@@ -1,0 +1,3876 @@
+{
+  "version": "V1.0.0",
+  "nodes": [
+    {
+      "id": "space_0",
+      "class_id": 4,
+      "class_name": "거실",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2067,
+          1643,
+          2067,
+          1658,
+          2059,
+          1659,
+          2059,
+          1779,
+          2051,
+          1780,
+          2051,
+          1785,
+          2066,
+          1785,
+          2067,
+          1793,
+          2250,
+          1793,
+          2251,
+          1802,
+          2320,
+          1802,
+          2321,
+          1793,
+          2339,
+          1794,
+          2339,
+          1809,
+          2347,
+          1810,
+          2347,
+          2187,
+          2354,
+          2187,
+          2355,
+          2195,
+          2410,
+          2195,
+          2411,
+          2204,
+          2776,
+          2204,
+          2777,
+          2195,
+          2872,
+          2195,
+          2872,
+          2188,
+          2880,
+          2187,
+          2880,
+          1802,
+          2888,
+          1801,
+          2889,
+          1793,
+          2898,
+          1793,
+          2899,
+          1801,
+          2907,
+          1802,
+          2907,
+          1810,
+          2984,
+          1810,
+          2985,
+          1801,
+          3057,
+          1801,
+          3058,
+          1794,
+          3065,
+          1794,
+          3065,
+          1771,
+          3057,
+          1770,
+          3057,
+          1650,
+          3065,
+          1649,
+          3065,
+          1619,
+          3033,
+          1619,
+          3032,
+          1610,
+          3002,
+          1610,
+          3001,
+          1618,
+          2954,
+          1619,
+          2914,
+          1618,
+          2913,
+          1610,
+          2874,
+          1610,
+          2873,
+          1618,
+          2698,
+          1618,
+          2697,
+          1610,
+          2562,
+          1610,
+          2561,
+          1618,
+          2490,
+          1618,
+          2489,
+          1626,
+          2451,
+          1626,
+          2450,
+          1635,
+          2193,
+          1635,
+          2192,
+          1627,
+          2184,
+          1626,
+          2115,
+          1626,
+          2114,
+          1635,
+          2075,
+          1635,
+          2075,
+          1642
+        ]
+      ],
+      "bbox": [
+        2051.0,
+        1610.0,
+        1014.0,
+        594.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2051,
+        "ymin": 1610,
+        "xmax": 3065,
+        "ymax": 2204
+      },
+      "area": 391945,
+      "area_ratio": 0.0225,
+      "centroid": [
+        2596,
+        1869
+      ],
+      "name": "거실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_1",
+      "class_id": 5,
+      "class_name": "침실",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2225,
+          1264,
+          2218,
+          1264,
+          2217,
+          1256,
+          2210,
+          1256,
+          2209,
+          1249,
+          2161,
+          1249,
+          2160,
+          1232,
+          2098,
+          1232,
+          2097,
+          1240,
+          1907,
+          1240,
+          1906,
+          1249,
+          1745,
+          1249,
+          1744,
+          1241,
+          1739,
+          1241,
+          1738,
+          1249,
+          1723,
+          1249,
+          1723,
+          1608,
+          1738,
+          1608,
+          1739,
+          1616,
+          1747,
+          1617,
+          1992,
+          1617,
+          1993,
+          1608,
+          2114,
+          1608,
+          2115,
+          1617,
+          2184,
+          1617,
+          2184,
+          1375,
+          2192,
+          1374,
+          2192,
+          1367,
+          2201,
+          1366,
+          2202,
+          1359,
+          2209,
+          1359,
+          2209,
+          1288,
+          2217,
+          1287,
+          2217,
+          1272,
+          2225,
+          1271
+        ]
+      ],
+      "bbox": [
+        1723.0,
+        1232.0,
+        502.0,
+        385.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1723,
+        "ymin": 1232,
+        "xmax": 2225,
+        "ymax": 1617
+      },
+      "area": 175344,
+      "area_ratio": 0.0101,
+      "centroid": [
+        1959,
+        1426
+      ],
+      "name": "침실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_2",
+      "class_id": 5,
+      "class_name": "침실",
+      "instance_id": 2,
+      "segmentation": [
+        [
+          2320,
+          1811,
+          2251,
+          1811,
+          2250,
+          1820,
+          1979,
+          1820,
+          1979,
+          1827,
+          1971,
+          1828,
+          1971,
+          2147,
+          2034,
+          2147,
+          2035,
+          2156,
+          2264,
+          2156,
+          2272,
+          2155,
+          2273,
+          2147,
+          2304,
+          2147,
+          2304,
+          2140,
+          2312,
+          2139,
+          2312,
+          1955,
+          2320,
+          1954
+        ]
+      ],
+      "bbox": [
+        1971.0,
+        1811.0,
+        349.0,
+        345.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1971,
+        "ymin": 1811,
+        "xmax": 2320,
+        "ymax": 2156
+      },
+      "area": 115892,
+      "area_ratio": 0.0067,
+      "centroid": [
+        2144,
+        1984
+      ],
+      "name": "침실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_3",
+      "class_id": 5,
+      "class_name": "침실",
+      "instance_id": 3,
+      "segmentation": [
+        [
+          2907,
+          1819,
+          2907,
+          2187,
+          2914,
+          2187,
+          2915,
+          2195,
+          2930,
+          2195,
+          2931,
+          2203,
+          2939,
+          2204,
+          3168,
+          2204,
+          3169,
+          2195,
+          3218,
+          2195,
+          3219,
+          2203,
+          3224,
+          2203,
+          3224,
+          2188,
+          3232,
+          2187,
+          3232,
+          1836,
+          3225,
+          1836,
+          3224,
+          1828,
+          2985,
+          1828,
+          2984,
+          1819
+        ]
+      ],
+      "bbox": [
+        2907.0,
+        1819.0,
+        325.0,
+        385.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2907,
+        "ymin": 1819,
+        "xmax": 3232,
+        "ymax": 2204
+      },
+      "area": 122660,
+      "area_ratio": 0.007,
+      "centroid": [
+        3068,
+        2013
+      ],
+      "name": "침실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_4",
+      "class_id": 6,
+      "class_name": "주방/식당",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2928,
+          1313,
+          2920,
+          1312,
+          2920,
+          1304,
+          2914,
+          1304,
+          2913,
+          1312,
+          2803,
+          1313,
+          2802,
+          1321,
+          2761,
+          1321,
+          2760,
+          1313,
+          2752,
+          1312,
+          2451,
+          1313,
+          2451,
+          1617,
+          2561,
+          1617,
+          2562,
+          1609,
+          2697,
+          1609,
+          2698,
+          1617,
+          2873,
+          1617,
+          2874,
+          1609,
+          2913,
+          1609,
+          2914,
+          1617,
+          2928,
+          1617
+        ]
+      ],
+      "bbox": [
+        2451.0,
+        1304.0,
+        477.0,
+        313.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2451,
+        "ymin": 1304,
+        "xmax": 2928,
+        "ymax": 1617
+      },
+      "area": 144306,
+      "area_ratio": 0.0083,
+      "centroid": [
+        2689,
+        1463
+      ],
+      "name": "주방/식당",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [
+        {
+          "class_name": "싱크대",
+          "confidence": 0.6755
+        },
+        {
+          "class_name": "가스레인지",
+          "confidence": 0.5695
+        },
+        {
+          "class_name": "싱크대",
+          "confidence": 0.5575
+        }
+      ],
+      "has_window": true
+    },
+    {
+      "id": "space_5",
+      "class_id": 7,
+      "class_name": "현관",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          3241,
+          1627,
+          3233,
+          1627,
+          3232,
+          1619,
+          3224,
+          1618,
+          3224,
+          1611,
+          3219,
+          1611,
+          3218,
+          1619,
+          3066,
+          1619,
+          3066,
+          1681,
+          3058,
+          1682,
+          3058,
+          1689,
+          3066,
+          1690,
+          3066,
+          1753,
+          3058,
+          1754,
+          3058,
+          1770,
+          3066,
+          1771,
+          3066,
+          1794,
+          3058,
+          1795,
+          3058,
+          1801,
+          3224,
+          1801,
+          3224,
+          1794,
+          3232,
+          1793,
+          3232,
+          1721,
+          3240,
+          1720,
+          3241,
+          1712
+        ]
+      ],
+      "bbox": [
+        3058.0,
+        1611.0,
+        183.0,
+        190.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 3058,
+        "ymin": 1611,
+        "xmax": 3241,
+        "ymax": 1801
+      },
+      "area": 31639,
+      "area_ratio": 0.0018,
+      "centroid": [
+        3150,
+        1709
+      ],
+      "name": "현관",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": false
+    },
+    {
+      "id": "space_6",
+      "class_id": 8,
+      "class_name": "발코니",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          1723,
+          1072,
+          1723,
+          1199,
+          1715,
+          1200,
+          1715,
+          1205,
+          1722,
+          1205,
+          1723,
+          1213,
+          1738,
+          1213,
+          1739,
+          1221,
+          1744,
+          1221,
+          1745,
+          1213,
+          1906,
+          1213,
+          1907,
+          1231,
+          1961,
+          1231,
+          1962,
+          1222,
+          1970,
+          1223,
+          1970,
+          1231,
+          2041,
+          1231,
+          2042,
+          1222,
+          2176,
+          1221,
+          2176,
+          1214,
+          2184,
+          1213,
+          2184,
+          1072,
+          1753,
+          1072,
+          1752,
+          1064,
+          1739,
+          1064,
+          1738,
+          1072
+        ]
+      ],
+      "bbox": [
+        1715.0,
+        1064.0,
+        469.0,
+        167.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1715,
+        "ymin": 1064,
+        "xmax": 2184,
+        "ymax": 1231
+      },
+      "area": 69369,
+      "area_ratio": 0.004,
+      "centroid": [
+        1956,
+        1146
+      ],
+      "name": "발코니",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_7",
+      "class_id": 8,
+      "class_name": "발코니",
+      "instance_id": 2,
+      "segmentation": [
+        [
+          2451,
+          1168,
+          2451,
+          1286,
+          2626,
+          1286,
+          2627,
+          1295,
+          2752,
+          1295,
+          2753,
+          1286,
+          2842,
+          1286,
+          2843,
+          1294,
+          2851,
+          1295,
+          2920,
+          1295,
+          2928,
+          1294,
+          2929,
+          1278,
+          2938,
+          1278,
+          2939,
+          1286,
+          2954,
+          1286,
+          2955,
+          1294,
+          2963,
+          1295,
+          2963,
+          1358,
+          3072,
+          1358,
+          3072,
+          1305,
+          3064,
+          1304,
+          3064,
+          1295,
+          3072,
+          1294,
+          3073,
+          1286,
+          3224,
+          1286,
+          3224,
+          1279,
+          3232,
+          1278,
+          3232,
+          1168
+        ]
+      ],
+      "bbox": [
+        2451.0,
+        1168.0,
+        781.0,
+        190.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2451,
+        "ymin": 1168,
+        "xmax": 3232,
+        "ymax": 1358
+      },
+      "area": 102710,
+      "area_ratio": 0.0059,
+      "centroid": [
+        2853,
+        1235
+      ],
+      "name": "발코니",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_8",
+      "class_id": 8,
+      "class_name": "발코니",
+      "instance_id": 3,
+      "segmentation": [
+        [
+          1723,
+          1635,
+          1723,
+          1889,
+          1738,
+          1889,
+          1739,
+          1897,
+          1744,
+          1897,
+          1745,
+          1889,
+          1936,
+          1889,
+          1936,
+          1882,
+          1944,
+          1881,
+          1944,
+          1794,
+          2024,
+          1793,
+          2024,
+          1786,
+          2032,
+          1785,
+          2032,
+          1651,
+          2024,
+          1650,
+          2024,
+          1635,
+          2001,
+          1635,
+          2000,
+          1626,
+          1747,
+          1626,
+          1746,
+          1635
+        ]
+      ],
+      "bbox": [
+        1723.0,
+        1626.0,
+        309.0,
+        271.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1723,
+        "ymin": 1626,
+        "xmax": 2032,
+        "ymax": 1897
+      },
+      "area": 72680,
+      "area_ratio": 0.0042,
+      "centroid": [
+        1863,
+        1748
+      ],
+      "name": "발코니",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_9",
+      "class_id": 8,
+      "class_name": "발코니",
+      "instance_id": 4,
+      "segmentation": [
+        [
+          1971,
+          2182,
+          1971,
+          2332,
+          2490,
+          2332,
+          2491,
+          2436,
+          2498,
+          2436,
+          2499,
+          2444,
+          2848,
+          2444,
+          2848,
+          2437,
+          2856,
+          2436,
+          2857,
+          2340,
+          2882,
+          2340,
+          2883,
+          2348,
+          2891,
+          2349,
+          2891,
+          2436,
+          2898,
+          2436,
+          2899,
+          2444,
+          3224,
+          2444,
+          3224,
+          2437,
+          3232,
+          2436,
+          3232,
+          2230,
+          3224,
+          2229,
+          3224,
+          2214,
+          3219,
+          2214,
+          3218,
+          2222,
+          3169,
+          2222,
+          3168,
+          2213,
+          2939,
+          2213,
+          2938,
+          2222,
+          2777,
+          2222,
+          2776,
+          2213,
+          2411,
+          2213,
+          2410,
+          2222,
+          2331,
+          2222,
+          2330,
+          2230,
+          2321,
+          2230,
+          2320,
+          2198,
+          2312,
+          2197,
+          2312,
+          2182,
+          2265,
+          2182,
+          2264,
+          2165,
+          2138,
+          2165,
+          2137,
+          2173,
+          2042,
+          2173,
+          2041,
+          2165,
+          2035,
+          2165,
+          2034,
+          2182
+        ]
+      ],
+      "bbox": [
+        1971.0,
+        2165.0,
+        1261.0,
+        279.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1971,
+        "ymin": 2165,
+        "xmax": 3232,
+        "ymax": 2444
+      },
+      "area": 241740,
+      "area_ratio": 0.0139,
+      "centroid": [
+        2658,
+        2306
+      ],
+      "name": "발코니",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": true
+    },
+    {
+      "id": "space_10",
+      "class_id": 9,
+      "class_name": "욕실",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2219,
+          1384,
+          2219,
+          1600,
+          2226,
+          1600,
+          2227,
+          1608,
+          2320,
+          1608,
+          2320,
+          1593,
+          2328,
+          1592,
+          2328,
+          1587,
+          2320,
+          1586,
+          2320,
+          1512,
+          2336,
+          1511,
+          2337,
+          1503,
+          2416,
+          1503,
+          2416,
+          1401,
+          2409,
+          1401,
+          2408,
+          1393,
+          2289,
+          1393,
+          2288,
+          1385
+        ]
+      ],
+      "bbox": [
+        2219.0,
+        1384.0,
+        197.0,
+        224.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2219,
+        "ymin": 1384,
+        "xmax": 2416,
+        "ymax": 1608
+      },
+      "area": 33358,
+      "area_ratio": 0.0019,
+      "centroid": [
+        2300,
+        1481
+      ],
+      "name": "욕실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [
+        {
+          "class_name": "세면대",
+          "confidence": 0.7617
+        }
+      ],
+      "has_window": false
+    },
+    {
+      "id": "space_11",
+      "class_id": 9,
+      "class_name": "욕실",
+      "instance_id": 2,
+      "segmentation": [
+        [
+          2963,
+          1393,
+          2963,
+          1505,
+          2955,
+          1506,
+          2955,
+          1601,
+          2962,
+          1602,
+          2962,
+          1609,
+          2977,
+          1609,
+          2978,
+          1601,
+          3032,
+          1601,
+          3033,
+          1592,
+          3224,
+          1592,
+          3224,
+          1585,
+          3232,
+          1584,
+          3232,
+          1442,
+          3224,
+          1441,
+          3224,
+          1416,
+          3232,
+          1415,
+          3232,
+          1393,
+          3065,
+          1393,
+          3064,
+          1385,
+          3059,
+          1385,
+          3058,
+          1393
+        ]
+      ],
+      "bbox": [
+        2955.0,
+        1385.0,
+        277.0,
+        224.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2955,
+        "ymin": 1385,
+        "xmax": 3232,
+        "ymax": 1609
+      },
+      "area": 55302,
+      "area_ratio": 0.0032,
+      "centroid": [
+        3093,
+        1494
+      ],
+      "name": "욕실",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [
+        {
+          "class_name": "욕조",
+          "confidence": 0.8321
+        },
+        {
+          "class_name": "변기",
+          "confidence": 0.8082
+        },
+        {
+          "class_name": "세면대",
+          "confidence": 0.7019
+        },
+        {
+          "class_name": "세면대",
+          "confidence": 0.4249
+        },
+        {
+          "class_name": "변기",
+          "confidence": 0.2527
+        }
+      ],
+      "has_window": false
+    },
+    {
+      "id": "space_12",
+      "class_id": 11,
+      "class_name": "드레스룸",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2211,
+          1072,
+          2211,
+          1077,
+          2219,
+          1078,
+          2219,
+          1230,
+          2227,
+          1231,
+          2227,
+          1240,
+          2219,
+          1241,
+          2218,
+          1249,
+          2210,
+          1249,
+          2210,
+          1255,
+          2218,
+          1256,
+          2218,
+          1263,
+          2226,
+          1264,
+          2226,
+          1271,
+          2218,
+          1272,
+          2218,
+          1287,
+          2210,
+          1288,
+          2210,
+          1359,
+          2218,
+          1360,
+          2219,
+          1375,
+          2280,
+          1375,
+          2281,
+          1366,
+          2408,
+          1366,
+          2408,
+          1359,
+          2416,
+          1358,
+          2416,
+          1072
+        ]
+      ],
+      "bbox": [
+        2210.0,
+        1072.0,
+        206.0,
+        303.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2210,
+        "ymin": 1072,
+        "xmax": 2416,
+        "ymax": 1375
+      },
+      "area": 59558,
+      "area_ratio": 0.0034,
+      "centroid": [
+        2315,
+        1221
+      ],
+      "name": "드레스룸",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": false
+    },
+    {
+      "id": "space_13",
+      "class_id": 12,
+      "class_name": "복도",
+      "instance_id": 1,
+      "segmentation": [
+        [
+          2451,
+          1072,
+          2451,
+          1133,
+          2608,
+          1133,
+          2608,
+          1072
+        ]
+      ],
+      "bbox": [
+        2451.0,
+        1072.0,
+        157.0,
+        61.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2451,
+        "ymin": 1072,
+        "xmax": 2608,
+        "ymax": 1133
+      },
+      "area": 9796,
+      "area_ratio": 0.0006,
+      "centroid": [
+        2529,
+        1102
+      ],
+      "name": "복도",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": false
+    },
+    {
+      "id": "space_14",
+      "class_id": 12,
+      "class_name": "복도",
+      "instance_id": 2,
+      "segmentation": [
+        [
+          3099,
+          1329,
+          3099,
+          1350,
+          3106,
+          1350,
+          3107,
+          1358,
+          3224,
+          1358,
+          3224,
+          1351,
+          3232,
+          1350,
+          3232,
+          1321,
+          3225,
+          1321,
+          3224,
+          1313,
+          3107,
+          1313,
+          3107,
+          1328
+        ]
+      ],
+      "bbox": [
+        3099.0,
+        1313.0,
+        133.0,
+        45.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 3099,
+        "ymin": 1313,
+        "xmax": 3232,
+        "ymax": 1358
+      },
+      "area": 5844,
+      "area_ratio": 0.0003,
+      "centroid": [
+        3166,
+        1335
+      ],
+      "name": "복도",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": false
+    },
+    {
+      "id": "space_15",
+      "class_id": 12,
+      "class_name": "복도",
+      "instance_id": 3,
+      "segmentation": [
+        [
+          2355,
+          1530,
+          2355,
+          1608,
+          2370,
+          1608,
+          2371,
+          1616,
+          2400,
+          1616,
+          2401,
+          1608,
+          2416,
+          1608,
+          2416,
+          1601,
+          2424,
+          1600,
+          2424,
+          1587,
+          2416,
+          1586,
+          2416,
+          1530
+        ]
+      ],
+      "bbox": [
+        2355.0,
+        1530.0,
+        69.0,
+        86.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2355,
+        "ymin": 1530,
+        "xmax": 2424,
+        "ymax": 1616
+      },
+      "area": 5250,
+      "area_ratio": 0.0003,
+      "centroid": [
+        2386,
+        1571
+      ],
+      "name": "복도",
+      "ocr_label": null,
+      "source": "spa",
+      "ocr_match_type": "spa_fallback",
+      "objects": [],
+      "has_window": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "space_11",
+      "target": "space_0",
+      "source_name": "욕실",
+      "target_name": "거실",
+      "confidence": 1.0,
+      "connection_type": "door",
+      "door_id": "door_2"
+    },
+    {
+      "source": "space_1",
+      "target": "space_0",
+      "source_name": "침실",
+      "target_name": "거실",
+      "confidence": 1.0,
+      "connection_type": "door",
+      "door_id": "door_3"
+    },
+    {
+      "source": "space_2",
+      "target": "space_0",
+      "source_name": "침실",
+      "target_name": "거실",
+      "confidence": 1.0,
+      "connection_type": "door",
+      "door_id": "door_5"
+    },
+    {
+      "source": "space_3",
+      "target": "space_0",
+      "source_name": "침실",
+      "target_name": "거실",
+      "confidence": 1.0,
+      "connection_type": "door",
+      "door_id": "door_6"
+    },
+    {
+      "source": "space_1",
+      "target": "space_6",
+      "source_name": "침실",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_0",
+      "traversable": true
+    },
+    {
+      "source": "space_4",
+      "target": "space_7",
+      "source_name": "주방/식당",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_1",
+      "traversable": true
+    },
+    {
+      "source": "space_1",
+      "target": "space_8",
+      "source_name": "침실",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_2",
+      "traversable": true
+    },
+    {
+      "source": "space_2",
+      "target": "space_9",
+      "source_name": "침실",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_3",
+      "traversable": true
+    },
+    {
+      "source": "space_0",
+      "target": "space_9",
+      "source_name": "거실",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_4",
+      "traversable": true
+    },
+    {
+      "source": "space_3",
+      "target": "space_9",
+      "source_name": "침실",
+      "target_name": "발코니",
+      "confidence": 0.6,
+      "connection_type": "window",
+      "window_id": "window_5",
+      "traversable": true
+    },
+    {
+      "source": "space_0",
+      "target": "space_4",
+      "source_name": "거실",
+      "target_name": "주방/식당",
+      "confidence": 0.5,
+      "connection_type": "open",
+      "door_id": null
+    },
+    {
+      "source": "space_0",
+      "target": "space_5",
+      "source_name": "거실",
+      "target_name": "현관",
+      "confidence": 0.4,
+      "connection_type": "open",
+      "door_id": null
+    },
+    {
+      "source": "space_1",
+      "target": "space_12",
+      "source_name": "침실",
+      "target_name": "드레스룸",
+      "confidence": 0.4,
+      "connection_type": "open",
+      "door_id": null
+    }
+  ],
+  "uncertain_edges": [
+    {
+      "source": "space_7",
+      "target": "space_4",
+      "source_name": "발코니",
+      "target_name": "주방/식당",
+      "confidence": 0.25,
+      "connection_type": "door_uncertain",
+      "door_id": "door_0"
+    },
+    {
+      "source": "space_10",
+      "target": "space_12",
+      "source_name": "욕실",
+      "target_name": "드레스룸",
+      "confidence": 0.25,
+      "connection_type": "door_uncertain",
+      "door_id": "door_1"
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_0",
+      "segmentation": [
+        [
+          2921,
+          1199,
+          2906,
+          1199,
+          2905,
+          1191,
+          2890,
+          1191,
+          2889,
+          1199,
+          2842,
+          1199,
+          2842,
+          1295,
+          2850,
+          1296,
+          2850,
+          1311,
+          2913,
+          1311,
+          2913,
+          1304,
+          2921,
+          1303,
+          2922,
+          1295,
+          2929,
+          1295,
+          2929,
+          1207,
+          2922,
+          1207
+        ]
+      ],
+      "bbox": [
+        2842.0,
+        1191.0,
+        87.0,
+        120.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2834,
+        "ymin": 1183,
+        "xmax": 2937,
+        "ymax": 1319
+      },
+      "area": 9688,
+      "centroid": [
+        2885,
+        1252
+      ],
+      "instance_id": 0,
+      "temp_id": "door_0",
+      "touching_spaces": [
+        {
+          "space_id": "space_7",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 10262
+        },
+        {
+          "space_id": "space_4",
+          "space_name": "주방/식당",
+          "class_name": "주방/식당",
+          "overlap": 510
+        }
+      ]
+    },
+    {
+      "id": "door_1",
+      "segmentation": [
+        [
+          2218,
+          1376,
+          2218,
+          1480,
+          2265,
+          1480,
+          2266,
+          1488,
+          2297,
+          1488,
+          2297,
+          1417,
+          2289,
+          1416,
+          2289,
+          1384,
+          2282,
+          1384,
+          2281,
+          1376
+        ]
+      ],
+      "bbox": [
+        2218.0,
+        1376.0,
+        79.0,
+        112.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2210,
+        "ymin": 1368,
+        "xmax": 2305,
+        "ymax": 1496
+      },
+      "area": 8264,
+      "centroid": [
+        2256,
+        1431
+      ],
+      "instance_id": 1,
+      "temp_id": "door_1",
+      "touching_spaces": [
+        {
+          "space_id": "space_10",
+          "space_name": "욕실",
+          "class_name": "욕실",
+          "overlap": 8820
+        },
+        {
+          "space_id": "space_12",
+          "space_name": "드레스룸",
+          "class_name": "드레스룸",
+          "overlap": 372
+        }
+      ]
+    },
+    {
+      "id": "door_2",
+      "segmentation": [
+        [
+          2962,
+          1497,
+          2962,
+          1512,
+          2954,
+          1513,
+          2954,
+          1617,
+          3033,
+          1617,
+          3033,
+          1537,
+          3041,
+          1536,
+          3041,
+          1505,
+          3034,
+          1505,
+          3033,
+          1497
+        ]
+      ],
+      "bbox": [
+        2954.0,
+        1497.0,
+        87.0,
+        120.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2946,
+        "ymin": 1489,
+        "xmax": 3049,
+        "ymax": 1625
+      },
+      "area": 9808,
+      "centroid": [
+        2995,
+        1556
+      ],
+      "instance_id": 2,
+      "temp_id": "door_2",
+      "touching_spaces": [
+        {
+          "space_id": "space_11",
+          "space_name": "욕실",
+          "class_name": "욕실",
+          "overlap": 9731
+        },
+        {
+          "space_id": "space_0",
+          "space_name": "거실",
+          "class_name": "거실",
+          "overlap": 786
+        }
+      ]
+    },
+    {
+      "id": "door_3",
+      "segmentation": [
+        [
+          2114,
+          1513,
+          2114,
+          1520,
+          2106,
+          1521,
+          2106,
+          1601,
+          2114,
+          1602,
+          2114,
+          1625,
+          2121,
+          1625,
+          2122,
+          1633,
+          2177,
+          1633,
+          2177,
+          1626,
+          2185,
+          1625,
+          2185,
+          1513
+        ]
+      ],
+      "bbox": [
+        2106.0,
+        1513.0,
+        79.0,
+        120.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2098,
+        "ymin": 1505,
+        "xmax": 2193,
+        "ymax": 1641
+      },
+      "area": 9232,
+      "centroid": [
+        2146,
+        1571
+      ],
+      "instance_id": 3,
+      "temp_id": "door_3",
+      "touching_spaces": [
+        {
+          "space_id": "space_1",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 9228
+        },
+        {
+          "space_id": "space_0",
+          "space_name": "거실",
+          "class_name": "거실",
+          "overlap": 999
+        }
+      ]
+    },
+    {
+      "id": "door_4",
+      "segmentation": [
+        [
+          3234,
+          1634,
+          3234,
+          1713,
+          3346,
+          1713,
+          3346,
+          1650,
+          3338,
+          1649,
+          3338,
+          1626,
+          3242,
+          1626,
+          3242,
+          1633
+        ]
+      ],
+      "bbox": [
+        3234.0,
+        1626.0,
+        112.0,
+        87.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 3226,
+        "ymin": 1618,
+        "xmax": 3354,
+        "ymax": 1721
+      },
+      "area": 9688,
+      "centroid": [
+        3289,
+        1670
+      ],
+      "instance_id": 4,
+      "temp_id": "door_4",
+      "touching_spaces": [
+        {
+          "space_id": "space_5",
+          "space_name": "현관",
+          "class_name": "현관",
+          "overlap": 1287
+        }
+      ]
+    },
+    {
+      "id": "door_5",
+      "segmentation": [
+        [
+          2258,
+          1795,
+          2258,
+          1802,
+          2250,
+          1803,
+          2250,
+          1826,
+          2242,
+          1827,
+          2242,
+          1914,
+          2321,
+          1914,
+          2321,
+          1795
+        ]
+      ],
+      "bbox": [
+        2242.0,
+        1795.0,
+        79.0,
+        119.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2234,
+        "ymin": 1787,
+        "xmax": 2329,
+        "ymax": 1922
+      },
+      "area": 9280,
+      "centroid": [
+        2282,
+        1856
+      ],
+      "instance_id": 5,
+      "temp_id": "door_5",
+      "touching_spaces": [
+        {
+          "space_id": "space_2",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 9207
+        },
+        {
+          "space_id": "space_0",
+          "space_name": "거실",
+          "class_name": "거실",
+          "overlap": 1007
+        }
+      ]
+    },
+    {
+      "id": "door_6",
+      "segmentation": [
+        [
+          2914,
+          1803,
+          2914,
+          1810,
+          2906,
+          1811,
+          2906,
+          1906,
+          2913,
+          1906,
+          2914,
+          1914,
+          2985,
+          1914,
+          2985,
+          1811,
+          2978,
+          1811,
+          2977,
+          1803
+        ]
+      ],
+      "bbox": [
+        2906.0,
+        1803.0,
+        79.0,
+        111.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2898,
+        "ymin": 1795,
+        "xmax": 2993,
+        "ymax": 1922
+      },
+      "area": 8768,
+      "centroid": [
+        2945,
+        1858
+      ],
+      "instance_id": 6,
+      "temp_id": "door_6",
+      "touching_spaces": [
+        {
+          "space_id": "space_3",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 8599
+        },
+        {
+          "space_id": "space_0",
+          "space_name": "거실",
+          "class_name": "거실",
+          "overlap": 1076
+        }
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "id": "window_0",
+      "segmentation": [
+        [
+          1906,
+          1223,
+          1906,
+          1239,
+          1913,
+          1239,
+          1914,
+          1247,
+          2153,
+          1247,
+          2153,
+          1240,
+          2161,
+          1239,
+          2161,
+          1223,
+          2154,
+          1223,
+          2153,
+          1215,
+          1914,
+          1215,
+          1914,
+          1222
+        ]
+      ],
+      "bbox": [
+        1906.0,
+        1215.0,
+        255.0,
+        32.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1906,
+        "ymin": 1215,
+        "xmax": 2161,
+        "ymax": 1247
+      },
+      "area": 8192,
+      "centroid": [
+        2033,
+        1231
+      ],
+      "instance_id": 0,
+      "touching_spaces": [
+        {
+          "space_id": "space_6",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 4718
+        },
+        {
+          "space_id": "space_1",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 4044
+        }
+      ]
+    },
+    {
+      "id": "window_1",
+      "segmentation": [
+        [
+          2626,
+          1296,
+          2626,
+          1311,
+          2633,
+          1311,
+          2634,
+          1319,
+          2657,
+          1319,
+          2658,
+          1311,
+          2697,
+          1311,
+          2698,
+          1319,
+          2753,
+          1319,
+          2753,
+          1288,
+          2634,
+          1288,
+          2634,
+          1295
+        ]
+      ],
+      "bbox": [
+        2626.0,
+        1288.0,
+        127.0,
+        31.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2626,
+        "ymin": 1288,
+        "xmax": 2753,
+        "ymax": 1319
+      },
+      "area": 3648,
+      "centroid": [
+        2692,
+        1302
+      ],
+      "instance_id": 1,
+      "touching_spaces": [
+        {
+          "space_id": "space_7",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 1791
+        },
+        {
+          "space_id": "space_4",
+          "space_name": "주방/식당",
+          "class_name": "주방/식당",
+          "overlap": 1658
+        }
+      ]
+    },
+    {
+      "id": "window_2",
+      "segmentation": [
+        [
+          1746,
+          1610,
+          1746,
+          1633,
+          1993,
+          1633,
+          1993,
+          1626,
+          2001,
+          1625,
+          2001,
+          1618,
+          1994,
+          1618,
+          1993,
+          1610
+        ]
+      ],
+      "bbox": [
+        1746.0,
+        1610.0,
+        255.0,
+        23.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 1746,
+        "ymin": 1610,
+        "xmax": 2001,
+        "ymax": 1633
+      },
+      "area": 6016,
+      "centroid": [
+        1870,
+        1621
+      ],
+      "instance_id": 2,
+      "touching_spaces": [
+        {
+          "space_id": "space_8",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 3583
+        },
+        {
+          "space_id": "space_1",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 3570
+        }
+      ]
+    },
+    {
+      "id": "window_3",
+      "segmentation": [
+        [
+          2034,
+          2149,
+          2034,
+          2180,
+          2265,
+          2180,
+          2265,
+          2157,
+          2258,
+          2157,
+          2257,
+          2149
+        ]
+      ],
+      "bbox": [
+        2034.0,
+        2149.0,
+        231.0,
+        31.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2034,
+        "ymin": 2149,
+        "xmax": 2265,
+        "ymax": 2180
+      },
+      "area": 7360,
+      "centroid": [
+        2148,
+        2164
+      ],
+      "instance_id": 3,
+      "touching_spaces": [
+        {
+          "space_id": "space_9",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 4362
+        },
+        {
+          "space_id": "space_2",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 3282
+        }
+      ]
+    },
+    {
+      "id": "window_4",
+      "segmentation": [
+        [
+          2410,
+          2197,
+          2410,
+          2220,
+          2777,
+          2220,
+          2777,
+          2197
+        ]
+      ],
+      "bbox": [
+        2410.0,
+        2197.0,
+        367.0,
+        23.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2410,
+        "ymin": 2197,
+        "xmax": 2777,
+        "ymax": 2220
+      },
+      "area": 8832,
+      "centroid": [
+        2593,
+        2208
+      ],
+      "instance_id": 4,
+      "touching_spaces": [
+        {
+          "space_id": "space_0",
+          "space_name": "거실",
+          "class_name": "거실",
+          "overlap": 5194
+        },
+        {
+          "space_id": "space_9",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 5194
+        }
+      ]
+    },
+    {
+      "id": "window_5",
+      "segmentation": [
+        [
+          2938,
+          2205,
+          2938,
+          2220,
+          3169,
+          2220,
+          3169,
+          2197,
+          2946,
+          2197,
+          2946,
+          2204
+        ]
+      ],
+      "bbox": [
+        2938.0,
+        2197.0,
+        231.0,
+        23.0
+      ],
+      "bbox_xyxy": {
+        "xmin": 2938,
+        "ymin": 2197,
+        "xmax": 3169,
+        "ymax": 2220
+      },
+      "area": 5504,
+      "centroid": [
+        3054,
+        2208
+      ],
+      "instance_id": 5,
+      "touching_spaces": [
+        {
+          "space_id": "space_9",
+          "space_name": "발코니",
+          "class_name": "발코니",
+          "overlap": 3290
+        },
+        {
+          "space_id": "space_3",
+          "space_name": "침실",
+          "class_name": "침실",
+          "overlap": 3282
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "floor_plan_type": "4룸",
+    "total_spaces": 16,
+    "total_connections": 13,
+    "door_connections": 4,
+    "window_connections": 6,
+    "open_connections": 3,
+    "space_list": [
+      "거실",
+      "침실",
+      "침실",
+      "침실",
+      "주방/식당",
+      "현관",
+      "발코니",
+      "발코니",
+      "발코니",
+      "발코니",
+      "욕실",
+      "욕실",
+      "드레스룸",
+      "복도",
+      "복도",
+      "복도"
+    ],
+    "space_sizes": {
+      "large": [],
+      "medium": [],
+      "small": [
+        "거실",
+        "침실",
+        "침실",
+        "침실",
+        "주방/식당",
+        "현관",
+        "발코니",
+        "발코니",
+        "발코니",
+        "발코니",
+        "욕실",
+        "욕실",
+        "드레스룸",
+        "복도",
+        "복도",
+        "복도"
+      ]
+    }
+  },
+  "refined_summary": {
+    "door": {
+      "original_count": 7,
+      "final_count": 7,
+      "split_log": [],
+      "merged_door_ids": [],
+      "multi_touch_doors": [],
+      "debug_log": [],
+      "merge_log": []
+    },
+    "wall_split": {
+      "enabled": true,
+      "splits": []
+    },
+    "ocr_hint_split": {
+      "enabled": false,
+      "splits": []
+    },
+    "ocr_naming": {
+      "belongs_to_count": 0,
+      "exact_count": 0,
+      "dilate_count": 0,
+      "nearest_count": 0,
+      "spa_fallback_count": 16,
+      "total_matched": 0
+    },
+    "object_mapping": {
+      "total_objects": 9,
+      "mapped_count": 9,
+      "unmapped_count": 0
+    },
+    "windowless": {
+      "total_spaces": 16,
+      "spaces_with_window": 9,
+      "windowless_count": 7,
+      "windowless_spaces": [
+        {
+          "id": "space_5",
+          "name": "현관"
+        },
+        {
+          "id": "space_10",
+          "name": "욕실"
+        },
+        {
+          "id": "space_11",
+          "name": "욕실"
+        },
+        {
+          "id": "space_12",
+          "name": "드레스룸"
+        },
+        {
+          "id": "space_13",
+          "name": "복도"
+        },
+        {
+          "id": "space_14",
+          "name": "복도"
+        },
+        {
+          "id": "space_15",
+          "name": "복도"
+        }
+      ]
+    }
+  },
+  "spatial_relations": {
+    "pairwise_relations": {
+      "space_0_space_1": {
+        "from": "거실",
+        "to": "침실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_0_space_2": {
+        "from": "거실",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_0_space_3": {
+        "from": "거실",
+        "to": "침실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_0_space_4": {
+        "from": "거실",
+        "to": "주방/식당",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_0_space_5": {
+        "from": "거실",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_0_space_6": {
+        "from": "거실",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_0_space_7": {
+        "from": "거실",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_0_space_8": {
+        "from": "거실",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_0_space_9": {
+        "from": "거실",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_0_space_10": {
+        "from": "거실",
+        "to": "욕실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_0_space_11": {
+        "from": "거실",
+        "to": "욕실",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_0_space_12": {
+        "from": "거실",
+        "to": "드레스룸",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_0_space_13": {
+        "from": "거실",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_0_space_14": {
+        "from": "거실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_0_space_15": {
+        "from": "거실",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_1_space_0": {
+        "from": "침실",
+        "to": "거실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_1_space_2": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_1_space_3": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_1_space_4": {
+        "from": "침실",
+        "to": "주방/식당",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_5": {
+        "from": "침실",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_6": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_1_space_7": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_8": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_1_space_9": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_1_space_10": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_11": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_12": {
+        "from": "침실",
+        "to": "드레스룸",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_1_space_13": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_1_space_14": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_1_space_15": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_2_space_0": {
+        "from": "침실",
+        "to": "거실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_2_space_1": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_2_space_3": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_2_space_4": {
+        "from": "침실",
+        "to": "주방/식당",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_2_space_5": {
+        "from": "침실",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_2_space_6": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_2_space_7": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_2_space_8": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_2_space_9": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_2_space_10": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_2_space_11": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_2_space_12": {
+        "from": "침실",
+        "to": "드레스룸",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_2_space_13": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_2_space_14": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_2_space_15": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_3_space_0": {
+        "from": "침실",
+        "to": "거실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_3_space_1": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_2": {
+        "from": "침실",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_3_space_4": {
+        "from": "침실",
+        "to": "주방/식당",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_5": {
+        "from": "침실",
+        "to": "현관",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_3_space_6": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_7": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_3_space_8": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_3_space_9": {
+        "from": "침실",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_3_space_10": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_11": {
+        "from": "침실",
+        "to": "욕실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_3_space_12": {
+        "from": "침실",
+        "to": "드레스룸",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_13": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_3_space_14": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_3_space_15": {
+        "from": "침실",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_4_space_0": {
+        "from": "주방/식당",
+        "to": "거실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_4_space_1": {
+        "from": "주방/식당",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_4_space_2": {
+        "from": "주방/식당",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_4_space_3": {
+        "from": "주방/식당",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_4_space_5": {
+        "from": "주방/식당",
+        "to": "현관",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_4_space_6": {
+        "from": "주방/식당",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_4_space_7": {
+        "from": "주방/식당",
+        "to": "발코니",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_4_space_8": {
+        "from": "주방/식당",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_4_space_9": {
+        "from": "주방/식당",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_4_space_10": {
+        "from": "주방/식당",
+        "to": "욕실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_4_space_11": {
+        "from": "주방/식당",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_4_space_12": {
+        "from": "주방/식당",
+        "to": "드레스룸",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_4_space_13": {
+        "from": "주방/식당",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_4_space_14": {
+        "from": "주방/식당",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_4_space_15": {
+        "from": "주방/식당",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_0": {
+        "from": "현관",
+        "to": "거실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_1": {
+        "from": "현관",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_2": {
+        "from": "현관",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_3": {
+        "from": "현관",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_5_space_4": {
+        "from": "현관",
+        "to": "주방/식당",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_5_space_6": {
+        "from": "현관",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_5_space_7": {
+        "from": "현관",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_5_space_8": {
+        "from": "현관",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_9": {
+        "from": "현관",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_5_space_10": {
+        "from": "현관",
+        "to": "욕실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_5_space_11": {
+        "from": "현관",
+        "to": "욕실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_5_space_12": {
+        "from": "현관",
+        "to": "드레스룸",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_5_space_13": {
+        "from": "현관",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_5_space_14": {
+        "from": "현관",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_5_space_15": {
+        "from": "현관",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_6_space_0": {
+        "from": "발코니",
+        "to": "거실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_1": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_6_space_2": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_6_space_3": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_4": {
+        "from": "발코니",
+        "to": "주방/식당",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_5": {
+        "from": "발코니",
+        "to": "현관",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_7": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_6_space_8": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_6_space_9": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_10": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_6_space_11": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_6_space_12": {
+        "from": "발코니",
+        "to": "드레스룸",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_6_space_13": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_6_space_14": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_6_space_15": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_7_space_0": {
+        "from": "발코니",
+        "to": "거실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_7_space_1": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_7_space_2": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_7_space_3": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_7_space_4": {
+        "from": "발코니",
+        "to": "주방/식당",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_7_space_5": {
+        "from": "발코니",
+        "to": "현관",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_7_space_6": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_7_space_8": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_7_space_9": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_7_space_10": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_7_space_11": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_7_space_12": {
+        "from": "발코니",
+        "to": "드레스룸",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_7_space_13": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_7_space_14": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_7_space_15": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_8_space_0": {
+        "from": "발코니",
+        "to": "거실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_1": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_8_space_2": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_8_space_3": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_4": {
+        "from": "발코니",
+        "to": "주방/식당",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_5": {
+        "from": "발코니",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_6": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_8_space_7": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_8_space_9": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_8_space_10": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_8_space_11": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_12": {
+        "from": "발코니",
+        "to": "드레스룸",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_8_space_13": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_8_space_14": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_8_space_15": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_9_space_0": {
+        "from": "발코니",
+        "to": "거실",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_9_space_1": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_9_space_2": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_9_space_3": {
+        "from": "발코니",
+        "to": "침실",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_9_space_4": {
+        "from": "발코니",
+        "to": "주방/식당",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_9_space_5": {
+        "from": "발코니",
+        "to": "현관",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_9_space_6": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_9_space_7": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_9_space_8": {
+        "from": "발코니",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_9_space_10": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_9_space_11": {
+        "from": "발코니",
+        "to": "욕실",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_9_space_12": {
+        "from": "발코니",
+        "to": "드레스룸",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_9_space_13": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_9_space_14": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_9_space_15": {
+        "from": "발코니",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_10_space_0": {
+        "from": "욕실",
+        "to": "거실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_10_space_1": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_10_space_2": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_10_space_3": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_10_space_4": {
+        "from": "욕실",
+        "to": "주방/식당",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_10_space_5": {
+        "from": "욕실",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_10_space_6": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_10_space_7": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_10_space_8": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_10_space_9": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_10_space_11": {
+        "from": "욕실",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_10_space_12": {
+        "from": "욕실",
+        "to": "드레스룸",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_10_space_13": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_10_space_14": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_10_space_15": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_11_space_0": {
+        "from": "욕실",
+        "to": "거실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_11_space_1": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_2": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_11_space_3": {
+        "from": "욕실",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_11_space_4": {
+        "from": "욕실",
+        "to": "주방/식당",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_5": {
+        "from": "욕실",
+        "to": "현관",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_11_space_6": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_7": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_11_space_8": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_9": {
+        "from": "욕실",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_11_space_10": {
+        "from": "욕실",
+        "to": "욕실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_12": {
+        "from": "욕실",
+        "to": "드레스룸",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_11_space_13": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_11_space_14": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_11_space_15": {
+        "from": "욕실",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_12_space_0": {
+        "from": "드레스룸",
+        "to": "거실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_12_space_1": {
+        "from": "드레스룸",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_12_space_2": {
+        "from": "드레스룸",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_12_space_3": {
+        "from": "드레스룸",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_12_space_4": {
+        "from": "드레스룸",
+        "to": "주방/식당",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_12_space_5": {
+        "from": "드레스룸",
+        "to": "현관",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_12_space_6": {
+        "from": "드레스룸",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_12_space_7": {
+        "from": "드레스룸",
+        "to": "발코니",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_12_space_8": {
+        "from": "드레스룸",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_12_space_9": {
+        "from": "드레스룸",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_12_space_10": {
+        "from": "드레스룸",
+        "to": "욕실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_12_space_11": {
+        "from": "드레스룸",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_12_space_13": {
+        "from": "드레스룸",
+        "to": "복도",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_12_space_14": {
+        "from": "드레스룸",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_12_space_15": {
+        "from": "드레스룸",
+        "to": "복도",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_13_space_0": {
+        "from": "복도",
+        "to": "거실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_13_space_1": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_13_space_2": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_13_space_3": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_13_space_4": {
+        "from": "복도",
+        "to": "주방/식당",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_13_space_5": {
+        "from": "복도",
+        "to": "현관",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_13_space_6": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_13_space_7": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_13_space_8": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_13_space_9": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_13_space_10": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_13_space_11": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_13_space_12": {
+        "from": "복도",
+        "to": "드레스룸",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_13_space_14": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_13_space_15": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_14_space_0": {
+        "from": "복도",
+        "to": "거실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_14_space_1": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_2": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_14_space_3": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_14_space_4": {
+        "from": "복도",
+        "to": "주방/식당",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_5": {
+        "from": "복도",
+        "to": "현관",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_14_space_6": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_7": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_8": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_9": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_14_space_10": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_11": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_14_space_12": {
+        "from": "복도",
+        "to": "드레스룸",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_13": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_14_space_15": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_15_space_0": {
+        "from": "복도",
+        "to": "거실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_15_space_1": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_15_space_2": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southwest",
+        "direction_korean": "왼쪽 아래"
+      },
+      "space_15_space_3": {
+        "from": "복도",
+        "to": "침실",
+        "direction": "southeast",
+        "direction_korean": "오른쪽 아래"
+      },
+      "space_15_space_4": {
+        "from": "복도",
+        "to": "주방/식당",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_15_space_5": {
+        "from": "복도",
+        "to": "현관",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_15_space_6": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_15_space_7": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "northeast",
+        "direction_korean": "오른쪽 위"
+      },
+      "space_15_space_8": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "west",
+        "direction_korean": "왼쪽"
+      },
+      "space_15_space_9": {
+        "from": "복도",
+        "to": "발코니",
+        "direction": "south",
+        "direction_korean": "아래쪽"
+      },
+      "space_15_space_10": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "northwest",
+        "direction_korean": "왼쪽 위"
+      },
+      "space_15_space_11": {
+        "from": "복도",
+        "to": "욕실",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      },
+      "space_15_space_12": {
+        "from": "복도",
+        "to": "드레스룸",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_15_space_13": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "north",
+        "direction_korean": "위쪽"
+      },
+      "space_15_space_14": {
+        "from": "복도",
+        "to": "복도",
+        "direction": "east",
+        "direction_korean": "오른쪽"
+      }
+    },
+    "layout_zones": {
+      "left": [
+        "침실",
+        "발코니"
+      ],
+      "center": [
+        "거실",
+        "주방/식당",
+        "발코니",
+        "욕실",
+        "드레스룸",
+        "복도"
+      ],
+      "right": [
+        "침실",
+        "현관",
+        "욕실",
+        "복도"
+      ]
+    },
+    "layout_summary": "배치: 왼쪽에 침실, 발코니, 중앙에 거실, 주방/식당, 발코니, 욕실, 드레스룸, 복도, 오른쪽에 침실, 현관, 욕실, 복도"
+  },
+  "bay_analysis": {
+    "bay_count": 4,
+    "bay_type": "4 Bay",
+    "front_direction": "south",
+    "front_direction_korean": "아래쪽",
+    "front_facing_spaces": [
+      "거실",
+      "침실",
+      "침실",
+      "침실"
+    ],
+    "description": "4 Bay 구조 (전면: 거실, 침실, 침실, 침실)"
+  }
+}

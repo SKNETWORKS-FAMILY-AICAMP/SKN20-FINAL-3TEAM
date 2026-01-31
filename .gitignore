@@ -35,3 +35,6 @@ build/
 api명세서.md
 
 __pycache__/
+
+# 법률 데이터
+law/
