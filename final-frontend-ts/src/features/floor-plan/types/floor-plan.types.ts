@@ -99,6 +99,11 @@ export interface FloorPlanUploadResponse {
   objects: ObjectInfo[];
   totalArea: number;
   roomCount: number;
+  // 백엔드 Python 분석 결과 (선택적)
+  elementJson?: string | object;      // 분석 JSON 데이터
+  topologyImage?: string;             // 위상 그래프 이미지 (base64)
+  eval?: string;                      // AI 평가 내용
+  embedding?: number[];               // 임베딩 벡터
 }
 
 // 도면 저장 요청
