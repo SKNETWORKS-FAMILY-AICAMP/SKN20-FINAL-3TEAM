@@ -109,8 +109,8 @@ class ModelConfig:
 class InferenceConfig:
     """추론 파이프라인 전체 설정"""
 
-    # 기본 경로
-    BASE_PATH: Path = field(default_factory=lambda: Path(r"c:\Users\ansck\Desktop\C_Vision"))
+    # 기본 경로 (config.py 위치 기준 상위 폴더)
+    BASE_PATH: Path = field(default_factory=lambda: Path(__file__).parent.parent)
 
     # 이미지 설정
     ORIGINAL_SIZE: Tuple[int, int] = (4960, 3488)
