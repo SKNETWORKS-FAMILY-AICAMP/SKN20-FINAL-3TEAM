@@ -1,0 +1,234 @@
+/* 전체 컨테이너 */
+.container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 로딩 */
+.loadingContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.loadingText {
+  font-size: 18px;
+}
+
+/* 좌측 사이드바 */
+.sidebar {
+  width: 60px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1rem;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.iconBtn:hover {
+  opacity: 0.8;
+}
+
+/* 우측 메인 영역 */
+.mainContent {
+  flex: 1;
+  height: 100%;
+  padding: 2rem 3rem;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* 상단 헤더 */
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.greeting {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.date {
+  font-size: 14px;
+}
+
+/* 그라데이션 배너 */
+.gradientBanner {
+  height: 80px;
+  background: linear-gradient(135deg, #a8c0ff 0%, #fbc2eb 50%, #ffecd2 100%);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+/* 프로필 카드 */
+.card {
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+/* 프로필 상단 영역 */
+.profileHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.profileInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.userInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.userName {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.userEmail {
+  font-size: 14px;
+}
+
+.editBtn {
+  background-color: #FCD34D;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.editBtn:hover {
+  opacity: 0.9;
+}
+
+/* 입력 필드 영역 */
+.formSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #FCD34D;
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* 하단 버튼 */
+.buttonGroup {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.outlineBtn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.outlineBtn:hover {
+  opacity: 0.8;
+}
+
+.saveBtn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.saveBtn:hover {
+  opacity: 0.9;
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+  .mainContent {
+    padding: 1.5rem;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .greeting {
+    font-size: 20px;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}

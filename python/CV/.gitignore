@@ -1,0 +1,21 @@
+# 환경설정
+.env
+
+# 파일
+*.PNG
+batch_inference.py
+temp_run_batch.py
+chromadb_content.json
+CLAUDE.md
+chromadb_evaluation_content.json
+chromadb_topology_content.json
+
+# 폴더
+*_pycache_*/
+*information_etc*/
+*claude*/
+*.claude*/
+*model/
+*yolov5*/
+*rag_data*/
+*output*/
