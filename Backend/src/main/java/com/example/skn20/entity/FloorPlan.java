@@ -37,9 +37,8 @@ public class FloorPlan {
     @Column(name = "created_at", nullable = false)
     private LocalDate createdAt; // 생성 일자
 
-    // 메타데이터 (JSONB 자료형)
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String elementJson;
+    private String elementJson; //topology
     
 }
