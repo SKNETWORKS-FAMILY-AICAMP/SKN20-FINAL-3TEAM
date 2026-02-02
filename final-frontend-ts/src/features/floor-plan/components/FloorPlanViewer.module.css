@@ -1,0 +1,63 @@
+/* ============================================
+   FloorPlanViewer Styles
+   ============================================ */
+
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #F9FAFB;
+  border-radius: 8px;
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.overlayContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.bboxOverlay {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 4px;
+  transition: all 0.15s ease-out;
+  pointer-events: none;
+}
+
+.bboxOverlay.hovered {
+  border-width: 3px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.bboxLabel {
+  position: absolute;
+  top: -24px;
+  left: -2px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #FFFFFF;
+  border-radius: 4px 4px 0 0;
+  white-space: nowrap;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #9CA3AF;
+  font-size: 14px;
+}
