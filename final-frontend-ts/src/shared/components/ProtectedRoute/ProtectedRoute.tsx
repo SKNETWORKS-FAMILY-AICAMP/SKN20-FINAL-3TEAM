@@ -9,6 +9,9 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+  // TODO: 테스트 후 아래 주석 해제
+  return <>{children}</>;  // 임시: 인증 우회
+
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   const hasShownToast = useRef(false);

@@ -38,6 +38,16 @@ export interface HoverableItem {
   name: string;
   bbox: Bbox;
   segmentation?: Segmentation;  // 폴리곤 좌표 (ㄱ자 등 복잡한 형태용)
+  areapercent?: number;         // 면적 비율 (rooms 전용)
+}
+
+// 그룹화된 아이템 (같은 이름끼리 묶음)
+export interface GroupedHoverableItem {
+  name: string;
+  type: 'room' | 'structure' | 'object';
+  count: number;
+  items: HoverableItem[];       // 그룹에 속한 모든 아이템
+  totalAreaPercent?: number;    // 합산 비율 (rooms 전용)
 }
 
 // ============================================
