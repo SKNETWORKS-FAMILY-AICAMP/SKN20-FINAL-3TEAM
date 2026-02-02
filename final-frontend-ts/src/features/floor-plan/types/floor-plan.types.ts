@@ -109,11 +109,32 @@ export interface FloorPlanUploadResponse {
   objects: ObjectInfo[];
   totalArea: number;
   roomCount: number;
-  // 백엔드 Python 분석 결과 (선택적)
-  elementJson?: string | object;      // 분석 JSON 데이터
-  topologyImage?: string;             // 위상 그래프 이미지 (base64)
-  eval?: string;                      // AI 평가 내용
-  embedding?: number[];               // 임베딩 벡터
+
+  // 백엔드 FloorplanPreviewResponse 필드 (Spring Boot)
+  topologyJson?: string;              // topology.json 내용 (JSON 문자열)
+  topologyImageUrl?: string;          // 위상 그래프 이미지 URL (data:image/png;base64,...)
+  analysisDescription?: string;       // 상세 분석 설명
+  embedding?: number[];               // 임베딩 벡터 (1536차원)
+
+  // 13개 분석 지표
+  windowlessRatio?: number;           // 무창실 비율
+  hasSpecialSpace?: boolean;          // 특수 공간 존재 여부
+  bayCount?: number;                  // 베이 개수
+  balconyRatio?: number;              // 발코니 비율
+  livingRoomRatio?: number;           // 거실 비율
+  bathroomRatio?: number;             // 욕실 비율
+  kitchenRatio?: number;              // 주방 비율
+  roomCount2?: number;                // 방 개수 (roomCount와 구분)
+  complianceGrade?: string;           // 법적 준수 등급
+  ventilationQuality?: string;        // 환기 품질
+  hasEtcSpace?: boolean;              // 기타 공간 존재 여부
+  structureType?: string;             // 구조 타입
+  bathroomCount?: number;             // 욕실 개수
+
+  // 레거시 필드명 (호환성 유지)
+  elementJson?: string | object;      // 분석 JSON 데이터 (= topologyJson)
+  topologyImage?: string;             // 위상 그래프 이미지 (= topologyImageUrl)
+  eval?: string;                      // AI 평가 내용 (= analysisDescription)
 }
 
 // 도면 저장 요청
