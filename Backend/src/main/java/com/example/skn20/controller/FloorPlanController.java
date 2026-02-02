@@ -37,19 +37,26 @@ public class FloorPlanController {
 
 	/**
 	 * [Step 2] 최종 저장: 프론트에서 "저장" 버튼 클릭 시 DB에 저장
-	 * 프리뷰 단계에서 받았던 모든 데이터를 다시 전달받아 저장
+	 * 이미지 파일과 3번 JSON을 받아 Python으로 전송 후 DB 저장
 	 */
 	@PostMapping("/save")
 	public ResponseEntity<?> saveFloorplan(
-			@RequestBody FloorplanSaveRequest saveRequest,
+			@RequestParam("file") MultipartFile file,
+			@RequestParam("name") String name,
+			@RequestParam("assessmentJson") String assessmentJson,
 			@AuthenticationPrincipal UD principalDetails
 	) {
 		try {
 			// 인증된 유저 정보 추출
 			User user = principalDetails.getUser();
 
-			// 서비스 호출하여 DB에 저장
-			FloorplanSaveResponse response = floorPlanService.saveFloorplan(saveRequest, user);
+			// DTO 생성
+			FloorplanSaveRequest saveRequest = new FloorplanSaveRequest();
+			saveRequest.setName(name);
+			saveRequest.setAssessmentJson(assessmentJson);
+
+			// 서비스 호출하여 이미지 저장 및 DB에 저장
+			FloorplanSaveResponse response = floorPlanService.saveFloorplan(saveRequest, file, user);
 
 			return ResponseEntity.ok(response);
 		} catch (Exception e) {
