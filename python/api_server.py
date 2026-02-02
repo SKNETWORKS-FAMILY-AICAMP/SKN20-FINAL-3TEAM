@@ -318,11 +318,15 @@ async def analyze_floorplan(file: UploadFile = File(...)):
 
         # 5. topology 이미지 Base64 인코딩
         logger.info("Step 5: topology 이미지 인코딩...")
-        topology_image_path = pipeline.config.OUTPUT_PATH / f"{temp_path.stem}_topology.png"
+        # visualizer가 저장하는 경로: {OUTPUT_PATH}/{file_stem}/topology_result.png
+        topology_image_path = pipeline.config.OUTPUT_PATH / temp_path.stem / "topology_result.png"
+        logger.info(f"Topology 이미지 경로: {topology_image_path}")
         if topology_image_path.exists():
             topology_image = cv2.imread(str(topology_image_path))
             topology_image_base64 = f"data:image/png;base64,{image_to_base64(topology_image)}"
+            logger.info(f"Topology 이미지 인코딩 성공! (크기: {len(topology_image_base64)} chars)")
         else:
+            logger.warning(f"Topology 이미지 파일을 찾을 수 없습니다: {topology_image_path}")
             topology_image_base64 = ""
 
         # 6. RAG LLM 분석 실행
@@ -348,8 +352,29 @@ async def analyze_floorplan(file: UploadFile = File(...)):
             embedding=embedding
         )
 
-        # 11. 임시 파일 정리
-        logger.info("Step 11: 임시 파일 정리...")
+        # 11. analysis_result.json 저장
+        logger.info("Step 11: analysis_result.json 저장 시작...")
+        try:
+            output_dir = pipeline.config.OUTPUT_PATH / temp_path.stem
+            output_dir.mkdir(parents=True, exist_ok=True)
+            analysis_result_path = output_dir / "analysis_result.json"
+            logger.info(f"저장 경로: {analysis_result_path}")
+            
+            # Pydantic v1/v2 호환성 처리
+            response_dict = response.model_dump() if hasattr(response, 'model_dump') else response.dict()
+            
+            with open(analysis_result_path, "w", encoding="utf-8") as f:
+                json.dump(response_dict, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"✓ analysis_result.json 저장 완료! ({analysis_result_path.stat().st_size} bytes)")
+        except Exception as save_error:
+            logger.error(f"✗ analysis_result.json 저장 실패: {save_error}")
+            logger.error(f"에러 타입: {type(save_error).__name__}")
+            import traceback
+            traceback.print_exc()
+
+        # 12. 임시 파일 정리
+        logger.info("Step 12: 임시 파일 정리...")
         temp_path.unlink(missing_ok=True)
 
         logger.info("=" * 80)
