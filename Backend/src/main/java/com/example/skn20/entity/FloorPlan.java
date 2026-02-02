@@ -32,6 +32,12 @@ public class FloorPlan {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
     
+    @Column(name = "topology_json", columnDefinition = "TEXT")
+    private String topologyJson;
+    
+    @Column(name = "topology_image_url", length = 500)
+    private String topologyImageUrl;
+    
     @OneToOne(mappedBy = "floorPlan", cascade = CascadeType.ALL, orphanRemoval = true)
     private FloorplanAnalysis analysis;
 }
