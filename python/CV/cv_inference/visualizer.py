@@ -197,26 +197,20 @@ class ResultVisualizer:
         self,
         image: np.ndarray,
         topology: Dict,
-        alpha: float = 0.5
+        darken_background: float = 0.5
     ) -> np.ndarray:
-        """토폴로지 그래프 시각화"""
-        output_image = image.copy()
-        overlay = output_image.copy()
+        """토폴로지 그래프 시각화 (노드 + 엣지만 표시)
+
+        Args:
+            image: 원본 이미지
+            topology: 토폴로지 데이터
+            darken_background: 배경 어둡게 (0.0~1.0, 낮을수록 어두움)
+        """
+        # 배경 어둡게 처리 (segmentation 영역 없이)
+        output_image = (image.astype(np.float32) * darken_background).astype(np.uint8)
 
         nodes = topology.get("nodes", [])
         edges = topology.get("edges", [])
-
-        # 노드 (공간) 시각화
-        for node in nodes:
-            color = self._get_color(node.get("category_name", ""))
-
-            # Segmentation 그리기
-            for seg in node.get("segmentation", []):
-                if len(seg) >= 6:
-                    pts = np.array(seg).reshape(-1, 2).astype(np.int32)
-                    cv2.fillPoly(overlay, [pts], color)
-
-        cv2.addWeighted(overlay, alpha, output_image, 1 - alpha, 0, output_image)
 
         # 엣지 (연결) 시각화 - 연결 타입별 색상 구분
         node_centroids = {n["node_id"]: tuple(n["centroid"]) for n in nodes}
@@ -229,47 +223,143 @@ class ResultVisualizer:
 
                 # 연결 타입별 선 스타일
                 if connection_type == "door":
-                    # 출입문: 실선
                     cv2.line(output_image, src, tgt, edge_color, 3)
                 elif connection_type == "window":
-                    # 창문: 점선 효과 (짧은 선분들)
                     self._draw_dashed_line(output_image, src, tgt, edge_color, 3, 15)
                 else:
-                    # 열린 공간: 점선 효과 (더 긴 간격)
                     self._draw_dashed_line(output_image, src, tgt, edge_color, 3, 25)
 
-                # 중간점에 연결 유형 표시
-                mid = ((src[0] + tgt[0]) // 2, (src[1] + tgt[1]) // 2)
-                cv2.circle(output_image, mid, 8, edge_color, -1)
+        # PIL로 변환 (한글 + 투명도 지원)
+        pil_image = Image.fromarray(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB)).convert("RGBA")
 
-        # 노드 라벨 그리기
-        pil_image = Image.fromarray(cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(pil_image)
+        # 노드 원형 그리기
+        node_overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        node_draw = ImageDraw.Draw(node_overlay)
+
+        node_radius = 45  # 노드 원 크기
 
         for node in nodes:
-            centroid = tuple(node.get("centroid", [0, 0]))
+            centroid = node.get("centroid", [0, 0])
+            cx, cy = int(centroid[0]), int(centroid[1])
             label = node.get("label", "")
 
+            # 카테고리 색상 가져오기
+            bgr_color = self._get_color(node.get("category_name", ""))
+            rgb_color = (bgr_color[2], bgr_color[1], bgr_color[0])  # BGR -> RGB
+
+            # 원형 노드 그리기 (그림자 효과)
+            shadow_offset = 4
+            node_draw.ellipse(
+                [cx - node_radius + shadow_offset, cy - node_radius + shadow_offset,
+                 cx + node_radius + shadow_offset, cy + node_radius + shadow_offset],
+                fill=(30, 30, 30, 120)
+            )
+
+            # 원형 노드 (외곽선 + 채우기)
+            node_draw.ellipse(
+                [cx - node_radius, cy - node_radius, cx + node_radius, cy + node_radius],
+                fill=(*rgb_color, 230),
+                outline=(255, 255, 255, 255),
+                width=3
+            )
+
+            # 라벨 텍스트 (검정색, 굵게)
             if label:
-                # 텍스트 크기 계산
-                text_bbox = draw.textbbox((0, 0), label, font=self.font)
+                text_bbox = node_draw.textbbox((0, 0), label, font=self.font)
                 text_width = text_bbox[2] - text_bbox[0]
                 text_height = text_bbox[3] - text_bbox[1]
 
-                # 중심점에 라벨 배치
-                label_x = centroid[0] - text_width // 2
-                label_y = centroid[1] - text_height // 2
+                label_x = cx - text_width // 2
+                label_y = cy - text_height // 2
 
-                # 배경
-                draw.rectangle(
-                    [label_x - 3, label_y - 3, label_x + text_width + 3, label_y + text_height + 3],
-                    fill=(255, 255, 255, 200)
+                # 흰색 외곽선 효과 (굵게)
+                for dx in [-2, -1, 0, 1, 2]:
+                    for dy in [-2, -1, 0, 1, 2]:
+                        if abs(dx) == 2 or abs(dy) == 2:
+                            node_draw.text((label_x + dx, label_y + dy), label, font=self.font, fill=(255, 255, 255, 255))
+
+                # 메인 텍스트 (검정색, 여러 번 그려서 굵게)
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        node_draw.text((label_x + dx, label_y + dy), label, font=self.font, fill=(0, 0, 0, 255))
+
+        # 엣지 중간점 표시
+        edge_overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        edge_draw = ImageDraw.Draw(edge_overlay)
+
+        for edge in edges:
+            src = node_centroids.get(edge["source_node"])
+            tgt = node_centroids.get(edge["target_node"])
+            if src and tgt:
+                mid_x = (src[0] + tgt[0]) // 2
+                mid_y = (src[1] + tgt[1]) // 2
+                connection_type = edge.get("connection_type", "door")
+                bgr_color = EDGE_COLORS.get(connection_type, (0, 255, 0))
+                rgb_color = (bgr_color[2], bgr_color[1], bgr_color[0])
+
+                # 작은 원으로 연결점 표시
+                edge_draw.ellipse(
+                    [mid_x - 10, mid_y - 10, mid_x + 10, mid_y + 10],
+                    fill=(*rgb_color, 255),
+                    outline=(255, 255, 255, 255),
+                    width=2
                 )
 
-                # 텍스트
-                draw.text((label_x, label_y), label, font=self.font, fill=(0, 0, 0))
+        # 범례 (Legend) 그리기 - 큰 폰트 로드
+        try:
+            legend_font = ImageFont.truetype("C:/Windows/Fonts/malgun.ttf", 28)
+            legend_title_font = ImageFont.truetype("C:/Windows/Fonts/malgunbd.ttf", 32)
+        except:
+            legend_font = self.font
+            legend_title_font = self.font
 
-        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        legend_overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        legend_draw = ImageDraw.Draw(legend_overlay)
+
+        # 범례 배경 (더 크게)
+        legend_x, legend_y = 30, 30
+        legend_width, legend_height = 280, 180
+        legend_draw.rounded_rectangle(
+            [legend_x, legend_y, legend_x + legend_width, legend_y + legend_height],
+            radius=10,
+            fill=(30, 30, 30, 220),
+            outline=(255, 255, 255, 255),
+            width=3
+        )
+
+        # 범례 제목
+        legend_draw.text((legend_x + 15, legend_y + 12), "Edge Legend", font=legend_title_font, fill=(255, 255, 255, 255))
+
+        # Door connection (실선, 초록)
+        door_color = EDGE_COLORS.get("door", (0, 255, 0))
+        door_rgb = (door_color[2], door_color[1], door_color[0])
+        legend_draw.line([(legend_x + 20, legend_y + 65), (legend_x + 80, legend_y + 65)], fill=(*door_rgb, 255), width=5)
+        legend_draw.text((legend_x + 95, legend_y + 52), "Door", font=legend_font, fill=(255, 255, 255, 255))
+
+        # Window connection (점선, 파랑)
+        window_color = EDGE_COLORS.get("window", (255, 0, 0))
+        window_rgb = (window_color[2], window_color[1], window_color[0])
+        for i in range(4):
+            x1 = legend_x + 20 + i * 18
+            x2 = x1 + 12
+            legend_draw.line([(x1, legend_y + 105), (x2, legend_y + 105)], fill=(*window_rgb, 255), width=5)
+        legend_draw.text((legend_x + 95, legend_y + 92), "Window", font=legend_font, fill=(255, 255, 255, 255))
+
+        # Open connection (점선, 노랑)
+        open_color = EDGE_COLORS.get("open", (0, 255, 255))
+        open_rgb = (open_color[2], open_color[1], open_color[0])
+        for i in range(3):
+            x1 = legend_x + 20 + i * 24
+            x2 = x1 + 16
+            legend_draw.line([(x1, legend_y + 145), (x2, legend_y + 145)], fill=(*open_rgb, 255), width=5)
+        legend_draw.text((legend_x + 95, legend_y + 132), "Open", font=legend_font, fill=(255, 255, 255, 255))
+
+        # 레이어 합성
+        pil_image = Image.alpha_composite(pil_image, edge_overlay)
+        pil_image = Image.alpha_composite(pil_image, node_overlay)
+        pil_image = Image.alpha_composite(pil_image, legend_overlay)
+
+        return cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
 
     def save_visualization(
         self,

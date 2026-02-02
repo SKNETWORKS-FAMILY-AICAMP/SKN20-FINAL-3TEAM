@@ -2,6 +2,58 @@
 
 RAG (Retrieval-Augmented Generation) 시스템 관련 변경사항을 기록합니다.
 
+## [V1.4.0] - 2026-02-02
+
+### Added - FastAPI 서버 추가 (Spring Boot 연동)
+- **파일**: `python/api_server.py`
+- **목적**: Frontend ↔ Spring Boot ↔ FastAPI ↔ CV/RAG 연동
+
+#### 플로우
+```
+PNG → CV 파이프라인 → topology_graph.json
+                          ↓
+                    RAG LLM 분석 (gpt-4o-mini)
+                          ↓
+                    FloorPlanAnalysis.to_natural_language()
+                          ↓
+                        document
+```
+
+#### 엔드포인트
+1. **POST /analyze**
+   - Input: PNG 파일 (도면 이미지)
+   - Output:
+     - `topology_graph`: topology_graph.json 내용
+     - `topology_image`: Base64 인코딩된 토폴로지 이미지
+     - `analysis_result`: 13개 지표 + `document` (LLM 분석 결과)
+   - **CV + RAG LLM 분석 실행** (gpt-4o-mini 호출)
+   - 임베딩 생성 없음 (사용자 확인 후 /save에서 처리)
+
+2. **POST /save**
+   - Input: `analysis_result` (13개 지표 + document)
+   - Output:
+     - `metadata`: 13개 지표
+     - `document`: `to_natural_language()` 결과
+     - `embedding`: 1536차원 벡터 (document 기반)
+   - PostgreSQL 저장은 Spring Boot에서 처리
+
+3. **GET /health**
+   - 서버 상태, CV 파이프라인 및 RAG 로딩 여부 확인
+
+#### 주요 변경
+- **document 생성 방식 변경**: 규칙 기반 → LLM 기반 (`to_natural_language()`)
+- **필드명 변경**: `analysis_description` → `document`
+- **/analyze에서 RAG LLM 호출**: gpt-4o-mini 사용 (API 비용 발생)
+- 2단계 플로우: 분석 → 사용자 확인 → 저장
+
+#### 실행 방법
+```bash
+cd python
+uvicorn api_server:app --host 0.0.0.0 --port 8000
+```
+
+---
+
 ## [V1.3.0] - 2026-02-02
 
 ### Added - 사내 평가 기준 적합성 평가

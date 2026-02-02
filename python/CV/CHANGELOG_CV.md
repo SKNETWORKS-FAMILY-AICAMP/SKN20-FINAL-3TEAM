@@ -2,6 +2,28 @@
 
 C_Vision 프로젝트의 모든 변경사항을 기록합니다.
 
+## [V1.5.0] - 2026-02-02
+
+### Changed - topology_result.png 시각화 개선
+- **파일**: `cv_inference/visualizer.py`
+- **변경 내용**:
+  - SPA segmentation 영역 제거 (배경 도면 + 노드/엣지만 표시)
+  - 배경 도면 어둡게 처리 (50%)
+  - 노드 텍스트 스타일 변경: 흰색 → 검정색 (굵은 글씨, 흰색 외곽선)
+  - Edge Legend 추가 (좌측 상단)
+    - Door: 초록 실선
+    - Window: 파랑 점선
+    - Open: 노랑 점선
+  - Legend 크기 확대 (280x180px, 큰 폰트)
+
+### Changed - 프로젝트 경로 동적 설정
+- **파일**: `cv_inference/config.py`
+- **변경 전**: `BASE_PATH = Path(r"c:\Users\ansck\Desktop\C_Vision")` (하드코딩)
+- **변경 후**: `BASE_PATH = Path(__file__).parent.parent` (동적 경로)
+- **효과**: 프로젝트 폴더 이동 시에도 자동으로 경로 설정
+
+---
+
 ## [V1.4.0] - 2026-02-02
 
 ### Changed - structure_type 판단 로직 개선 (맞통풍 기준)
