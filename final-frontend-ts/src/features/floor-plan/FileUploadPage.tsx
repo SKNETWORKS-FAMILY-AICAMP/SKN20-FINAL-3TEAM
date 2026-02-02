@@ -155,28 +155,53 @@ const FileUploadPage: React.FC = () => {
       let result: FloorPlanUploadResponse;
 
       // 백엔드 응답 형식에 따라 파싱
-      if (apiResult.elementJson) {
-        // 백엔드가 { elementJson, topologyImage, eval, embedding } 형태로 반환하는 경우
-        const jsonData = typeof apiResult.elementJson === 'string'
-          ? JSON.parse(apiResult.elementJson)
-          : apiResult.elementJson;
+      // 백엔드 FloorplanPreviewResponse 필드명: topologyJson, topologyImageUrl, analysisDescription
+      const topologyData = apiResult.topologyJson || apiResult.elementJson;
+      console.log('topologyData 존재 여부:', !!topologyData);
+      console.log('topologyData 타입:', typeof topologyData);
+
+      if (topologyData) {
+        // 백엔드가 { topologyJson, topologyImageUrl, analysisDescription, embedding } 형태로 반환하는 경우
+        const jsonData = typeof topologyData === 'string'
+          ? JSON.parse(topologyData)
+          : topologyData;
+
+        console.log('파싱된 jsonData:', jsonData);
+        console.log('isTopologyFormat:', isTopologyFormat(jsonData));
 
         if (isTopologyFormat(jsonData)) {
+          console.log('Topology 형식으로 변환 시작...');
           result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
+          console.log('변환된 result.rooms:', result.rooms);
+          console.log('변환된 result.structures:', result.structures);
+          console.log('변환된 result.objects:', result.objects);
         } else {
+          console.log('COCO 형식으로 변환 시작...');
           result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
         }
 
-        // 위상 그래프 이미지가 있으면 설정
-        if (apiResult.topologyImage) {
-          setTopologyGraphUrl(`data:image/png;base64,${apiResult.topologyImage}`);
+        // 위상 그래프 이미지가 있으면 설정 (이미 data:image/png;base64 포함된 전체 URL)
+        const topologyImageUrl = apiResult.topologyImageUrl || apiResult.topologyImage;
+        if (topologyImageUrl) {
+          // 이미 data:image/png;base64 형식이면 그대로, 아니면 추가
+          if (topologyImageUrl.startsWith('data:')) {
+            setTopologyGraphUrl(topologyImageUrl);
+          } else {
+            setTopologyGraphUrl(`data:image/png;base64,${topologyImageUrl}`);
+          }
         }
 
         // AI 평가가 있으면 설정
-        if (apiResult.eval) {
-          setAiSummary(apiResult.eval);
+        const analysisDescription = apiResult.analysisDescription || apiResult.eval;
+        if (analysisDescription) {
+          setAiSummary(analysisDescription);
         } else {
           setAiSummary(generateSummary(result));
+        }
+
+        // 임베딩 벡터 저장
+        if (apiResult.embedding) {
+          result.embedding = apiResult.embedding;
         }
       } else if (apiResult.rooms) {
         // 이미 변환된 형태로 반환된 경우
