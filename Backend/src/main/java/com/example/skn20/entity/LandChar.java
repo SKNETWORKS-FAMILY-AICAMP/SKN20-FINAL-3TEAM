@@ -46,7 +46,7 @@ public class LandChar {
     @Column(name = "zone2", length = 100)
     private String zone2; // 용도지역2 (세부 용도지역)
     
-    @Column(name = "land_use", length = 100)
+    @Column(name = "land_use", columnDefinition = "TEXT")
     private String landUse; // 토지 이용 현황
     
     @Column(name = "terrain_height", length = 50)

@@ -38,3 +38,4 @@ __pycache__/
 
 # 법률 데이터
 law/
+Backend/src/main/resources/data/*

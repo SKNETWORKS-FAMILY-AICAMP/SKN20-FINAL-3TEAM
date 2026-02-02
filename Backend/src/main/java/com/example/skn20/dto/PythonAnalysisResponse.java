@@ -19,6 +19,9 @@ public class PythonAnalysisResponse {
     @JsonProperty("topology_image_url")
     private String topologyImageUrl;
     
+    @JsonProperty("assessment_json")
+    private String assessmentJson;  // 3번: topology_graph.json 전체
+    
     // 분석 결과 데이터
     @JsonProperty("windowless_ratio")
     private Double windowlessRatio;

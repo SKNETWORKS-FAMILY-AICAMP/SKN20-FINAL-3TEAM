@@ -4,6 +4,7 @@ import com.example.skn20.dto.FloorplanPreviewResponse;
 import com.example.skn20.dto.FloorplanSaveRequest;
 import com.example.skn20.dto.FloorplanSaveResponse;
 import com.example.skn20.dto.PythonAnalysisResponse;
+import com.example.skn20.dto.PythonMetadataResponse;
 import com.example.skn20.entity.FloorPlan;
 import com.example.skn20.entity.FloorplanAnalysis;
 import com.example.skn20.entity.User;
@@ -35,7 +36,7 @@ public class FloorPlanService {
 
 	/**
 	 * 1. 분석 단계: Python CV 서버 호출 및 결과 반환 (DB 저장 없음)
-	 * 프론트에서 이미지를 받아 Python 서버로 전송하고, 분석 결과를 프리뷰 형태로 즉시 반환
+	 * 프론트에서 이미지를 받아 Python 서버로 전송하고, 1번, 2번, 3번을 프리뷰 형태로 즉시 반환
 	 */
 	public FloorplanPreviewResponse analyzeFloorplan(MultipartFile file) throws Exception {
 		String analyzeUrl = pythonServerUrl + "/analyze";
@@ -69,8 +70,9 @@ public class FloorPlanService {
 		}
 
 		return FloorplanPreviewResponse.builder()
-				.topologyJson(pythonResponse.getTopologyJson())
-				.topologyImageUrl(pythonResponse.getTopologyImageUrl())
+				.topologyJson(pythonResponse.getTopologyJson())                   // 1번
+				.topologyImageUrl(pythonResponse.getTopologyImageUrl())           // 2번
+				.assessmentJson(pythonResponse.getAssessmentJson())               // 3번
 				.windowlessRatio(pythonResponse.getWindowlessRatio())
 				.hasSpecialSpace(pythonResponse.getHasSpecialSpace())
 				.bayCount(pythonResponse.getBayCount())
@@ -91,47 +93,71 @@ public class FloorPlanService {
 
 	/**
 	 * 2. 저장 단계: 프론트에서 "저장" 버튼 클릭 시 DB에 저장
-	 * 프리뷰 단계에서 받았던 모든 데이터를 다시 받아서 FloorPlan과 FloorplanAnalysis에 저장
+	 * 이미지 파일 저장 → 3번(assessmentJson)을 Python으로 전송 → 4번(메타데이터+임베딩) 받기 → DB 저장
 	 * @Transactional로 모든 작업을 하나의 트랜잭션으로 관리
 	 */
 	@Transactional
-	public FloorplanSaveResponse saveFloorplan(FloorplanSaveRequest request, User user) {
-		// A. FloorPlan 엔티티 먼저 생성하여 저장
+	public FloorplanSaveResponse saveFloorplan(FloorplanSaveRequest request, MultipartFile imageFile, User user) throws Exception {
+		
+		// Step 0: 이미지 파일 저장
+		String savedImagePath = saveImageFile(imageFile, user.getId());
+		
+		// Step 1: 3번(assessmentJson)을 Python 서버로 전송하여 4번(메타데이터+임베딩) 받기
+		String generateMetadataUrl = pythonServerUrl + "/generate-metadata";
+		
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		
+		// 3번 JSON을 Python으로 전송
+		HttpEntity<String> requestEntity = new HttpEntity<>(request.getAssessmentJson(), headers);
+		ResponseEntity<PythonMetadataResponse> response = restTemplate.exchange(
+				generateMetadataUrl,
+				HttpMethod.POST,
+				requestEntity,
+				PythonMetadataResponse.class
+		);
+		
+		PythonMetadataResponse metadataResponse = response.getBody();
+		if (metadataResponse == null) {
+			throw new RuntimeException("Python 서버로부터 메타데이터 응답을 받지 못했습니다.");
+		}
+		
+		// Step 2: FloorPlan 엔티티 생성 및 저장 (3번 저장)
 		FloorPlan floorPlan = FloorPlan.builder()
 				.name(request.getName())
-				.imageUrl(request.getImageUrl())
-				.topologyJson(request.getTopologyJson())
-				.topologyImageUrl(request.getTopologyImageUrl())
+				.imageUrl(savedImagePath)  // 저장된 이미지 경로
+				.assessmentJson(request.getAssessmentJson())  // 3번 저장
 				.user(user)
 				.createdAt(LocalDate.now())
 				.build();
 
-		// FloorPlan을 먼저 저장하여 ID 생성
 		FloorPlan savedPlan = floorPlanRepository.save(floorPlan);
 
-		// B. 저장된 FloorPlan의 ID를 사용하여 FloorplanAnalysis 개별 컬럼에 매핑하여 저장
+		// Step 3: 4번 메타데이터를 파싱하여 FloorplanAnalysis 저장
+		PythonMetadataResponse.Metadata metadata = metadataResponse.getMetadata();
+		
 		FloorplanAnalysis analysis = FloorplanAnalysis.builder()
 				.floorPlan(savedPlan)
-				.windowlessRatio(request.getWindowlessRatio())
-				.hasSpecialSpace(request.getHasSpecialSpace())
-				.bayCount(request.getBayCount())
-				.balconyRatio(request.getBalconyRatio())
-				.livingRoomRatio(request.getLivingRoomRatio())
-				.bathroomRatio(request.getBathroomRatio())
-				.kitchenRatio(request.getKitchenRatio())
-				.roomCount(request.getRoomCount())
-				.complianceGrade(request.getComplianceGrade())
-				.ventilationQuality(request.getVentilationQuality())
-				.hasEtcSpace(request.getHasEtcSpace())
-				.structureType(request.getStructureType())
-				.bathroomCount(request.getBathroomCount())
-				.analysisDescription(request.getAnalysisDescription())
-				.embedding(request.getEmbedding())
+				.windowlessRatio(metadata.getWindowlessRatio())
+				.hasSpecialSpace(metadata.getHasSpecialSpace())
+				.bayCount(metadata.getBayCount())
+				.balconyRatio(metadata.getBalconyRatio())
+				.livingRoomRatio(metadata.getLivingRoomRatio())
+				.bathroomRatio(metadata.getBathroomRatio())
+				.kitchenRatio(metadata.getKitchenRatio())
+				.roomCount(metadata.getRoomCount())
+				.complianceGrade(metadata.getComplianceGrade())
+				.ventilationQuality(metadata.getVentilationQuality())
+				.hasEtcSpace(metadata.getHasEtcSpace())
+				.structureType(metadata.getStructureType())
+				.bathroomCount(metadata.getBathroomCount())
+				.analysisDescription(metadataResponse.getDocument())
+				.embedding(metadataResponse.getEmbedding().getFirstValues())
 				.build();
 
 		FloorplanAnalysis savedAnalysis = summaryRepository.save(analysis);
 		
-		// C. 저장 성공 응답 반환
+		// Step 4: 저장 성공 응답 반환
 		return FloorplanSaveResponse.builder()
 				.floorplanId(savedPlan.getId())
 				.analysisId(savedAnalysis.getId())
@@ -139,5 +165,33 @@ public class FloorPlanService {
 				.createdAt(savedPlan.getCreatedAt())
 				.message("도면 분석 결과가 성공적으로 저장되었습니다.")
 				.build();
+	}
+	
+	/**
+	 * 이미지 파일을 resources/image/floorplan/ 경로에 저장
+	 * 파일명: userId_timestamp_originalFilename
+	 */
+	private String saveImageFile(MultipartFile file, Long userId) throws Exception {
+		// 저장 디렉토리 경로
+		String uploadDir = "src/main/resources/image/floorplan/";
+		java.io.File directory = new java.io.File(uploadDir);
+		
+		// 디렉토리가 없으면 생성
+		if (!directory.exists()) {
+			directory.mkdirs();
+		}
+		
+		// 고유한 파일명 생성 (userId_timestamp_originalFilename)
+		String timestamp = String.valueOf(System.currentTimeMillis());
+		String originalFilename = file.getOriginalFilename();
+		String savedFilename = userId + "_" + timestamp + "_" + originalFilename;
+		
+		// 파일 저장
+		String filePath = uploadDir + savedFilename;
+		java.io.File destFile = new java.io.File(filePath);
+		file.transferTo(destFile);
+		
+		// DB에 저장할 경로 반환 (상대 경로)
+		return "/image/floorplan/" + savedFilename;
 	}
 }

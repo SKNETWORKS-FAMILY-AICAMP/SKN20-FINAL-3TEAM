@@ -32,12 +32,9 @@ public class FloorPlan {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
     
-    @Column(name = "topology_json", columnDefinition = "TEXT")
-    private String topologyJson;
-    
-    @Column(name = "topology_image_url", length = 500)
-    private String topologyImageUrl;
+    @Column(name = "assessment_json", columnDefinition = "TEXT")
+    private String assessmentJson; // 3번: 요약, 평가 json (Python 전송용)
     
     @OneToOne(mappedBy = "floorPlan", cascade = CascadeType.ALL, orphanRemoval = true)
-    private FloorplanAnalysis analysis;
+    private FloorplanAnalysis analysis; // 4번: 메타데이터는 여기에 쪼개서 저장
 }

@@ -31,7 +31,7 @@ public class Law {
     @Column(name = "law_name", length = 200)
     private String lawName; // 관련 법률명 (국토의 계획 및 이용에 관한 법률 등)
     
-    @Column(name = "land_use_activity", length = 500)
+    @Column(name = "land_use_activity", columnDefinition = "TEXT")
     private String landUseActivity; // 토지 이용 행위 (건축, 개발 등)
     
     @Column(name = "permission_status", length = 50)
