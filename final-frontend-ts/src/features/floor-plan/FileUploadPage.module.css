@@ -236,6 +236,7 @@
   padding: 1rem;
   overflow-y: auto;
   margin-bottom: 1rem;
+  max-height: 50%;
 }
 
 .jsonPlaceholder {
@@ -303,9 +304,13 @@
 }
 
 .aiSummaryBox {
+  flex: 1;
+  min-height: 0;
+  max-height: 50%;
   border-radius: 0.5rem;
   padding: 1rem;
   margin-bottom: 1rem;
+  overflow-y: auto;
 }
 
 .aiSummaryHeader {
