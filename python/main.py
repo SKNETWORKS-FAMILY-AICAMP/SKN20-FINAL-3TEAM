@@ -7,6 +7,19 @@ from pgvector.psycopg2 import register_vector
 app = FastAPI()
 client = OpenAI(api_key="YOUR_OPENAI_API_KEY")
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 # DB 연결 및 pgvector 등록
 def get_db_conn():
     conn = psycopg2.connect(
