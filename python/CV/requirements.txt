@@ -1,0 +1,39 @@
+# 건축 평면도 인식 추론 파이프라인 의존성
+
+# Deep Learning
+torch>=1.9.0
+torchvision>=0.10.0
+
+# Computer Vision
+opencv-python>=4.5.0
+
+# Data Processing
+numpy>=1.19.0
+pandas>=1.2.0
+
+# Image Augmentation
+albumentations>=1.0.0
+
+# Segmentation Models
+segmentation-models-pytorch>=0.2.0
+
+# Image Processing
+Pillow>=8.0.0
+
+# Utilities
+tqdm>=4.60.0
+
+# ===== RAG 시스템 의존성 =====
+
+# Vector DB (pydantic 2.x 지원 버전)
+chromadb>=0.5.0
+
+# LLM & Embedding
+openai>=1.0.0
+
+# Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0
