@@ -1,7 +1,7 @@
 package com.example.skn20.service;
 
 import com.example.skn20.entity.FloorPlan;
-import com.example.skn20.entity.FloorplanSummary;
+import com.example.skn20.entity.FloorplanAnalysis;
 import com.example.skn20.entity.User;
 import com.example.skn20.repository.FloorPlanRepository;
 import com.example.skn20.repository.FloorplanSummaryRepository;
@@ -64,7 +64,7 @@ public class FloorPlanService {
 		// B. FloorplanSummary 저장 (평가 내용 및 임베딩)
 		float[] embeddingVector = extractEmbedding(data.get("embedding"));
 
-		FloorplanSummary summary = FloorplanSummary.builder().floorPlan(savedPlan).eval((String) data.get("eval"))
+		FloorplanAnalysis summary = FloorplanAnalysis.builder().floorPlan(savedPlan).eval((String) data.get("eval"))
 				.embedding(embeddingVector).build();
 
 		summaryRepository.save(summary);
