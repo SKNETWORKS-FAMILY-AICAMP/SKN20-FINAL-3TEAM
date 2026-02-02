@@ -12,6 +12,7 @@ import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyPa
 import type { TopologyData } from './utils/topologyParser';
 import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
 import { uploadFloorPlan, saveFloorPlan } from './api/floor-plan.api';
+import JsonInspector from './components/JsonInspector';
 import styles from './FileUploadPage.module.css';
 
 const FileUploadPage: React.FC = () => {
@@ -28,8 +29,8 @@ const FileUploadPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
 
-  // Hover 상태
-  const [hoveredItem, setHoveredItem] = useState<HoverableItem | null>(null);
+  // Hover 상태 (그룹화로 인해 배열로 변경)
+  const [hoveredItems, setHoveredItems] = useState<HoverableItem[]>([]);
 
   // 이미지 스케일 계산용 refs
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -138,7 +139,7 @@ const FileUploadPage: React.FC = () => {
     setJsonResult('');
     setAiSummary('');
     setAnalysisResult(null);
-    setHoveredItem(null);
+    setHoveredItems([]);
     setTopologyGraphUrl(null);
 
     console.log('=== 도면 분석 시작 ===');
@@ -295,7 +296,7 @@ const FileUploadPage: React.FC = () => {
     setAnalysisResult(null);
     setJsonResult('');
     setAiSummary('');
-    setHoveredItem(null);
+    setHoveredItems([]);
     setTopologyGraphUrl(null);
   };
 
@@ -554,10 +555,10 @@ const FileUploadPage: React.FC = () => {
                     alt="도면 미리보기"
                     className={styles.previewImage}
                   />
-                  {/* Segmentation Polygon 또는 Bbox Overlay */}
-                  {hoveredItem && (
-                    hoveredItem.segmentation ? (
-                      // Segmentation이 있으면 SVG 폴리곤으로 렌더링
+                  {/* Segmentation Polygon 또는 Bbox Overlay (여러 개 동시 표시) */}
+                  {hoveredItems.length > 0 && (
+                    <>
+                      {/* SVG로 모든 폴리곤 렌더링 */}
                       <svg
                         className={styles.segmentationOverlay}
                         style={{
@@ -569,56 +570,64 @@ const FileUploadPage: React.FC = () => {
                           pointerEvents: 'none',
                         }}
                       >
-                        <polygon
-                          points={
-                            // segmentation [x1, y1, x2, y2, ...] → "x1,y1 x2,y2 ..." 형식으로 변환
-                            hoveredItem.segmentation
-                              .reduce((acc: string[], coord, i, arr) => {
-                                if (i % 2 === 0 && i + 1 < arr.length) {
-                                  const x = coord * imageScale.scaleX;
-                                  const y = arr[i + 1] * imageScale.scaleY;
-                                  acc.push(`${x},${y}`);
+                        {hoveredItems.map((item) =>
+                          item.segmentation ? (
+                            <g key={`overlay-${item.type}-${item.id}`}>
+                              <polygon
+                                points={
+                                  item.segmentation
+                                    .reduce((acc: string[], coord, i, arr) => {
+                                      if (i % 2 === 0 && i + 1 < arr.length) {
+                                        const x = coord * imageScale.scaleX;
+                                        const y = arr[i + 1] * imageScale.scaleY;
+                                        acc.push(`${x},${y}`);
+                                      }
+                                      return acc;
+                                    }, [])
+                                    .join(' ')
                                 }
-                                return acc;
-                              }, [])
-                              .join(' ')
-                          }
-                          fill={getOverlayColor(hoveredItem.type).fill}
-                          stroke={getOverlayColor(hoveredItem.type).stroke}
-                          strokeWidth="2"
-                        />
-                        {/* 라벨 표시 */}
-                        <text
-                          x={hoveredItem.bbox[0] * imageScale.scaleX}
-                          y={hoveredItem.bbox[1] * imageScale.scaleY - 5}
-                          fill={getOverlayColor(hoveredItem.type).stroke}
-                          fontSize="12"
-                          fontWeight="bold"
-                        >
-                          {hoveredItem.name}
-                        </text>
+                                fill={getOverlayColor(item.type).fill}
+                                stroke={getOverlayColor(item.type).stroke}
+                                strokeWidth="2"
+                              />
+                              <text
+                                x={item.bbox[0] * imageScale.scaleX}
+                                y={item.bbox[1] * imageScale.scaleY - 5}
+                                fill={getOverlayColor(item.type).stroke}
+                                fontSize="12"
+                                fontWeight="bold"
+                              >
+                                {item.name}
+                              </text>
+                            </g>
+                          ) : null
+                        )}
                       </svg>
-                    ) : (
-                      // Segmentation이 없으면 기존 Bbox 사각형으로 렌더링
-                      <div
-                        className={styles.bboxOverlay}
-                        style={{
-                          left: transformBbox(hoveredItem.bbox).left,
-                          top: transformBbox(hoveredItem.bbox).top,
-                          width: transformBbox(hoveredItem.bbox).width,
-                          height: transformBbox(hoveredItem.bbox).height,
-                          backgroundColor: getOverlayColor(hoveredItem.type).fill,
-                          borderColor: getOverlayColor(hoveredItem.type).stroke,
-                        }}
-                      >
-                        <span
-                          className={styles.bboxLabel}
-                          style={{ backgroundColor: getOverlayColor(hoveredItem.type).stroke }}
-                        >
-                          {hoveredItem.name}
-                        </span>
-                      </div>
-                    )
+                      {/* Bbox 사각형 (segmentation 없는 아이템용) */}
+                      {hoveredItems
+                        .filter((item) => !item.segmentation)
+                        .map((item) => (
+                          <div
+                            key={`bbox-${item.type}-${item.id}`}
+                            className={styles.bboxOverlay}
+                            style={{
+                              left: transformBbox(item.bbox).left,
+                              top: transformBbox(item.bbox).top,
+                              width: transformBbox(item.bbox).width,
+                              height: transformBbox(item.bbox).height,
+                              backgroundColor: getOverlayColor(item.type).fill,
+                              borderColor: getOverlayColor(item.type).stroke,
+                            }}
+                          >
+                            <span
+                              className={styles.bboxLabel}
+                              style={{ backgroundColor: getOverlayColor(item.type).stroke }}
+                            >
+                              {item.name}
+                            </span>
+                          </div>
+                        ))}
+                    </>
                   )}
                 </div>
                 <div className={styles.fileInfo}>
@@ -742,7 +751,7 @@ const FileUploadPage: React.FC = () => {
         <div className={styles.rightPanel} style={{ backgroundColor: '#F9FAFB' }}>
           <div className={styles.jsonHeader}>
             <h2 className={styles.jsonTitle} style={{ color: colors.textPrimary }}>
-              분석 결과 (JSON)
+              분석 결과
             </h2>
             {renderStatusBadge()}
           </div>
@@ -766,10 +775,17 @@ const FileUploadPage: React.FC = () => {
                 <div className={`${styles.skeleton} ${styles.skeleton60}`} style={{ backgroundColor: colors.border }} />
               </div>
             )}
-            {(analysisStatus === 'completed' || analysisStatus === 'error') && (
-              <pre className={styles.jsonPre} style={{ color: colors.textPrimary }}>
-                {analysisStatus === 'completed' ? renderHoverableJson() : '분석 결과가 없습니다'}
-              </pre>
+            {analysisStatus === 'completed' && (
+              <JsonInspector
+                data={analysisResult}
+                onHover={(items) => setHoveredItems(items || [])}
+                hoveredItem={hoveredItems[0] || null}
+              />
+            )}
+            {analysisStatus === 'error' && (
+              <p className={styles.jsonPlaceholder} style={{ color: colors.error }}>
+                분석 결과가 없습니다
+              </p>
             )}
           </div>
 
