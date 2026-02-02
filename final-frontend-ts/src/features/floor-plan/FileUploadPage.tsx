@@ -759,10 +759,6 @@ const FileUploadPage: React.FC = () => {
                 <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.roomCount}개</p>
               </div>
               <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
-                <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>총 면적</p>
-                <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.totalArea}㎡</p>
-              </div>
-              <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
                 <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>구조물/객체</p>
                 <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>
                   {(analysisResult.structures?.length || 0) + (analysisResult.objects?.length || 0)}개
