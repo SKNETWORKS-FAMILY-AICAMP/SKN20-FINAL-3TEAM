@@ -157,6 +157,8 @@ const FileUploadPage: React.FC = () => {
       // 백엔드 응답 형식에 따라 파싱
       // 백엔드 FloorplanPreviewResponse 필드명: topologyJson, topologyImageUrl, analysisDescription
       const topologyData = apiResult.topologyJson || apiResult.elementJson;
+      console.log('topologyData 존재 여부:', !!topologyData);
+      console.log('topologyData 타입:', typeof topologyData);
 
       if (topologyData) {
         // 백엔드가 { topologyJson, topologyImageUrl, analysisDescription, embedding } 형태로 반환하는 경우
@@ -164,9 +166,17 @@ const FileUploadPage: React.FC = () => {
           ? JSON.parse(topologyData)
           : topologyData;
 
+        console.log('파싱된 jsonData:', jsonData);
+        console.log('isTopologyFormat:', isTopologyFormat(jsonData));
+
         if (isTopologyFormat(jsonData)) {
+          console.log('Topology 형식으로 변환 시작...');
           result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
+          console.log('변환된 result.rooms:', result.rooms);
+          console.log('변환된 result.structures:', result.structures);
+          console.log('변환된 result.objects:', result.objects);
         } else {
+          console.log('COCO 형식으로 변환 시작...');
           result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
         }
 
