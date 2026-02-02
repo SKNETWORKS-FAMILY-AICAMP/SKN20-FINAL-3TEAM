@@ -46,3 +46,9 @@ CV/rag_data/chroma.sqlite3
 # 도면 이미지 업로드 폴더
 **/temp_output/**
 **/temp_input/**
+
+# 문서 및 프론트엔드 리소스
+docs/
+final-frontend-ts/public/annotations/
+final-frontend-ts/public/floorplans/
+final-frontend-ts/public/result/
