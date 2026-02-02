@@ -16,10 +16,11 @@ import lombok.NoArgsConstructor;
 public class FloorplanPreviewResponse {
     
     // 기본 정보
-    private String topologyJson;          // topology.json 내용
-    private String topologyImageUrl;      // 위상 그래프 이미지 URL
+    private String topologyJson;          // 1번: topology.json 내용
+    private String topologyImageUrl;      // 2번: 위상 그래프 이미지 URL
+    private String assessmentJson;        // 3번: 요약, 평가 json (topology_graph.json 전체)
     
-    // 분석 결과 데이터
+    // 분석 결과 데이터 (프론트 표시용)
     private Double windowlessRatio;       // 무창실 비율
     private Boolean hasSpecialSpace;      // 특수 공간 존재 여부
     private Integer bayCount;             // 베이 개수
