@@ -42,3 +42,7 @@ Backend/src/main/resources/data/*
 
 .env
 CV/rag_data/chroma.sqlite3
+
+# 도면 이미지 업로드 폴더
+**/temp_output/**
+**/temp_input/**
