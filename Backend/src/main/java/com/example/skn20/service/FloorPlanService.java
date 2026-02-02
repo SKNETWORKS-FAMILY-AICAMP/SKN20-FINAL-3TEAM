@@ -39,37 +39,52 @@ public class FloorPlanService {
 	 * 프론트에서 이미지를 받아 Python 서버로 전송하고, 1번, 2번, 3번을 프리뷰 형태로 즉시 반환
 	 */
 	public FloorplanPreviewResponse analyzeFloorplan(MultipartFile file) throws Exception {
+		System.out.println("========================================");
+		System.out.println("[FloorPlanService] 분석 시작");
+		System.out.println("파일명: " + file.getOriginalFilename());
+		System.out.println("파일 크기: " + file.getSize() + " bytes");
+		System.out.println("Python 서버 URL: " + pythonServerUrl);
+		
 		String analyzeUrl = pythonServerUrl + "/analyze";
+		System.out.println("요청 URL: " + analyzeUrl);
 
-		// HTTP 헤더 설정
-		HttpHeaders headers = new HttpHeaders();
-		headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+		try {
+			// HTTP 헤더 설정
+			HttpHeaders headers = new HttpHeaders();
+			headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
-		// Multipart 요청 바디 구성
-		MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-		body.add("file", new ByteArrayResource(file.getBytes()) {
-			@Override
-			public String getFilename() {
-				return file.getOriginalFilename();
-			}
-		});
+			// Multipart 요청 바디 구성
+			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+			body.add("file", new ByteArrayResource(file.getBytes()) {
+				@Override
+				public String getFilename() {
+					return file.getOriginalFilename();
+				}
+			});
 
-		// Python 서버로 POST 요청
-		HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-		ResponseEntity<PythonAnalysisResponse> response = restTemplate.exchange(
-				analyzeUrl,
-				HttpMethod.POST,
-				requestEntity,
-				PythonAnalysisResponse.class
-		);
+			System.out.println("[FloorPlanService] Python 서버로 요청 전송 중...");
+			
+			// Python 서버로 POST 요청
+			HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+			ResponseEntity<PythonAnalysisResponse> response = restTemplate.exchange(
+					analyzeUrl,
+					HttpMethod.POST,
+					requestEntity,
+					PythonAnalysisResponse.class
+			);
 
-		// Python 응답을 프리뷰 DTO로 변환
-		PythonAnalysisResponse pythonResponse = response.getBody();
+			System.out.println("[FloorPlanService] Python 응답 수신 완료!");
+			System.out.println("응답 상태: " + response.getStatusCode());
+			
+			// Python 응답을 프리뷰 DTO로 변환
+			PythonAnalysisResponse pythonResponse = response.getBody();
 		if (pythonResponse == null) {
+			System.err.println("[ERROR] Python 응답이 null입니다!");
 			throw new RuntimeException("Python 서버로부터 응답을 받지 못했습니다.");
 		}
 
-		return FloorplanPreviewResponse.builder()
+		System.out.println("[FloorPlanService] 응답 변환 중...");
+		FloorplanPreviewResponse result = FloorplanPreviewResponse.builder()
 				.topologyJson(pythonResponse.getTopologyJson())                   // 1번
 				.topologyImageUrl(pythonResponse.getTopologyImageUrl())           // 2번
 				.assessmentJson(pythonResponse.getAssessmentJson())               // 3번
@@ -89,6 +104,20 @@ public class FloorPlanService {
 				.analysisDescription(pythonResponse.getAnalysisDescription())
 				.embedding(pythonResponse.getEmbedding())
 				.build();
+		
+		System.out.println("[FloorPlanService] 분석 완료!");
+		System.out.println("========================================");
+		return result;
+		
+		} catch (Exception e) {
+			System.err.println("========================================");
+			System.err.println("[ERROR] Python 서버 호출 실패!");
+			System.err.println("에러 타입: " + e.getClass().getName());
+			System.err.println("에러 메시지: " + e.getMessage());
+			e.printStackTrace();
+			System.err.println("========================================");
+			throw e;
+		}
 	}
 
 	/**
@@ -134,25 +163,25 @@ public class FloorPlanService {
 		FloorPlan savedPlan = floorPlanRepository.save(floorPlan);
 
 		// Step 3: 4번 메타데이터를 파싱하여 FloorplanAnalysis 저장
-		PythonMetadataResponse.Metadata metadata = metadataResponse.getMetadata();
+		var metadata = metadataResponse.getMetadata();
 		
 		FloorplanAnalysis analysis = FloorplanAnalysis.builder()
 				.floorPlan(savedPlan)
-				.windowlessRatio(metadata.getWindowlessRatio())
-				.hasSpecialSpace(metadata.getHasSpecialSpace())
-				.bayCount(metadata.getBayCount())
-				.balconyRatio(metadata.getBalconyRatio())
-				.livingRoomRatio(metadata.getLivingRoomRatio())
-				.bathroomRatio(metadata.getBathroomRatio())
-				.kitchenRatio(metadata.getKitchenRatio())
-				.roomCount(metadata.getRoomCount())
-				.complianceGrade(metadata.getComplianceGrade())
-				.ventilationQuality(metadata.getVentilationQuality())
-				.hasEtcSpace(metadata.getHasEtcSpace())
-				.structureType(metadata.getStructureType())
-				.bathroomCount(metadata.getBathroomCount())
+				.windowlessRatio(((Number) metadata.get("windowless_ratio")).doubleValue())
+				.hasSpecialSpace((Boolean) metadata.get("has_special_space"))
+				.bayCount(((Number) metadata.get("bay_count")).intValue())
+				.balconyRatio(((Number) metadata.get("balcony_ratio")).doubleValue())
+				.livingRoomRatio(((Number) metadata.get("living_room_ratio")).doubleValue())
+				.bathroomRatio(((Number) metadata.get("bathroom_ratio")).doubleValue())
+				.kitchenRatio(((Number) metadata.get("kitchen_ratio")).doubleValue())
+				.roomCount(((Number) metadata.get("room_count")).intValue())
+				.complianceGrade((String) metadata.get("compliance_grade"))
+				.ventilationQuality((String) metadata.get("ventilation_quality"))
+				.hasEtcSpace((Boolean) metadata.get("has_etc_space"))
+				.structureType((String) metadata.get("structure_type"))
+				.bathroomCount(((Number) metadata.get("bathroom_count")).intValue())
 				.analysisDescription(metadataResponse.getDocument())
-				.embedding(metadataResponse.getEmbedding().getFirstValues())
+				.embedding(metadataResponse.getEmbedding())
 				.build();
 
 		FloorplanAnalysis savedAnalysis = summaryRepository.save(analysis);

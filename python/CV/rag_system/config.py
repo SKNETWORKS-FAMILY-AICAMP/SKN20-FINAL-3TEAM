@@ -1,5 +1,6 @@
 """RAG 시스템 설정"""
 from pydantic_settings import BaseSettings
+from pathlib import Path
 
 class RAGConfig(BaseSettings):
     # Embedding 모델 (OpenAI)
@@ -19,4 +20,7 @@ class RAGConfig(BaseSettings):
     MAX_CONTEXT_LENGTH: int = 4000
 
     class Config:
-        env_file = ".env"
+        # python/.env 파일을 명시적으로 찾기
+        env_file = str(Path(__file__).parent.parent.parent / ".env")
+        env_file_encoding = 'utf-8'
+
