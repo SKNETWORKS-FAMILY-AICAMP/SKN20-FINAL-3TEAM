@@ -1,100 +1,95 @@
 // ============================================
 // Topology 형식 JSON을 FloorPlanUploadResponse로 변환
-// APT_FP_OBJ_001046197_topology.json 구조에 맞춤
+// 새로운 topology.json 구조에 맞춤 (2024년 버전)
 // ============================================
 
 import type { FloorPlanUploadResponse, RoomInfo, StructureInfo, ObjectInfo } from '../types/floor-plan.types';
 
 // ============================================
-// Topology 형식 타입 정의
+// 새로운 Topology 형식 타입 정의
 // ============================================
 
-interface TopologyBboxXYXY {
-  xmin: number;
-  ymin: number;
-  xmax: number;
-  ymax: number;
+interface ImageInfo {
+  file_name: string;
+  width: number;
+  height: number;
 }
 
-// 공간 내 객체 (bbox 없음, class_name과 confidence만)
-interface TopologyNodeObject {
-  class_name: string;
-  confidence: number;
+// 공간 내 객체 (개별 bbox 포함)
+interface ContainedObject {
+  object_id: string;
+  category_id: number;
+  category_name: string;
+  bbox: [number, number, number, number]; // [x, y, width, height]
+}
+
+// 공간 내 구조물
+interface ContainedStructure {
+  structure_id: string;
+  type: string;
+  bbox: [number, number, number, number]; // [x, y, width, height]
+}
+
+// 공간이 포함하는 요소들
+interface NodeContains {
+  objects: ContainedObject[];
+  ocr_labels: string[];
+  structures: {
+    doors: ContainedStructure[];
+    windows: ContainedStructure[];
+    walls: ContainedStructure[];
+  };
 }
 
 // 공간 노드
 interface TopologyNode {
-  id: string;
-  class_id: number;
-  class_name: string;
-  instance_id: number;
-  segmentation?: number[][];
-  bbox: [number, number, number, number];  // [x, y, w, h]
-  bbox_xyxy: TopologyBboxXYXY;
+  node_id: string;
+  node_type: string;
+  category_id: number;
+  category_name: string;
+  label: string;
+  space_type: string;
+  is_outside: boolean;
+  bbox: [number, number, number, number]; // [x, y, width, height]
+  segmentation: number[][]; // 이중 배열 [[x1, y1, x2, y2, ...]]
   area: number;
   area_ratio: number;
-  centroid: [number, number];  // [x, y]
-  name: string;
-  ocr_label: string | null;
-  source: string;
-  ocr_match_type: string;
-  objects: TopologyNodeObject[];
-  has_window: boolean;
-}
-
-// 문/창문의 연결 공간 정보
-interface TouchingSpace {
-  space_id: string;
-  space_name: string;
-  class_name: string;
-  overlap: number;
-}
-
-// 문 정보
-interface TopologyDoor {
-  id: string;
-  segmentation?: number[][];
-  bbox: [number, number, number, number];
-  bbox_xyxy: TopologyBboxXYXY;
-  area: number;
   centroid: [number, number];
-  instance_id: number;
-  temp_id: string;
-  touching_spaces: TouchingSpace[];
-}
-
-// 창문 정보
-interface TopologyWindow {
-  id: string;
-  segmentation?: number[][];
-  bbox: [number, number, number, number];
-  bbox_xyxy: TopologyBboxXYXY;
-  area: number;
-  centroid: [number, number];
-  instance_id: number;
-  touching_spaces: TouchingSpace[];
+  contains: NodeContains;
 }
 
 // 엣지 정보
 interface TopologyEdge {
-  from: string;
-  to: string;
+  edge_id: string;
+  source_node: string;
+  target_node: string;
   connection_type: string;
-  door_id?: string;
+  connection_id: string | null;
+}
+
+// 통계 정보
+interface TopologyStatistics {
+  total_image_area: number;
+  total_space_area: number;
+  total_inside_area: number;
+  space_count: number;
+  inside_space_count: number;
+  room_count: number;
+  bathroom_count: number;
+  balcony_count: number;
+  bay_count: number;
+  space_type_count: Record<string, number>;
+  structure_type: string;
+  balcony_ratio: number;
+  windowless_ratio: number;
 }
 
 // 전체 Topology 데이터
 export interface TopologyData {
-  version: string;
+  image_info: ImageInfo;
   nodes: TopologyNode[];
   edges: TopologyEdge[];
-  uncertain_edges?: TopologyEdge[];
-  doors: TopologyDoor[];
-  windows: TopologyWindow[];
-  summary?: any;
-  refined_summary?: any;
-  spatial_relations?: any;
-  bay_analysis?: any;
+  statistics: TopologyStatistics;
 }
 
 // ============================================
@@ -102,13 +97,32 @@ export interface TopologyData {
 // ============================================
 
 /**
- * Topology JSON인지 확인
+ * [x, y, width, height] → [x1, y1, x2, y2] 변환
+ */
+function convertBboxXYWH_to_XYXY(bbox: [number, number, number, number]): [number, number, number, number] {
+  const [x, y, w, h] = bbox;
+  return [x, y, x + w, y + h];
+}
+
+/**
+ * Topology JSON인지 확인 (새로운 형식)
  */
 export function isTopologyFormat(data: any): data is TopologyData {
-  if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0) return false;
-  const firstNode = data.nodes[0];
-  // nodes에 bbox_xyxy가 있으면 Topology 형식
-  return firstNode.bbox_xyxy !== undefined;
+  if (!data) return false;
+
+  // 새로운 형식: image_info와 nodes가 있고, nodes[0]에 node_id가 있음
+  if (data.image_info && Array.isArray(data.nodes) && data.nodes.length > 0) {
+    const firstNode = data.nodes[0];
+    return firstNode.node_id !== undefined && firstNode.contains !== undefined;
+  }
+
+  // 이전 형식 호환: bbox_xyxy가 있으면 이전 Topology
+  if (Array.isArray(data.nodes) && data.nodes.length > 0) {
+    const firstNode = data.nodes[0];
+    return firstNode.bbox_xyxy !== undefined;
+  }
+
+  return false;
 }
 
 /**
@@ -123,91 +137,101 @@ export function convertTopologyToFloorPlan(topology: TopologyData, fileName: str
   let structureIdCounter = 1;
   let objectIdCounter = 1;
 
+  // 구조물 중복 방지용 Set (structure_id 기준)
+  const addedStructureIds = new Set<string>();
+
   // 1. 공간(nodes) 처리
   for (const node of topology.nodes) {
-    const bbox = node.bbox_xyxy;
-    const bboxArray: [number, number, number, number] = [bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax];
-    const bboxStr = JSON.stringify(bboxArray);
+    // bbox 변환: [x, y, w, h] → [x1, y1, x2, y2]
+    const bboxXYXY = convertBboxXYWH_to_XYXY(node.bbox);
+    const bboxStr = JSON.stringify(bboxXYXY);
     const centroid = `${node.centroid[0]},${node.centroid[1]}`;
 
-    // segmentation 처리 (ㄱ자 등 복잡한 형태용)
+    // segmentation 처리 (이중 배열에서 첫 번째 배열 사용)
     let segmentationStr: string | undefined;
     if (node.segmentation && node.segmentation.length > 0) {
       segmentationStr = JSON.stringify(node.segmentation[0]);
     }
 
+    // 공간 이름 결정 (label 우선, 없으면 category_name에서 "공간_" 제거)
+    const spaceName = node.label || node.category_name.replace('공간_', '');
+    const ocrName = node.contains.ocr_labels?.[0] || spaceName;
+
     rooms.push({
       id: roomIdCounter++,
-      spcname: node.class_name || node.name,
-      ocrname: node.ocr_label || node.name,
+      spcname: spaceName,
+      ocrname: ocrName,
       bbox: bboxStr,
       centroid: centroid,
       area: node.area,
-      areapercent: node.area_ratio * 100,
+      areapercent: node.area_ratio * 100, // 0.0225 → 2.25%
       segmentation: segmentationStr,
     });
 
-    // 공간 내 객체들 (bbox가 없으므로 공간의 bbox 사용)
-    if (node.objects && node.objects.length > 0) {
-      for (const obj of node.objects) {
+    // 2. 공간 내 객체(objects) 처리 - 개별 bbox 사용!
+    if (node.contains.objects && node.contains.objects.length > 0) {
+      for (const obj of node.contains.objects) {
+        const objBboxXYXY = convertBboxXYWH_to_XYXY(obj.bbox);
+        const objCentroid = `${obj.bbox[0] + obj.bbox[2] / 2},${obj.bbox[1] + obj.bbox[3] / 2}`;
+
+        // 객체 이름에서 "객체_" 제거
+        const objName = obj.category_name.replace('객체_', '');
+
         objects.push({
           id: objectIdCounter++,
-          name: obj.class_name,
-          bbox: bboxStr,  // 공간의 bbox 사용
-          centroid: centroid,
+          name: objName,
+          bbox: JSON.stringify(objBboxXYXY),
+          centroid: objCentroid,
+        });
+      }
+    }
+
+    // 3. 공간 내 구조물(doors, windows) 처리
+    const { doors, windows } = node.contains.structures;
+
+    // 문 처리
+    if (doors && doors.length > 0) {
+      for (const door of doors) {
+        // 중복 방지
+        if (addedStructureIds.has(door.structure_id)) continue;
+        addedStructureIds.add(door.structure_id);
+
+        const doorBboxXYXY = convertBboxXYWH_to_XYXY(door.bbox);
+        const doorCentroid = `${door.bbox[0] + door.bbox[2] / 2},${door.bbox[1] + door.bbox[3] / 2}`;
+
+        structures.push({
+          id: structureIdCounter++,
+          name: door.type || '문',
+          bbox: JSON.stringify(doorBboxXYXY),
+          centroid: doorCentroid,
+          area: '0',
+        });
+      }
+    }
+
+    // 창문 처리
+    if (windows && windows.length > 0) {
+      for (const window of windows) {
+        // 중복 방지
+        if (addedStructureIds.has(window.structure_id)) continue;
+        addedStructureIds.add(window.structure_id);
+
+        const windowBboxXYXY = convertBboxXYWH_to_XYXY(window.bbox);
+        const windowCentroid = `${window.bbox[0] + window.bbox[2] / 2},${window.bbox[1] + window.bbox[3] / 2}`;
+
+        structures.push({
+          id: structureIdCounter++,
+          name: window.type || '창문',
+          bbox: JSON.stringify(windowBboxXYXY),
+          centroid: windowCentroid,
+          area: '0',
         });
       }
     }
   }
 
-  // 2. 문(doors) → structures로 추가
-  if (topology.doors) {
-    for (const door of topology.doors) {
-      const bbox = door.bbox_xyxy;
-      const bboxArray: [number, number, number, number] = [bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax];
-      const centroid = `${door.centroid[0]},${door.centroid[1]}`;
-
-      let segmentationStr: string | undefined;
-      if (door.segmentation && door.segmentation.length > 0) {
-        segmentationStr = JSON.stringify(door.segmentation[0]);
-      }
-
-      structures.push({
-        id: structureIdCounter++,
-        name: '문',
-        bbox: JSON.stringify(bboxArray),
-        centroid: centroid,
-        area: door.area?.toString() ?? '0',
-        segmentation: segmentationStr,
-      });
-    }
-  }
-
-  // 3. 창문(windows) → structures로 추가
-  if (topology.windows) {
-    for (const window of topology.windows) {
-      const bbox = window.bbox_xyxy;
-      const bboxArray: [number, number, number, number] = [bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax];
-      const centroid = `${window.centroid[0]},${window.centroid[1]}`;
-
-      let segmentationStr: string | undefined;
-      if (window.segmentation && window.segmentation.length > 0) {
-        segmentationStr = JSON.stringify(window.segmentation[0]);
-      }
-
-      structures.push({
-        id: structureIdCounter++,
-        name: '창문',
-        bbox: JSON.stringify(bboxArray),
-        centroid: centroid,
-        area: window.area?.toString() ?? '0',
-        segmentation: segmentationStr,
-      });
-    }
-  }
-
-  // 총 면적 계산
-  const totalArea = rooms.reduce((sum, room) => sum + (room.area || 0), 0);
+  // 통계 정보 활용
+  const stats = topology.statistics;
 
   return {
     floorPlanId: 0,
@@ -216,7 +240,7 @@ export function convertTopologyToFloorPlan(topology: TopologyData, fileName: str
     rooms,
     structures,
     objects,
-    totalArea: Math.round(totalArea),
-    roomCount: rooms.length,
+    totalArea: Math.round(stats?.total_space_area || 0),
+    roomCount: stats?.space_count || rooms.length,
   };
 }
