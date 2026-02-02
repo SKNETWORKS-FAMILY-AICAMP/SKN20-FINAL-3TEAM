@@ -79,22 +79,40 @@ class AnalysisResult(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
-    """도면 분석 응답 모델"""
-    topology_graph: Dict[str, Any]
-    topology_image: str
-    analysis_result: AnalysisResult
+    """도면 분석 응답 모델 - Spring Boot와 매핑"""
+    topology_json: str  # 1번: topology json string
+    topology_image_url: str  # 2번: base64 이미지
+    assessment_json: str  # 3번: topology_graph.json 전체
+    
+    # 13개 분석 지표 (flat 구조)
+    windowless_ratio: float
+    has_special_space: bool
+    bay_count: int
+    balcony_ratio: float
+    living_room_ratio: float
+    bathroom_ratio: float
+    kitchen_ratio: float
+    room_count: int
+    compliance_grade: str
+    ventilation_quality: str
+    has_etc_space: bool
+    structure_type: str
+    bathroom_count: int
+    analysis_description: str  # LLM 분석 결과 문서
+    embedding: list[float]  # 임베딩 벡터 (1536차원)
 
 
 class SaveRequest(BaseModel):
-    """저장 요청 모델"""
-    analysis_result: AnalysisResult
+    """저장 요청 모델 - Spring Boot에서 assessmentJson (3번) 전송"""
+    assessment_json: str  # topology_graph.json 문자열
 
 
 class SaveResponse(BaseModel):
-    """저장 응답 모델"""
-    metadata: Dict[str, Any]
-    document: str
-    embedding: list[float]
+    """저장 응답 모델 - Spring Boot로 4번 데이터 전송"""
+    document_id: str
+    metadata: Dict[str, Any]  # 13개 지표
+    document: str  # 분석 설명
+    embedding: list[float]  # 전체 임베딩 벡터 (1536차원)
 
 
 # ===== 유틸리티 함수 =====
@@ -253,37 +271,53 @@ async def analyze_floorplan(file: UploadFile = File(...)):
     Input: PNG 파일
     Output: topology_graph, topology_image, analysis_result (with LLM document)
     """
+    logger.info("=" * 80)
+    logger.info("=== /analyze 엔드포인트 호출됨 ===")
+    logger.info(f"파일명: {file.filename}")
+    logger.info(f"Content-Type: {file.content_type}")
+    logger.info("=" * 80)
+    
     pipeline = load_cv_pipeline()
 
     try:
         # 1. 이미지 파일 읽기
+        logger.info("Step 1: 이미지 파일 읽기 시작...")
         contents = await file.read()
+        logger.info(f"파일 크기: {len(contents)} bytes")
+        
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if image is None:
+            logger.error("이미지 디코딩 실패!")
             raise HTTPException(status_code=400, detail="이미지를 읽을 수 없습니다.")
 
-        logger.info(f"이미지 수신: {file.filename}, 크기: {image.shape}")
+        logger.info(f"이미지 수신 완료: {file.filename}, 크기: {image.shape}")
 
         # 2. 임시 파일로 저장
+        logger.info("Step 2: 임시 파일 저장...")
         temp_dir = Path("./temp_input")
         temp_dir.mkdir(exist_ok=True)
         temp_path = temp_dir / file.filename
         cv2.imwrite(str(temp_path), image)
+        logger.info(f"임시 파일 저장 완료: {temp_path}")
 
         # 3. CV 파이프라인 실행
-        logger.info("CV 추론 시작...")
+        logger.info("Step 3: CV 추론 시작...")
         results = pipeline.run(
             temp_path,
             save_json=True,
             save_visualization=True
         )
+        logger.info("CV 추론 완료!")
 
         # 4. topology_graph.json 추출
+        logger.info("Step 4: topology_graph 추출...")
         topology_data = results.get("topology_graph", {})
+        logger.info(f"Topology 데이터 크기: {len(str(topology_data))} chars")
 
         # 5. topology 이미지 Base64 인코딩
+        logger.info("Step 5: topology 이미지 인코딩...")
         topology_image_path = pipeline.config.OUTPUT_PATH / f"{temp_path.stem}_topology.png"
         if topology_image_path.exists():
             topology_image = cv2.imread(str(topology_image_path))
@@ -301,75 +335,78 @@ async def analyze_floorplan(file: UploadFile = File(...)):
         # 8. to_natural_language()로 document 생성
         document = llm_analysis.to_natural_language()
 
-        # 9. 응답 생성
-        analysis_result = AnalysisResult(
-            **metrics,
-            document=document
-        )
-
-        response = AnalyzeResponse(
-            topology_graph=topology_data,
-            topology_image=topology_image_base64,
-            analysis_result=analysis_result
-        )
-
-        # 10. 임시 파일 정리
-        temp_path.unlink(missing_ok=True)
-
-        logger.info("분석 완료!")
-        return response
-
-    except Exception as e:
-        logger.error(f"분석 중 오류 발생: {e}")
-        raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
-
-
-@app.post("/save", response_model=SaveResponse)
-async def save_analysis(request: SaveRequest):
-    """
-    분석 결과 저장 엔드포인트
-
-    Input: analysis_result (13개 지표 + document)
-    Output: metadata, document, embedding (to_natural_language 기반)
-    """
-    try:
-        analysis = request.analysis_result
-
-        # 1. metadata 추출 (13개 지표)
-        metadata = {
-            "windowless_ratio": analysis.windowless_ratio,
-            "has_special_space": analysis.has_special_space,
-            "bay_count": analysis.bay_count,
-            "balcony_ratio": analysis.balcony_ratio,
-            "living_room_ratio": analysis.living_room_ratio,
-            "bathroom_ratio": analysis.bathroom_ratio,
-            "kitchen_ratio": analysis.kitchen_ratio,
-            "room_count": analysis.room_count,
-            "compliance_grade": analysis.compliance_grade,
-            "ventilation_quality": analysis.ventilation_quality,
-            "has_etc_space": analysis.has_etc_space,
-            "structure_type": analysis.structure_type,
-            "bathroom_count": analysis.bathroom_count
-        }
-
-        # 2. document (to_natural_language() 결과)
-        document = analysis.document
-
-        # 3. document 기반 임베딩 생성
-        logger.info("임베딩 생성 중...")
+        # 9. 임베딩 생성
         embedding = generate_embedding(document)
 
-        logger.info("저장 데이터 생성 완료!")
-
-        return SaveResponse(
-            metadata=metadata,
-            document=document,
+        # 10. 응답 생성 (Spring Boot 형식에 맞춤)
+        response = AnalyzeResponse(
+            topology_json=json.dumps(topology_data, ensure_ascii=False),  # 1번
+            topology_image_url=topology_image_base64,  # 2번
+            assessment_json=json.dumps(topology_data, ensure_ascii=False),  # 3번
+            **metrics,  # 13개 지표
+            analysis_description=document,
             embedding=embedding
         )
 
+        # 11. 임시 파일 정리
+        logger.info("Step 11: 임시 파일 정리...")
+        temp_path.unlink(missing_ok=True)
+
+        logger.info("=" * 80)
+        logger.info("=== 분석 완료! 응답 반환 ===")
+        logger.info("=" * 80)
+        return response
+
     except Exception as e:
-        logger.error(f"저장 중 오류 발생: {e}")
-        raise HTTPException(status_code=500, detail=f"저장 실패: {str(e)}")
+        logger.error("=" * 80)
+        logger.error(f"!!! 분석 중 오류 발생 !!!")
+        logger.error(f"에러 타입: {type(e).__name__}")
+        logger.error(f"에러 메시지: {str(e)}")
+        logger.error("=" * 80)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
+
+
+@app.post("/generate-metadata", response_model=SaveResponse)
+async def generate_metadata(request: SaveRequest):
+    """
+    메타데이터 생성 엔드포인트 (4번 생성)
+    
+    Input: assessment_json (3번 - topology_graph.json 문자열)
+    Output: metadata + document + embedding (4번)
+    """
+    try:
+        # 1. assessmentJson 파싱
+        topology_data = json.loads(request.assessment_json)
+        
+        # 2. RAG LLM 분석 실행
+        logger.info("RAG LLM 분석 시작...")
+        llm_analysis = run_rag_analysis(topology_data)
+        
+        # 3. 13개 지표 추출
+        metrics = extract_metrics_from_analysis(llm_analysis)
+        
+        # 4. document 생성
+        document = llm_analysis.to_natural_language()
+        
+        # 5. 임베딩 생성
+        logger.info("임베딩 생성 중...")
+        embedding_vector = generate_embedding(document)
+        
+        # 6. 응답 생성 (Spring Boot 형식)
+        logger.info("메타데이터 생성 완료!")
+        
+        return SaveResponse(
+            document_id=f"floorplan_{hash(document) % 1000000}",
+            metadata=metrics,
+            document=document,
+            embedding=embedding_vector  # 전체 벡터 전송
+        )
+
+    except Exception as e:
+        logger.error(f"메타데이터 생성 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"메타데이터 생성 실패: {str(e)}")
 
 
 @app.get("/health")

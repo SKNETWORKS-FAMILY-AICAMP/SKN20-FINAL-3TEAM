@@ -37,7 +37,10 @@ public class SecurityConfig {
 
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-				.authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+				.authorizeHttpRequests(auth -> auth
+						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/floorplan/analyze").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/floorplan/save").permitAll()
 						.requestMatchers("/api/auth/**", "/api/chatbot/**", "/api/floorplan/**").permitAll()
 						.anyRequest().authenticated())
 
