@@ -13,10 +13,11 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # 로컬 모듈 import
-from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse
+from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse, ChatRequest, ChatResponse
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
+from services.chatbot_service import chatbot_service
 from api_utils.image_utils import image_to_base64
 
 # 로깅 설정
@@ -224,6 +225,49 @@ async def generate_metadata(request: SaveRequest):
         raise HTTPException(status_code=500, detail=f"메타데이터 생성 실패: {str(e)}")
 
 
+@app.post("/ask", response_model=ChatResponse)
+async def ask_chatbot(request: ChatRequest):
+    """
+    챗봇 질의응답 엔드포인트
+    
+    Input: email, question
+    Output: summaryTitle, answer
+    """
+    logger.info("=" * 80)
+    logger.info("=== /ask 엔드포인트 호출됨 ===")
+    logger.info(f"Email: {request.email}")
+    logger.info(f"Question: {request.question}")
+    logger.info("=" * 80)
+    
+    try:
+        # 챗봇 서비스로 질문 처리
+        result = chatbot_service.ask(
+            email=request.email,
+            question=request.question
+        )
+        
+        response = ChatResponse(
+            summaryTitle=result["summaryTitle"],
+            answer=result["answer"]
+        )
+        
+        logger.info("=" * 80)
+        logger.info("=== 챗봇 응답 완료! ===")
+        logger.info("=" * 80)
+        
+        return response
+        
+    except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"!!! 챗봇 응답 생성 중 오류 !!!")
+        logger.error(f"에러 타입: {type(e).__name__}")
+        logger.error(f"에러 메시지: {str(e)}")
+        logger.error("=" * 80)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"챗봇 오류: {str(e)}")
+
+
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
@@ -231,7 +275,8 @@ def health_check():
         "status": "healthy",
         "cv_pipeline_loaded": cv_service.is_loaded(),
         "rag_loaded": rag_service.is_loaded(),
-        "embedding_loaded": embedding_service.is_loaded()
+        "embedding_loaded": embedding_service.is_loaded(),
+        "chatbot_loaded": chatbot_service.is_loaded()
     }
 
 
