@@ -9,7 +9,7 @@ import { convertCocoToFloorPlan } from './utils/cocoParser';
 import type { CocoData } from './utils/cocoParser';
 import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyParser';
 import type { TopologyData } from './utils/topologyParser';
-import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
+import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox, ComplianceData, LLMAnalysisData } from './types/floor-plan.types';
 import { uploadFloorPlan, saveFloorPlan } from './api/floor-plan.api';
 import JsonInspector from './components/JsonInspector';
 import styles from './FileUploadPage.module.css';
@@ -24,6 +24,8 @@ const FileUploadPage: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<FloorPlanUploadResponse | null>(null);
   const [jsonResult, setJsonResult] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
+  const [llmAnalysis, setLlmAnalysis] = useState<LLMAnalysisData | null>(null);
+  const [llmAnalysisJsonRaw, setLlmAnalysisJsonRaw] = useState<string>(''); // 저장용 원본 JSON 문자열
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
@@ -145,6 +147,8 @@ const FileUploadPage: React.FC = () => {
     setAnalysisStatus('analyzing');
     setJsonResult('');
     setAiSummary('');
+    setLlmAnalysis(null);
+    setLlmAnalysisJsonRaw('');
     setAnalysisResult(null);
     setHoveredItems([]);
     setTopologyGraphUrl(null);
@@ -198,11 +202,34 @@ const FileUploadPage: React.FC = () => {
           }
         }
 
-        // AI 평가가 있으면 설정
+        // LLM 분석 데이터 파싱 (llmAnalysisJson 필드에서)
+        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llm_analysis_json;
+        if (llmAnalysisJson) {
+          try {
+            // 원본 JSON 문자열 저장 (저장 API용)
+            const rawJsonStr = typeof llmAnalysisJson === 'string'
+              ? llmAnalysisJson
+              : JSON.stringify(llmAnalysisJson);
+            setLlmAnalysisJsonRaw(rawJsonStr);
+
+            const parsedLlmAnalysis = typeof llmAnalysisJson === 'string'
+              ? JSON.parse(llmAnalysisJson)
+              : llmAnalysisJson;
+            setLlmAnalysis(parsedLlmAnalysis as LLMAnalysisData);
+            // summary를 기본 AI 요약으로 설정
+            if (parsedLlmAnalysis.summary) {
+              setAiSummary(parsedLlmAnalysis.summary);
+            }
+          } catch (parseError) {
+            console.error('LLM 분석 데이터 파싱 실패:', parseError);
+          }
+        }
+
+        // AI 평가가 있으면 설정 (llmAnalysis가 없을 경우 폴백)
         const analysisDescription = apiResult.analysisDescription || apiResult.eval;
-        if (analysisDescription) {
+        if (!llmAnalysisJson && analysisDescription) {
           setAiSummary(analysisDescription);
-        } else {
+        } else if (!llmAnalysisJson && !analysisDescription) {
           setAiSummary(generateSummary(result));
         }
 
@@ -251,19 +278,20 @@ const FileUploadPage: React.FC = () => {
   };
 
   const handleSaveToDb = async () => {
-    if (!analysisResult) return;
+    if (!analysisResult || !selectedFile || !llmAnalysisJsonRaw) {
+      setToastMessage('저장에 필요한 데이터가 없습니다.');
+      return;
+    }
 
     setIsSaving(true);
     try {
-      // 백엔드에 저장 요청
-      const saveData = {
-        name: analysisResult.name,
-        imageUrl: imageUrl,
-        elementJson: analysisResult,
-        eval: aiSummary,
-        embedding: analysisResult.embedding || null,
-      };
-      await saveFloorPlan(saveData);
+      // FormData로 백엔드에 저장 요청
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('name', analysisResult.name || selectedFile.name);
+      formData.append('assessmentJson', llmAnalysisJsonRaw); // llm_analysis.json 원본
+
+      await saveFloorPlan(formData);
       setToastMessage('DB에 저장되었습니다');
     } catch (error) {
       console.error('저장 실패:', error);
@@ -280,6 +308,8 @@ const FileUploadPage: React.FC = () => {
     setAnalysisResult(null);
     setJsonResult('');
     setAiSummary('');
+    setLlmAnalysis(null);
+    setLlmAnalysisJsonRaw('');
     setHoveredItems([]);
     setTopologyGraphUrl(null);
   };
@@ -680,9 +710,81 @@ const FileUploadPage: React.FC = () => {
                 <RiRobot2Line size={18} style={{ color: '#10B981' }} />
                 <span className={styles.aiSummaryTitle} style={{ color: colors.textPrimary }}>AI 요약</span>
               </div>
-              <p className={styles.aiSummaryText} style={{ color: colors.textSecondary }}>
+
+              {/* 기본 요약 */}
+              <p className={styles.aiSummaryText} style={{ color: colors.textSecondary, marginBottom: '1rem' }}>
                 {aiSummary}
               </p>
+
+              {/* Compliance 상세 정보 */}
+              {llmAnalysis?.compliance && (
+                <div className={styles.complianceSection}>
+                  {/* 종합 등급 */}
+                  <div className={styles.complianceGrade}>
+                    <span className={styles.complianceGradeLabel}>종합 등급</span>
+                    <span
+                      className={styles.complianceGradeBadge}
+                      style={{
+                        backgroundColor: llmAnalysis.compliance.overall_grade === '불합격' ? '#FEE2E2' :
+                          llmAnalysis.compliance.overall_grade === '미흡' ? '#FEF3C7' :
+                          llmAnalysis.compliance.overall_grade === '보통' ? '#E0E7FF' :
+                          '#D1FAE5',
+                        color: llmAnalysis.compliance.overall_grade === '불합격' ? '#DC2626' :
+                          llmAnalysis.compliance.overall_grade === '미흡' ? '#D97706' :
+                          llmAnalysis.compliance.overall_grade === '보통' ? '#4F46E5' :
+                          '#059669',
+                      }}
+                    >
+                      {llmAnalysis.compliance.overall_grade}
+                    </span>
+                  </div>
+
+                  {/* 적합 항목 */}
+                  {llmAnalysis.compliance.compliant_items?.length > 0 && (
+                    <div className={styles.complianceItems}>
+                      <span className={styles.complianceItemsLabel}>적합 항목</span>
+                      <div className={styles.complianceItemsTags}>
+                        {llmAnalysis.compliance.compliant_items.map((item, idx) => (
+                          <span key={idx} className={styles.complianceTagPass}>
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 부적합 항목 */}
+                  {llmAnalysis.compliance.non_compliant_items?.length > 0 && (
+                    <div className={styles.nonCompliantSection}>
+                      <span className={styles.complianceItemsLabel}>부적합 항목</span>
+                      {llmAnalysis.compliance.non_compliant_items.map((item, idx) => (
+                        <div key={idx} className={styles.nonCompliantItem}>
+                          <div className={styles.nonCompliantHeader}>
+                            <span className={styles.nonCompliantCategory}>{item.category}</span>
+                            <span className={styles.nonCompliantTarget}>{item.item}</span>
+                          </div>
+                          <p className={styles.nonCompliantReason}>{item.reason}</p>
+                          <p className={styles.nonCompliantRecommendation}>
+                            <strong>권고:</strong> {item.recommendation}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 개선 제안 */}
+                  {llmAnalysis.recommendations?.length > 0 && (
+                    <div className={styles.recommendationsSection}>
+                      <span className={styles.complianceItemsLabel}>개선 제안</span>
+                      <ul className={styles.recommendationsList}>
+                        {llmAnalysis.recommendations.map((rec, idx) => (
+                          <li key={idx}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
