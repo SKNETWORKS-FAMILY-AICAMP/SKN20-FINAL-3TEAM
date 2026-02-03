@@ -29,31 +29,14 @@ class AnalysisResult(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     """도면 분석 응답 모델 - Spring Boot와 매핑"""
-    topology_json: str  # 1번: topology json string
-    topology_image_url: str  # 2번: base64 이미지
-    assessment_json: str  # 3번: topology_graph.json 전체
-    
-    # 13개 분석 지표 (flat 구조)
-    windowless_ratio: float
-    has_special_space: bool
-    bay_count: int
-    balcony_ratio: float
-    living_room_ratio: float
-    bathroom_ratio: float
-    kitchen_ratio: float
-    room_count: int
-    compliance_grade: str
-    ventilation_quality: str
-    has_etc_space: bool
-    structure_type: str
-    bathroom_count: int
-    analysis_description: str  # LLM 분석 결과 문서
-    embedding: list[float]  # 임베딩 벡터 (1536차원)
+    topology_json: str  # 1번: topology_graph.json (문자열)
+    topology_image_url: str  # 2번: topology 시각화 (base64 이미지)
+    llm_analysis_json: str  # 3번: llm_analysis.json (FloorPlanAnalysis 전체)
 
 
 class SaveRequest(BaseModel):
-    """저장 요청 모델 - Spring Boot에서 assessmentJson (3번) 전송"""
-    assessment_json: str  # topology_graph.json 문자열
+    """저장 요청 모델 - Spring Boot에서 llm_analysis_json (3번) 전송"""
+    llm_analysis_json: str  # llm_analysis.json 문자열 (FloorPlanAnalysis)
 
 
 class SaveResponse(BaseModel):
