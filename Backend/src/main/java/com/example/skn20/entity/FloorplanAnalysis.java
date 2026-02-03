@@ -66,7 +66,7 @@ public class FloorplanAnalysis {
     private String analysisDescription;
     
     // 임베딩 값 (VECTOR 자료형) - PostgreSQL pgvector 사용
-    // 1536은 OpenAI embedding-3-small 모델 기준
-    @Column(name = "embedding", columnDefinition = "vector(1536)")
+    // 512는 text-embedding-3-small 모델 기준 (Python RAG 시스템과 일치)
+    @Column(name = "embedding", columnDefinition = "vector(512)")
     private double[] embedding;
 }
