@@ -113,6 +113,7 @@ export interface FloorPlanUploadResponse {
   // 백엔드 FloorplanPreviewResponse 필드 (Spring Boot)
   topologyJson?: string;              // topology.json 내용 (JSON 문자열)
   topologyImageUrl?: string;          // 위상 그래프 이미지 URL (data:image/png;base64,...)
+  llmAnalysisJson?: string;           // llm_analysis.json (FloorPlanAnalysis 전체, compliance 포함)
   analysisDescription?: string;       // 상세 분석 설명
   embedding?: number[];               // 임베딩 벡터 (1536차원)
 
@@ -169,4 +170,40 @@ export interface FloorPlanAnalysisResult {
   total_area: number;
   room_count: number;
   topology?: TopologyInfo;
+}
+
+// ============================================
+// Compliance (적합성 평가) Types
+// ============================================
+
+// 부적합 항목
+export interface NonCompliantItem {
+  category: string;      // 평가 카테고리 (채광/환기/가족융화/수납)
+  item: string;          // 부적합 항목 (예: 안방)
+  reason: string;        // 부적합 사유
+  recommendation: string; // 개선 권고사항
+}
+
+// 적합성 평가 데이터
+export interface ComplianceData {
+  overall_grade: string;              // 종합 등급 (최우수/우수/보통/미흡/불합격)
+  compliant_items: string[];          // 적합 항목 목록
+  non_compliant_items: NonCompliantItem[]; // 부적합 항목 목록
+  summary: string;                    // 적합성 평가 요약
+}
+
+// LLM 분석 결과 (llm_analysis.json)
+export interface LLMAnalysisData {
+  image_name: string;
+  structure_type: string;
+  bay_count: number;
+  total_spaces: number;
+  room_count: number;
+  bathroom_count: number;
+  balcony_ratio: number;
+  windowless_ratio: number;
+  ventilation_quality: string;
+  summary: string;
+  recommendations?: string[];
+  compliance?: ComplianceData;
 }
