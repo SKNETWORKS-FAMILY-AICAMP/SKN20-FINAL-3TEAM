@@ -1,6 +1,7 @@
 package com.example.skn20.entity;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -35,11 +36,15 @@ public class ChatHistory {
     @JsonBackReference
     private ChatRoom chatRoom;
     
+    // 1. TEXT 타입 지정 (긴 대화 대비)
+    @Column(columnDefinition = "TEXT") 
     private String question;
 
+    @Column(columnDefinition = "TEXT")
     private String answer;
 
-    @Column(name = "created_at", nullable = false)
+    // 2. LocalDateTime으로 변경 (정밀한 순서 정렬)
+    @Column(name = "created_at", nullable = false, updatable = false)
     @CreationTimestamp
-    private LocalDate createdAt; // 생성 일자
+    private LocalDateTime createdAt; 
 }
