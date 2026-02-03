@@ -18,12 +18,12 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ### 방법 1: Python으로 직접 실행
 ```bash
-python api_server.py
+python main.py
 ```
 
 ### 방법 2: Uvicorn으로 실행 (권장)
 ```bash
-uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 - `--reload`: 코드 변경 시 자동 재시작 (개발 환경용)

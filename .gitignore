@@ -47,6 +47,64 @@ CV/rag_data/chroma.sqlite3
 **/temp_output/**
 **/temp_input/**
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+
+# Output
+temp_output/
+temp_input/
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (optional - 용량 큰 모델 파일)
+CV/cv_inference/model/**/*.pt
+CV/cv_inference/model/**/*.pth
+
+# claude
+*.claude*/
+CLAUDE.md
 # 문서 및 프론트엔드 리소스
 docs/
 final-frontend-ts/public/annotations/

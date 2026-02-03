@@ -28,6 +28,7 @@ public class ChatRoom {
     @JoinColumn(name = "user_id", nullable = false)
     private User user; // 사용자 정보
     
+    @Column(columnDefinition = "TEXT")
     private String name; // 채팅방 요약된 제목
     
     @Column(name = "created_at", nullable = false)

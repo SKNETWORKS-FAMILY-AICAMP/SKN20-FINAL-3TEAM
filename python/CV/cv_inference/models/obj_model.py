@@ -3,6 +3,7 @@ OBJ 모델 래퍼 (YOLOv5 객체 인식)
 - 5개 클래스: 변기, 세면대, 싱크대, 욕조, 가스레인지
 """
 
+import sys
 import torch
 import cv2
 import numpy as np
@@ -22,8 +23,14 @@ class OBJModel(BaseModel):
 
     def load_model(self) -> None:
         """YOLOv5 모델 로드"""
+        # YOLOv5 경로를 sys.path에 추가
+        yolo_path_str = str(self.yolo_path.resolve())
+        if yolo_path_str not in sys.path:
+            sys.path.insert(0, yolo_path_str)
+        
+        # torch.hub.load 사용 (이제 models 폴더 충돌 해결됨)
         self.model = torch.hub.load(
-            str(self.yolo_path),
+            yolo_path_str,
             'custom',
             str(self.config.model_path),
             source='local',
