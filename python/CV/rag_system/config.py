@@ -7,8 +7,12 @@ class RAGConfig(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 512
 
-    # Vector DB (ChromaDB)
-    CHROMA_DB_PATH: str = "rag_data"
+    # PostgreSQL pgvector 설정
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "arae"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "1234"
 
     # LLM
     OPENAI_API_KEY: str
