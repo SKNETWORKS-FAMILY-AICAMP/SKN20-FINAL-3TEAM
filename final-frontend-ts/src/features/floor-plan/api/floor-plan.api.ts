@@ -35,11 +35,16 @@ export const uploadFloorPlan = async (
 // 2. 도면 분석 결과 저장
 // ============================================
 export const saveFloorPlan = async (
-  data: object
+  formData: FormData
 ): Promise<FloorPlanSaveResponse> => {
   const response = await apiClient.post<FloorPlanSaveResponse>(
     `${FLOORPLAN_BASE}/save`,
-    data
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
   );
   return response.data;
 };
