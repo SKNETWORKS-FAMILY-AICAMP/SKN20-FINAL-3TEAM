@@ -52,3 +52,9 @@ docs/
 final-frontend-ts/public/annotations/
 final-frontend-ts/public/floorplans/
 final-frontend-ts/public/result/
+
+# Vite 캐시
+**/.vite/
+
+# Claude Code
+.claude/
