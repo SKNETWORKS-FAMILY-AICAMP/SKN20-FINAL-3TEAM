@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/fi';
+import { FiMessageSquare, FiEdit, FiFolder, FiSave, FiX, FiZoomIn } from 'react-icons/fi';
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -27,6 +27,14 @@ const FileUploadPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
+
+  // 이미지 확대 모달 상태
+  const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
+  const [zoomModalTitle, setZoomModalTitle] = useState<string>('');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panPosition, setPanPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Hover 상태 (그룹화로 인해 배열로 변경)
   const [hoveredItems, setHoveredItems] = useState<HoverableItem[]>([]);
@@ -276,6 +284,52 @@ const FileUploadPage: React.FC = () => {
     setTopologyGraphUrl(null);
   };
 
+  // 이미지 확대 모달 열기
+  const openZoomModal = (imageSrc: string, title: string) => {
+    setZoomModalImage(imageSrc);
+    setZoomModalTitle(title);
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 이미지 확대 모달 닫기
+  const closeZoomModal = () => {
+    setZoomModalImage(null);
+    setZoomModalTitle('');
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 스크롤로 확대/축소
+  const handleZoomWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoomLevel((prev) => Math.min(Math.max(prev + delta, 0.5), 5));
+  };
+
+  // 드래그 시작
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+    }
+  };
+
+  // 드래그 중
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (isPanning && zoomLevel > 1) {
+      setPanPosition({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+    }
+  };
+
+  // 드래그 종료
+  const handlePanEnd = () => {
+    setIsPanning(false);
+  };
+
   const renderStatusBadge = () => {
     const statusConfig = {
       idle: { text: '대기중', bg: colors.border, color: colors.textSecondary },
@@ -367,6 +421,14 @@ const FileUploadPage: React.FC = () => {
                     alt="도면 미리보기"
                     className={styles.previewImage}
                   />
+                  {/* 확대 버튼 */}
+                  <button
+                    className={styles.zoomButton}
+                    onClick={() => openZoomModal(imageUrl, '도면 이미지')}
+                    title="확대해서 보기"
+                  >
+                    <FiZoomIn size={18} />
+                  </button>
                   {/* Segmentation Polygon 또는 Bbox Overlay (여러 개 동시 표시) */}
                   {hoveredItems.length > 0 && (
                     <>
@@ -513,11 +575,20 @@ const FileUploadPage: React.FC = () => {
               )}
               {analysisStatus === 'completed' && (
                 topologyGraphUrl ? (
-                  <img
-                    src={topologyGraphUrl}
-                    alt="공간 위상 그래프"
-                    className={styles.topologyGraphImage}
-                  />
+                  <div className={styles.graphImageWrapper}>
+                    <img
+                      src={topologyGraphUrl}
+                      alt="공간 위상 그래프"
+                      className={styles.topologyGraphImage}
+                    />
+                    <button
+                      className={styles.zoomButton}
+                      onClick={() => openZoomModal(topologyGraphUrl, '공간 위상 그래프')}
+                      title="확대해서 보기"
+                    >
+                      <FiZoomIn size={18} />
+                    </button>
+                  </div>
                 ) : (
                   <div style={{ textAlign: 'center' }}>
                     <div className={styles.statusIcon}><AiOutlineHome size={32} /></div>
@@ -634,6 +705,54 @@ const FileUploadPage: React.FC = () => {
       </div>
 
       {toastMessage && <div className={styles.toast}>{toastMessage}</div>}
+
+      {/* 이미지 확대 모달 */}
+      {zoomModalImage && (
+        <div className={styles.zoomModal} onClick={closeZoomModal}>
+          <div className={styles.zoomModalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.zoomModalHeader}>
+              <h3 className={styles.zoomModalTitle}>{zoomModalTitle}</h3>
+              <div className={styles.zoomControls}>
+                <span className={styles.zoomLevelText}>{Math.round(zoomLevel * 100)}%</span>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5))}
+                >
+                  -
+                </button>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.min(prev + 0.25, 5))}
+                >
+                  +
+                </button>
+              </div>
+              <button className={styles.zoomModalClose} onClick={closeZoomModal}>
+                <FiX size={24} />
+              </button>
+            </div>
+            <div
+              className={styles.zoomModalBody}
+              onWheel={handleZoomWheel}
+              onMouseDown={handlePanStart}
+              onMouseMove={handlePanMove}
+              onMouseUp={handlePanEnd}
+              onMouseLeave={handlePanEnd}
+              style={{ cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default' }}
+            >
+              <img
+                src={zoomModalImage}
+                alt={zoomModalTitle}
+                className={styles.zoomModalImage}
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                }}
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
