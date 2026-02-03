@@ -20,7 +20,10 @@ public class PythonAnalysisResponse {
     private String topologyImageUrl;
     
     @JsonProperty("assessment_json")
-    private String assessmentJson;  // 3번: topology_graph.json 전체
+    private String assessmentJson;  // 레거시 (사용 안함)
+
+    @JsonProperty("llm_analysis_json")
+    private String llmAnalysisJson;  // 3번: llm_analysis.json (FloorPlanAnalysis 전체)
     
     // 분석 결과 데이터
     @JsonProperty("windowless_ratio")
