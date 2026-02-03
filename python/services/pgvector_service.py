@@ -57,8 +57,8 @@ class PgVectorService:
                 cur.execute("""
                     SELECT
                         id,
+                        keywords,
                         document,
-                        metadata,
                         embedding <=> %s::vector AS distance
                     FROM internal_eval
                     ORDER BY embedding <=> %s::vector
@@ -72,7 +72,7 @@ class PgVectorService:
                     results.append({
                         'id': str(row['id']),
                         'document': row['document'],
-                        'metadata': row['metadata'] if row['metadata'] else {},
+                        'metadata': {'keywords': row['keywords']} if row['keywords'] else {},
                         'distance': float(row['distance'])
                     })
 
