@@ -223,7 +223,7 @@ const ChatPage: React.FC = () => {
 
     // 사용자 메시지 즉시 표시
     const userMessage: ChatMessageType = {
-      id: `temp-${Date.now()}`,
+      id: `temp-user-${Date.now()}`,
       role: 'user',
       content: question,
       timestamp: new Date(),
@@ -238,7 +238,9 @@ const ChatPage: React.FC = () => {
       });
 
       // 새 채팅방이면 세션 목록에 추가하고 현재 방 ID 설정
-      if (currentRoomId === null) {
+      const isNewRoom = currentRoomId === null;
+      
+      if (isNewRoom) {
         const newSession: ChatSession = {
           id: String(response.chatRoomId),
           title: question.slice(0, 30),
@@ -249,14 +251,23 @@ const ChatPage: React.FC = () => {
         setCurrentRoomId(response.chatRoomId);
       }
 
-      // AI 응답 표시
+      // AI 응답 즉시 표시
       const aiMessage: ChatMessageType = {
-        id: `ai-${Date.now()}`,
+        id: `temp-ai-${Date.now()}`,
         role: 'assistant',
         content: response.answer,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+
+      // 백엔드와 동기화를 위해 채팅 기록 다시 로드
+      // 새 채팅방인 경우 useEffect가 자동으로 로드하므로 기존 방만 처리
+      if (!isNewRoom && currentRoomId !== null) {
+        // 약간의 지연 후 로드 (DB 저장 시간 고려)
+        setTimeout(() => {
+          loadChatHistory(currentRoomId);
+        }, 300);
+      }
 
     } catch (error) {
       console.error('메시지 전송 실패:', error);
