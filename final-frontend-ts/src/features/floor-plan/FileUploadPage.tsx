@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/fi';
+import { FiMessageSquare, FiEdit, FiFolder, FiSave, FiX, FiZoomIn } from 'react-icons/fi';
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
 import { useTheme } from '@/shared/contexts/ThemeContext';
-import { mockFloorPlanResult } from './data/mockData';
 import { convertCocoToFloorPlan } from './utils/cocoParser';
 import type { CocoData } from './utils/cocoParser';
 import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyParser';
@@ -28,6 +27,14 @@ const FileUploadPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
+
+  // 이미지 확대 모달 상태
+  const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
+  const [zoomModalTitle, setZoomModalTitle] = useState<string>('');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panPosition, setPanPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Hover 상태 (그룹화로 인해 배열로 변경)
   const [hoveredItems, setHoveredItems] = useState<HoverableItem[]>([]);
@@ -224,58 +231,10 @@ const FileUploadPage: React.FC = () => {
       setToastMessage('도면 분석이 완료되었습니다.');
 
     } catch (apiError) {
-      console.warn('API 호출 실패, 로컬 파일 fallback 시도:', apiError);
-
-      // 2. API 실패 시 로컬 파일 fallback (개발용)
-      try {
-        const baseName = file.name.replace(/\.(png|jpg|jpeg)$/i, '');
-        const baseId = baseName.replace(/(_OBJ|_topology|_SPA|_STR|_OCR)$/i, '');
-        const jsonPath = `/annotations/${baseId}_topology.json`;
-        const graphPath = `/result/${baseId}_topology.png`;
-
-        const response = await fetch(jsonPath);
-
-        if (response.ok) {
-          const jsonData = await response.json();
-          let result: FloorPlanUploadResponse;
-
-          if (isTopologyFormat(jsonData)) {
-            result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
-          } else {
-            result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
-          }
-
-          setAnalysisResult(result);
-          setAnalysisStatus('completed');
-          setJsonResult(JSON.stringify(result, null, 2));
-          setAiSummary(generateSummary(result));
-
-          // 그래프 이미지 로드 시도
-          try {
-            const graphResponse = await fetch(graphPath);
-            if (graphResponse.ok) {
-              setTopologyGraphUrl(graphPath);
-            }
-          } catch {
-            setTopologyGraphUrl(null);
-          }
-
-          setToastMessage('로컬 JSON 파일에서 로드했습니다. (API 연결 안됨)');
-        } else {
-          // Mock 데이터 사용
-          const result = mockFloorPlanResult;
-          setAnalysisResult(result);
-          setAnalysisStatus('completed');
-          setJsonResult(JSON.stringify(result, null, 2));
-          setAiSummary(generateSummary(result));
-          setToastMessage('Mock 데이터 사용 중. (서버 연결 확인 필요)');
-        }
-      } catch (fallbackError) {
-        console.error('Fallback도 실패:', fallbackError);
-        setAnalysisStatus('error');
-        setJsonResult('');
-        setToastMessage('도면 분석에 실패했습니다. 서버 연결을 확인하세요.');
-      }
+      console.error('API 호출 실패:', apiError);
+      setAnalysisStatus('error');
+      setJsonResult('');
+      setToastMessage('도면 분석에 실패했습니다. 서버 연결을 확인하세요.');
     }
   };
 
@@ -325,6 +284,52 @@ const FileUploadPage: React.FC = () => {
     setTopologyGraphUrl(null);
   };
 
+  // 이미지 확대 모달 열기
+  const openZoomModal = (imageSrc: string, title: string) => {
+    setZoomModalImage(imageSrc);
+    setZoomModalTitle(title);
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 이미지 확대 모달 닫기
+  const closeZoomModal = () => {
+    setZoomModalImage(null);
+    setZoomModalTitle('');
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 스크롤로 확대/축소
+  const handleZoomWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoomLevel((prev) => Math.min(Math.max(prev + delta, 0.5), 5));
+  };
+
+  // 드래그 시작
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+    }
+  };
+
+  // 드래그 중
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (isPanning && zoomLevel > 1) {
+      setPanPosition({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+    }
+  };
+
+  // 드래그 종료
+  const handlePanEnd = () => {
+    setIsPanning(false);
+  };
+
   const renderStatusBadge = () => {
     const statusConfig = {
       idle: { text: '대기중', bg: colors.border, color: colors.textSecondary },
@@ -352,170 +357,6 @@ const FileUploadPage: React.FC = () => {
       width: (x2 - x1) * imageScale.scaleX,
       height: (y2 - y1) * imageScale.scaleY,
     };
-  };
-
-  // ============================================
-  // JSON 코드에서 hover 가능한 HTML 생성
-  // ============================================
-  const renderHoverableJson = () => {
-    if (!analysisResult || !jsonResult) return jsonResult;
-
-    // 각 객체 타입별로 hover 영역 생성
-    const items: { type: 'room' | 'structure' | 'object'; item: any; startIdx: number; endIdx: number }[] = [];
-
-    // rooms 찾기
-    analysisResult.rooms.forEach((room) => {
-      const searchStr = `"id": ${room.id},`;
-      const idx = jsonResult.indexOf(searchStr);
-      if (idx !== -1) {
-        // 해당 객체의 시작 { 찾기
-        let braceCount = 0;
-        let startIdx = idx;
-        for (let i = idx; i >= 0; i--) {
-          if (jsonResult[i] === '}') braceCount++;
-          if (jsonResult[i] === '{') {
-            if (braceCount === 0) {
-              startIdx = i;
-              break;
-            }
-            braceCount--;
-          }
-        }
-        // 해당 객체의 끝 } 찾기
-        braceCount = 0;
-        let endIdx = idx;
-        for (let i = startIdx; i < jsonResult.length; i++) {
-          if (jsonResult[i] === '{') braceCount++;
-          if (jsonResult[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-              endIdx = i + 1;
-              break;
-            }
-          }
-        }
-        items.push({ type: 'room', item: room, startIdx, endIdx });
-      }
-    });
-
-    // structures 찾기
-    (analysisResult.structures || []).forEach((str) => {
-      const searchStr = `"id": ${str.id},`;
-      const structuresIdx = jsonResult.indexOf('"structures"');
-      const idx = jsonResult.indexOf(searchStr, structuresIdx);
-      if (idx !== -1 && structuresIdx !== -1) {
-        let braceCount = 0;
-        let startIdx = idx;
-        for (let i = idx; i >= 0; i--) {
-          if (jsonResult[i] === '}') braceCount++;
-          if (jsonResult[i] === '{') {
-            if (braceCount === 0) {
-              startIdx = i;
-              break;
-            }
-            braceCount--;
-          }
-        }
-        braceCount = 0;
-        let endIdx = idx;
-        for (let i = startIdx; i < jsonResult.length; i++) {
-          if (jsonResult[i] === '{') braceCount++;
-          if (jsonResult[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-              endIdx = i + 1;
-              break;
-            }
-          }
-        }
-        items.push({ type: 'structure', item: str, startIdx, endIdx });
-      }
-    });
-
-    // objects 찾기
-    (analysisResult.objects || []).forEach((obj) => {
-      const searchStr = `"id": ${obj.id},`;
-      const objectsIdx = jsonResult.indexOf('"objects"');
-      const idx = jsonResult.indexOf(searchStr, objectsIdx);
-      if (idx !== -1 && objectsIdx !== -1) {
-        let braceCount = 0;
-        let startIdx = idx;
-        for (let i = idx; i >= 0; i--) {
-          if (jsonResult[i] === '}') braceCount++;
-          if (jsonResult[i] === '{') {
-            if (braceCount === 0) {
-              startIdx = i;
-              break;
-            }
-            braceCount--;
-          }
-        }
-        braceCount = 0;
-        let endIdx = idx;
-        for (let i = startIdx; i < jsonResult.length; i++) {
-          if (jsonResult[i] === '{') braceCount++;
-          if (jsonResult[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-              endIdx = i + 1;
-              break;
-            }
-          }
-        }
-        items.push({ type: 'object', item: obj, startIdx, endIdx });
-      }
-    });
-
-    // 정렬
-    items.sort((a, b) => a.startIdx - b.startIdx);
-
-    // HTML 생성
-    const parts: React.ReactNode[] = [];
-    let lastIdx = 0;
-
-    items.forEach((entry, i) => {
-      // 이전 텍스트
-      if (entry.startIdx > lastIdx) {
-        parts.push(
-          <span key={`text-${i}`}>{jsonResult.slice(lastIdx, entry.startIdx)}</span>
-        );
-      }
-
-      const hoverItem: HoverableItem = {
-        id: entry.item.id,
-        type: entry.type,
-        name: entry.type === 'room' ? (entry.item.spcname || entry.item.ocrname) : entry.item.name,
-        bbox: typeof entry.item.bbox === 'string' ? JSON.parse(entry.item.bbox) : entry.item.bbox,
-        segmentation: entry.item.segmentation ? JSON.parse(entry.item.segmentation) : undefined,
-      };
-
-      const isHovered = hoveredItem?.id === hoverItem.id && hoveredItem?.type === hoverItem.type;
-      const colorMap = { room: '#3B82F6', structure: '#F97316', object: '#22C55E' };
-
-      parts.push(
-        <span
-          key={`item-${entry.type}-${entry.item.id}`}
-          className={styles.hoverableJsonItem}
-          style={{
-            backgroundColor: isHovered ? `${colorMap[entry.type]}20` : 'transparent',
-            borderLeft: isHovered ? `3px solid ${colorMap[entry.type]}` : '3px solid transparent',
-          }}
-          onMouseEnter={() => setHoveredItem(hoverItem)}
-          onMouseLeave={() => setHoveredItem(null)}
-        >
-          {jsonResult.slice(entry.startIdx, entry.endIdx)}
-        </span>
-      );
-
-      lastIdx = entry.endIdx;
-    });
-
-    // 남은 텍스트
-    if (lastIdx < jsonResult.length) {
-      parts.push(<span key="text-end">{jsonResult.slice(lastIdx)}</span>);
-    }
-
-    return parts;
   };
 
   // Overlay 색상
@@ -580,6 +421,14 @@ const FileUploadPage: React.FC = () => {
                     alt="도면 미리보기"
                     className={styles.previewImage}
                   />
+                  {/* 확대 버튼 */}
+                  <button
+                    className={styles.zoomButton}
+                    onClick={() => openZoomModal(imageUrl, '도면 이미지')}
+                    title="확대해서 보기"
+                  >
+                    <FiZoomIn size={18} />
+                  </button>
                   {/* Segmentation Polygon 또는 Bbox Overlay (여러 개 동시 표시) */}
                   {hoveredItems.length > 0 && (
                     <>
@@ -726,11 +575,20 @@ const FileUploadPage: React.FC = () => {
               )}
               {analysisStatus === 'completed' && (
                 topologyGraphUrl ? (
-                  <img
-                    src={topologyGraphUrl}
-                    alt="공간 위상 그래프"
-                    className={styles.topologyGraphImage}
-                  />
+                  <div className={styles.graphImageWrapper}>
+                    <img
+                      src={topologyGraphUrl}
+                      alt="공간 위상 그래프"
+                      className={styles.topologyGraphImage}
+                    />
+                    <button
+                      className={styles.zoomButton}
+                      onClick={() => openZoomModal(topologyGraphUrl, '공간 위상 그래프')}
+                      title="확대해서 보기"
+                    >
+                      <FiZoomIn size={18} />
+                    </button>
+                  </div>
                 ) : (
                   <div style={{ textAlign: 'center' }}>
                     <div className={styles.statusIcon}><AiOutlineHome size={32} /></div>
@@ -757,10 +615,6 @@ const FileUploadPage: React.FC = () => {
               <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
                 <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>총 공간</p>
                 <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.roomCount}개</p>
-              </div>
-              <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
-                <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>총 면적</p>
-                <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.totalArea}㎡</p>
               </div>
               <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
                 <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>구조물/객체</p>
@@ -851,6 +705,54 @@ const FileUploadPage: React.FC = () => {
       </div>
 
       {toastMessage && <div className={styles.toast}>{toastMessage}</div>}
+
+      {/* 이미지 확대 모달 */}
+      {zoomModalImage && (
+        <div className={styles.zoomModal} onClick={closeZoomModal}>
+          <div className={styles.zoomModalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.zoomModalHeader}>
+              <h3 className={styles.zoomModalTitle}>{zoomModalTitle}</h3>
+              <div className={styles.zoomControls}>
+                <span className={styles.zoomLevelText}>{Math.round(zoomLevel * 100)}%</span>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5))}
+                >
+                  -
+                </button>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.min(prev + 0.25, 5))}
+                >
+                  +
+                </button>
+              </div>
+              <button className={styles.zoomModalClose} onClick={closeZoomModal}>
+                <FiX size={24} />
+              </button>
+            </div>
+            <div
+              className={styles.zoomModalBody}
+              onWheel={handleZoomWheel}
+              onMouseDown={handlePanStart}
+              onMouseMove={handlePanMove}
+              onMouseUp={handlePanEnd}
+              onMouseLeave={handlePanEnd}
+              style={{ cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default' }}
+            >
+              <img
+                src={zoomModalImage}
+                alt={zoomModalTitle}
+                className={styles.zoomModalImage}
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                }}
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
