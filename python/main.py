@@ -104,46 +104,44 @@ async def analyze_floorplan(file: UploadFile = File(...)):
         llm_analysis = rag_service.analyze_topology(topology_data)
         logger.info("RAG LLM 분석 완료!")
 
-        # 6. 13개 지표 추출
-        logger.info("Step 6: 메트릭 추출...")
-        metrics = rag_service.extract_metrics(llm_analysis)
-
-        # 7. to_natural_language()로 document 생성
-        logger.info("Step 7: Document 생성...")
-        document = llm_analysis.to_natural_language()
-
-        # 8. 임베딩 생성
-        logger.info("Step 8: 임베딩 생성...")
-        embedding = embedding_service.generate_embedding(document)
-
-        # 9. 응답 생성 (Spring Boot 형식에 맞춤)
-        logger.info("Step 9: 응답 생성...")
+        # 6. 응답 생성 (Spring Boot 형식에 맞춤)
+        logger.info("Step 6: 응답 생성...")
+        llm_analysis_dict = llm_analysis.model_dump() if hasattr(llm_analysis, 'model_dump') else llm_analysis.dict()
         response = AnalyzeResponse(
-            topology_json=json.dumps(topology_data, ensure_ascii=False),  # 1번
-            topology_image_url=topology_image_base64,  # 2번
-            assessment_json=json.dumps(topology_data, ensure_ascii=False),  # 3번
-            **metrics,  # 13개 지표
-            analysis_description=document,
-            embedding=embedding
+            topology_json=json.dumps(topology_data, ensure_ascii=False),  # 1번: topology_graph.json
+            topology_image_url=topology_image_base64,  # 2번: topology 시각화 이미지
+            llm_analysis_json=json.dumps(llm_analysis_dict, ensure_ascii=False)  # 3번: llm_analysis.json
         )
 
-        # 10. analysis_result.json 저장
-        logger.info("Step 10: analysis_result.json 저장 시작...")
+        # 7. analysis_result.json 및 llm_analysis.json 저장
+        logger.info("Step 7: JSON 파일 저장 시작...")
         try:
             output_dir = cv_service.pipeline.config.OUTPUT_PATH / Path(file.filename).stem
             output_dir.mkdir(parents=True, exist_ok=True)
+
+            # 7-1. analysis_result.json 저장
             analysis_result_path = output_dir / "analysis_result.json"
             logger.info(f"저장 경로: {analysis_result_path}")
-            
+
             # Pydantic v1/v2 호환성 처리
             response_dict = response.model_dump() if hasattr(response, 'model_dump') else response.dict()
-            
+
             with open(analysis_result_path, "w", encoding="utf-8") as f:
                 json.dump(response_dict, f, ensure_ascii=False, indent=2)
-            
+
             logger.info(f"✓ analysis_result.json 저장 완료! ({analysis_result_path.stat().st_size} bytes)")
+
+            # 7-2. llm_analysis.json 저장 (FloorPlanAnalysis 전체 구조)
+            llm_analysis_path = output_dir / "llm_analysis.json"
+            llm_analysis_dict = llm_analysis.model_dump() if hasattr(llm_analysis, 'model_dump') else llm_analysis.dict()
+
+            with open(llm_analysis_path, "w", encoding="utf-8") as f:
+                json.dump(llm_analysis_dict, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"✓ llm_analysis.json 저장 완료! ({llm_analysis_path.stat().st_size} bytes)")
+
         except Exception as save_error:
-            logger.error(f"✗ analysis_result.json 저장 실패: {save_error}")
+            logger.error(f"✗ JSON 파일 저장 실패: {save_error}")
             logger.error(f"에러 타입: {type(save_error).__name__}")
             import traceback
             traceback.print_exc()
@@ -167,51 +165,48 @@ async def analyze_floorplan(file: UploadFile = File(...)):
 @app.post("/generate-metadata", response_model=SaveResponse)
 async def generate_metadata(request: SaveRequest):
     """
-    메타데이터 생성 엔드포인트 (4번 생성)
-    
-    Input: assessment_json (3번 - topology_graph.json 문자열)
-    Output: metadata + document + embedding (4번)
+    메타데이터 생성 엔드포인트
+
+    Input: llm_analysis_json (FloorPlanAnalysis JSON 문자열)
+    Output: metadata + document + embedding
     """
     logger.info("=" * 80)
     logger.info("=== /generate-metadata 엔드포인트 호출됨 ===")
     logger.info("=" * 80)
-    
+
     try:
-        # 1. assessmentJson 파싱
-        logger.info("Step 1: assessment_json 파싱...")
-        topology_data = json.loads(request.assessment_json)
-        
-        # 2. RAG LLM 분석 실행
-        logger.info("Step 2: RAG LLM 분석 시작...")
-        llm_analysis = rag_service.analyze_topology(topology_data)
-        logger.info("RAG LLM 분석 완료!")
-        
-        # 3. 13개 지표 추출
-        logger.info("Step 3: 메트릭 추출...")
+        # 1. llm_analysis_json 파싱 → FloorPlanAnalysis 객체로 변환
+        logger.info("Step 1: llm_analysis_json 파싱...")
+        from CV.rag_system.schemas import FloorPlanAnalysis
+        llm_analysis_dict = json.loads(request.llm_analysis_json)
+        llm_analysis = FloorPlanAnalysis(**llm_analysis_dict)
+        logger.info("FloorPlanAnalysis 파싱 완료!")
+
+        # 2. 13개 지표 추출
+        logger.info("Step 2: 메트릭 추출...")
         metrics = rag_service.extract_metrics(llm_analysis)
-        
-        # 4. document 생성
-        logger.info("Step 4: Document 생성...")
+
+        # 3. document 생성 (to_natural_language)
+        logger.info("Step 3: Document 생성...")
         document = llm_analysis.to_natural_language()
-        
-        # 5. 임베딩 생성
-        logger.info("Step 5: 임베딩 생성 중...")
+
+        # 4. 임베딩 생성
+        logger.info("Step 4: 임베딩 생성 중...")
         embedding_vector = embedding_service.generate_embedding(document)
-        
-        # 6. 응답 생성 (Spring Boot 형식)
-        logger.info("Step 6: 메타데이터 생성 완료!")
-        
+
+        # 5. 응답 생성 (Spring Boot로 반환)
+        logger.info("Step 5: 응답 생성...")
         response = SaveResponse(
             document_id=f"floorplan_{hash(document) % 1000000}",
             metadata=metrics,
             document=document,
-            embedding=embedding_vector  # 전체 벡터 전송
+            embedding=embedding_vector
         )
-        
+
         logger.info("=" * 80)
         logger.info("=== 메타데이터 생성 완료! ===")
         logger.info("=" * 80)
-        
+
         return response
 
     except Exception as e:
