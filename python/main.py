@@ -112,36 +112,20 @@ async def analyze_floorplan(file: UploadFile = File(...)):
             llm_analysis_json=json.dumps(llm_analysis_dict, ensure_ascii=False)  # 3번: llm_analysis.json
         )
 
-        # 7. analysis_result.json 및 llm_analysis.json 저장
-        logger.info("Step 7: JSON 파일 저장 시작...")
+        # 7. llm_analysis.json 저장
+        logger.info("Step 7: llm_analysis.json 저장...")
         try:
             output_dir = cv_service.pipeline.config.OUTPUT_PATH / Path(file.filename).stem
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 7-1. analysis_result.json 저장
-            analysis_result_path = output_dir / "analysis_result.json"
-            logger.info(f"저장 경로: {analysis_result_path}")
-
-            # Pydantic v1/v2 호환성 처리
-            response_dict = response.model_dump() if hasattr(response, 'model_dump') else response.dict()
-
-            with open(analysis_result_path, "w", encoding="utf-8") as f:
-                json.dump(response_dict, f, ensure_ascii=False, indent=2)
-
-            logger.info(f"✓ analysis_result.json 저장 완료! ({analysis_result_path.stat().st_size} bytes)")
-
-            # 7-2. llm_analysis.json 저장 (FloorPlanAnalysis 전체 구조)
             llm_analysis_path = output_dir / "llm_analysis.json"
-            llm_analysis_dict = llm_analysis.model_dump() if hasattr(llm_analysis, 'model_dump') else llm_analysis.dict()
-
             with open(llm_analysis_path, "w", encoding="utf-8") as f:
                 json.dump(llm_analysis_dict, f, ensure_ascii=False, indent=2)
 
             logger.info(f"✓ llm_analysis.json 저장 완료! ({llm_analysis_path.stat().st_size} bytes)")
 
         except Exception as save_error:
-            logger.error(f"✗ JSON 파일 저장 실패: {save_error}")
-            logger.error(f"에러 타입: {type(save_error).__name__}")
+            logger.error(f"✗ llm_analysis.json 저장 실패: {save_error}")
             import traceback
             traceback.print_exc()
 
