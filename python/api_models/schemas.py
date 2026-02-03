@@ -62,3 +62,15 @@ class SaveResponse(BaseModel):
     metadata: Dict[str, Any]  # 13개 지표
     document: str  # 분석 설명
     embedding: list[float]  # 전체 임베딩 벡터 (1536차원)
+
+
+class ChatRequest(BaseModel):
+    """챗봇 요청 모델"""
+    email: str
+    question: str
+
+
+class ChatResponse(BaseModel):
+    """챗봇 응답 모델"""
+    summaryTitle: str
+    answer: str

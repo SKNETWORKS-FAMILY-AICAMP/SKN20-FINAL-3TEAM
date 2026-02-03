@@ -37,7 +37,8 @@ public class ChatbotService {
         try {
             // 1. 요청 데이터 구성
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("email", user.getEmail());
+            // user가 null이면 "anonymous" 사용
+            requestMap.put("email", user != null ? user.getEmail() : "anonymous");
             requestMap.put("question", question);
 
             // 2. 헤더 설정
