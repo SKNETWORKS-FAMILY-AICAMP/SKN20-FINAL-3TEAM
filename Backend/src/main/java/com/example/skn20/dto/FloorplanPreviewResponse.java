@@ -18,7 +18,8 @@ public class FloorplanPreviewResponse {
     // 기본 정보
     private String topologyJson;          // 1번: topology.json 내용
     private String topologyImageUrl;      // 2번: 위상 그래프 이미지 URL
-    private String assessmentJson;        // 3번: 요약, 평가 json (topology_graph.json 전체)
+    private String assessmentJson;        // 레거시 (호환성 유지)
+    private String llmAnalysisJson;       // 3번: llm_analysis.json (FloorPlanAnalysis 전체, compliance 포함)
     
     // 분석 결과 데이터 (프론트 표시용)
     private Double windowlessRatio;       // 무창실 비율
