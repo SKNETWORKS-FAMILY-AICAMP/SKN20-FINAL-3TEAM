@@ -77,7 +77,7 @@ public class ChatbotController {
 		User userinfo = userservice.findByEmail(user.getEmail());
         Map<String, String> result = chatbotService.question2answer(userinfo, question);
         String answer =  result.get("answer");
-        
+        System.out.println(answer);
         if (chatRoomId == null) {
         	// 새 채팅방 생성
         	ChatRoom chatRoom = new ChatRoom();
