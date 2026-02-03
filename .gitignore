@@ -105,3 +105,14 @@ CV/cv_inference/model/**/*.pth
 # claude
 *.claude*/
 CLAUDE.md
+# 문서 및 프론트엔드 리소스
+docs/
+final-frontend-ts/public/annotations/
+final-frontend-ts/public/floorplans/
+final-frontend-ts/public/result/
+
+# Vite 캐시
+**/.vite/
+
+# Claude Code
+.claude/
