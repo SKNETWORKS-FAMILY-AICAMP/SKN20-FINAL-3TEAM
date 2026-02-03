@@ -23,7 +23,7 @@ import java.util.List;
  * 중복 방지: 이미 데이터가 있으면 스킵
  */
 @Slf4j
-@Component
+//@Component
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
