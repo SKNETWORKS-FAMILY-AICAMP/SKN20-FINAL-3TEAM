@@ -61,30 +61,46 @@ public class ChatbotController {
 //	해당 유저의 정보의 질문을 받고 LLM에 보낸뒤 값을 반환해줍니다.
 	@PostMapping("/chat")
 	@Transactional
-	public ResponseEntity<String> question2answer(@AuthenticationPrincipal UD user, @RequestParam(required = false) Long chatRoomId, @RequestParam String question) {
+	public ResponseEntity<String> question2answer(
+			@AuthenticationPrincipal UD user, 
+			@RequestParam(required = false) Long chatRoomId, 
+			@RequestParam String question) {
+		
+		// 인증되지 않은 사용자의 경우 임시 처리
+		if (user == null) {
+			// 인증 없이 챗봇만 사용 (저장은 하지 않음)
+			Map<String, String> result = chatbotService.question2answer(null, question);
+			String answer = result.get("answer");
+			return ResponseEntity.ok(answer);
+		}
+		
 		User userinfo = userservice.findByEmail(user.getEmail());
         Map<String, String> result = chatbotService.question2answer(userinfo, question);
         String answer =  result.get("answer");
-        
+        System.out.println(answer);
         if (chatRoomId == null) {
+        	// 새 채팅방 생성
         	ChatRoom chatRoom = new ChatRoom();
         	chatRoom.setName(result.get("summaryTitle"));
         	chatRoom.setUser(userinfo);
+        	// ChatRoom을 먼저 저장
+        	chatRoomRep.save(chatRoom);
+        	
+        	// 그 다음 ChatHistory 저장
         	ChatHistory chatHistory = new ChatHistory();
         	chatHistory.setAnswer(answer);
         	chatHistory.setQuestion(question);
         	chatHistory.setChatRoom(chatRoom);
         	chatHistoryRep.save(chatHistory);
-        	chatRoomRep.save(chatRoom);
 		}
 		else {
+			// 기존 채팅방에 히스토리 추가
 			ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
         	ChatHistory chatHistory = new ChatHistory();
         	chatHistory.setAnswer(answer);
         	chatHistory.setQuestion(question);
         	chatHistory.setChatRoom(chatRoom);
         	chatHistoryRep.save(chatHistory);
-			
 		}
         return ResponseEntity.ok(answer);
 	}

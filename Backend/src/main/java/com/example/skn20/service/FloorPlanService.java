@@ -39,15 +39,7 @@ public class FloorPlanService {
 	 * 프론트에서 이미지를 받아 Python 서버로 전송하고, 1번, 2번, 3번을 프리뷰 형태로 즉시 반환
 	 */
 	public FloorplanPreviewResponse analyzeFloorplan(MultipartFile file) throws Exception {
-		System.out.println("========================================");
-		System.out.println("[FloorPlanService] 분석 시작");
-		System.out.println("파일명: " + file.getOriginalFilename());
-		System.out.println("파일 크기: " + file.getSize() + " bytes");
-		System.out.println("Python 서버 URL: " + pythonServerUrl);
-		
 		String analyzeUrl = pythonServerUrl + "/analyze";
-		System.out.println("요청 URL: " + analyzeUrl);
-
 		try {
 			// HTTP 헤더 설정
 			HttpHeaders headers = new HttpHeaders();
@@ -72,14 +64,10 @@ public class FloorPlanService {
 					requestEntity,
 					PythonAnalysisResponse.class
 			);
-
-			System.out.println("[FloorPlanService] Python 응답 수신 완료!");
-			System.out.println("응답 상태: " + response.getStatusCode());
 			
 			// Python 응답을 프리뷰 DTO로 변환
 			PythonAnalysisResponse pythonResponse = response.getBody();
 		if (pythonResponse == null) {
-			System.err.println("[ERROR] Python 응답이 null입니다!");
 			throw new RuntimeException("Python 서버로부터 응답을 받지 못했습니다.");
 		}
 
@@ -105,17 +93,10 @@ public class FloorPlanService {
 				.embedding(pythonResponse.getEmbedding())
 				.build();
 		
-		System.out.println("[FloorPlanService] 분석 완료!");
-		System.out.println("========================================");
 		return result;
 		
 		} catch (Exception e) {
-			System.err.println("========================================");
-			System.err.println("[ERROR] Python 서버 호출 실패!");
-			System.err.println("에러 타입: " + e.getClass().getName());
-			System.err.println("에러 메시지: " + e.getMessage());
 			e.printStackTrace();
-			System.err.println("========================================");
 			throw e;
 		}
 	}

@@ -26,18 +26,11 @@ public class FloorPlanController {
 	 */
 	@PostMapping("/analyze")
 	public ResponseEntity<?> analyzeFloorplan(@RequestParam("file") MultipartFile file) {
-		System.out.println("========================================");
-		System.out.println("[FloorPlanController] /analyze 요청 수신");
-		System.out.println("파일명: " + file.getOriginalFilename());
-		System.out.println("========================================");
-		
 		try {
 			// Python 서버 호출 및 분석 결과 반환 (DB 저장 없음)
 			FloorplanPreviewResponse preview = floorPlanService.analyzeFloorplan(file);
-			System.out.println("[FloorPlanController] 성공적으로 응답 반환");
 			return ResponseEntity.ok(preview);
 		} catch (Exception e) {
-			System.err.println("[FloorPlanController] 에러 발생: " + e.getMessage());
 			e.printStackTrace();
 			return ResponseEntity.status(500).body("분석 중 오류 발생: " + e.getMessage());
 		}
