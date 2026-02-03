@@ -14,7 +14,7 @@ from openai import OpenAI
 
 from CV.rag_system.config import RAGConfig
 from CV.rag_system.embeddings import EmbeddingManager
-from CV.rag_system.vector_store import VectorStore
+from services.pgvector_service import pgvector_service
 
 logger = logging.getLogger("ChatbotService")
 
@@ -34,7 +34,6 @@ class ChatbotService:
     def __init__(self):
         self.config: Optional[RAGConfig] = None
         self.embedding_manager: Optional[EmbeddingManager] = None
-        self.vector_store: Optional[VectorStore] = None
         self.openai_client: Optional[OpenAI] = None
         self.db_conn = None
     
@@ -51,7 +50,6 @@ class ChatbotService:
                 api_key=self.config.OPENAI_API_KEY,
                 model="text-embedding-3-small"
             )
-            self.vector_store = VectorStore(db_path="CV/rag_data")
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
             
             # PostgreSQL 연결
@@ -207,8 +205,8 @@ class ChatbotService:
             # 3. 질문 임베딩
             question_embedding = self.embedding_manager.embed_text(question)
             
-            # 3. RAG 검색 (유사한 평면도 분석 결과 검색)
-            rag_results = self.vector_store.search_evaluation(
+            # 3. RAG 검색 (pgvector 사용)
+            rag_results = pgvector_service.search_internal_eval(
                 query_embedding=question_embedding,
                 k=3  # 상위 3개 결과
             )
