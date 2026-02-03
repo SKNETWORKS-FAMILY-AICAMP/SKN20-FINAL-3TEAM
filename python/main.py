@@ -13,11 +13,11 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # 로컬 모듈 import
-from models.schemas import AnalyzeResponse, SaveRequest, SaveResponse
+from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
-from utils.image_utils import image_to_base64
+from api_utils.image_utils import image_to_base64
 
 # 로깅 설정
 logging.basicConfig(
