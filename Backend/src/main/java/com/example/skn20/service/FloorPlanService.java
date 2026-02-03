@@ -75,7 +75,8 @@ public class FloorPlanService {
 		FloorplanPreviewResponse result = FloorplanPreviewResponse.builder()
 				.topologyJson(pythonResponse.getTopologyJson())                   // 1번
 				.topologyImageUrl(pythonResponse.getTopologyImageUrl())           // 2번
-				.assessmentJson(pythonResponse.getAssessmentJson())               // 3번
+				.assessmentJson(pythonResponse.getAssessmentJson())               // 레거시
+				.llmAnalysisJson(pythonResponse.getLlmAnalysisJson())             // 3번: compliance 포함
 				.windowlessRatio(pythonResponse.getWindowlessRatio())
 				.hasSpecialSpace(pythonResponse.getHasSpecialSpace())
 				.bayCount(pythonResponse.getBayCount())
@@ -112,14 +113,16 @@ public class FloorPlanService {
 		// Step 0: 이미지 파일 저장
 		String savedImagePath = saveImageFile(imageFile, user.getId());
 		
-		// Step 1: 3번(assessmentJson)을 Python 서버로 전송하여 4번(메타데이터+임베딩) 받기
+		// Step 1: llmAnalysisJson을 Python 서버로 전송하여 4번(메타데이터+임베딩) 받기
 		String generateMetadataUrl = pythonServerUrl + "/generate-metadata";
-		
+
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
-		
-		// 3번 JSON을 Python으로 전송
-		HttpEntity<String> requestEntity = new HttpEntity<>(request.getAssessmentJson(), headers);
+
+		// Python이 기대하는 형식: {"llm_analysis_json": "..."}
+		java.util.Map<String, String> pythonRequest = new java.util.HashMap<>();
+		pythonRequest.put("llm_analysis_json", request.getAssessmentJson());
+		HttpEntity<java.util.Map<String, String>> requestEntity = new HttpEntity<>(pythonRequest, headers);
 		ResponseEntity<PythonMetadataResponse> response = restTemplate.exchange(
 				generateMetadataUrl,
 				HttpMethod.POST,
@@ -182,25 +185,27 @@ public class FloorPlanService {
 	 * 파일명: userId_timestamp_originalFilename
 	 */
 	private String saveImageFile(MultipartFile file, Long userId) throws Exception {
-		// 저장 디렉토리 경로
-		String uploadDir = "src/main/resources/image/floorplan/";
+		// 저장 디렉토리 경로 (절대 경로 사용)
+		String uploadDir = System.getProperty("user.dir") + "/src/main/resources/image/floorplan/";
 		java.io.File directory = new java.io.File(uploadDir);
-		
+
 		// 디렉토리가 없으면 생성
 		if (!directory.exists()) {
-			directory.mkdirs();
+			boolean created = directory.mkdirs();
+			System.out.println("[FloorPlanService] 디렉토리 생성: " + uploadDir + " -> " + created);
 		}
-		
+
 		// 고유한 파일명 생성 (userId_timestamp_originalFilename)
 		String timestamp = String.valueOf(System.currentTimeMillis());
 		String originalFilename = file.getOriginalFilename();
 		String savedFilename = userId + "_" + timestamp + "_" + originalFilename;
-		
+
 		// 파일 저장
 		String filePath = uploadDir + savedFilename;
 		java.io.File destFile = new java.io.File(filePath);
-		file.transferTo(destFile);
-		
+		System.out.println("[FloorPlanService] 파일 저장 경로: " + destFile.getAbsolutePath());
+		file.transferTo(destFile.getAbsoluteFile());
+
 		// DB에 저장할 경로 반환 (상대 경로)
 		return "/image/floorplan/" + savedFilename;
 	}
