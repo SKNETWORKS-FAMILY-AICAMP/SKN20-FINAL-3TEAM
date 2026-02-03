@@ -22,19 +22,19 @@ public class Law {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "region_code", length = 50)
+    @Column(name = "region_code", columnDefinition = "TEXT")
     private String regionCode; // 지역 코드 (시군구 코드)
     
-    @Column(name = "zone_district_name", length = 200)
+    @Column(name = "zone_district_name", columnDefinition = "TEXT")
     private String zoneDistrictName; // 용도지역/지구명 (제1종일반주거지역 등)
     
-    @Column(name = "law_name", length = 200)
+    @Column(name = "law_name", columnDefinition = "TEXT")
     private String lawName; // 관련 법률명 (국토의 계획 및 이용에 관한 법률 등)
     
     @Column(name = "land_use_activity", columnDefinition = "TEXT")
     private String landUseActivity; // 토지 이용 행위 (건축, 개발 등)
     
-    @Column(name = "permission_status", length = 50)
+    @Column(name = "permission_status", columnDefinition = "TEXT")
     private String permissionStatus; // 허가 상태 (허용, 불허, 조건부허용 등)
     
     @Column(name = "condition_exception", columnDefinition = "TEXT")

@@ -1,9 +1,13 @@
 package com.example.skn20.component;
 
+import com.example.skn20.entity.InternalEval;
 import com.example.skn20.entity.LandChar;
 import com.example.skn20.entity.Law;
+import com.example.skn20.repository.InternalEvalRepository;
 import com.example.skn20.repository.LandCharRepository;
 import com.example.skn20.repository.LawRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -23,7 +27,7 @@ import java.util.List;
  * 중복 방지: 이미 데이터가 있으면 스킵
  */
 @Slf4j
-//@Component
+@Component
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
@@ -31,6 +35,8 @@ public class DataInitializer implements CommandLineRunner {
 
     private final LandCharRepository landCharRepository;
     private final LawRepository lawRepository;
+    private final InternalEvalRepository internalEvalRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void run(String... args) throws Exception {
@@ -43,6 +49,9 @@ public class DataInitializer implements CommandLineRunner {
 
         // 토지특성정보 로드
         loadLandCharData();
+        
+        // 사내 평가 문서 로드
+        loadInternalEvalData();
 
         log.info("=".repeat(60));
         log.info("데이터 초기화 완료");
@@ -257,6 +266,105 @@ public class DataInitializer implements CommandLineRunner {
             return Float.parseFloat(value);
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+    
+    /**
+     * 사내 평가 문서 JSON 로드
+     */
+    @Transactional
+    public void loadInternalEvalData() {
+        try {
+            // 이미 데이터가 있으면 스킵
+            long count = internalEvalRepository.count();
+            if (count > 0) {
+                log.info("사내 평가 문서 데이터가 이미 존재합니다. ({}건) - 스킵", count);
+                return;
+            }
+
+            log.info("사내 평가 문서 데이터 로드 중...");
+            ClassPathResource resource = new ClassPathResource("data/evaluation_docs_export.json");
+
+            int loadedCount = 0;
+            int skippedCount = 0;
+            List<InternalEval> batch = new ArrayList<>(BATCH_SIZE);
+
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+
+                // JSON 배열 파싱
+                JsonNode rootNode = objectMapper.readTree(br);
+                
+                if (!rootNode.isArray()) {
+                    log.error("JSON 파일이 배열 형식이 아닙니다.");
+                    return;
+                }
+
+                for (JsonNode node : rootNode) {
+                    try {
+                        // keywords 추출 (metadata.keywords)
+                        String keywords = null;
+                        if (node.has("metadata") && node.get("metadata").has("keywords")) {
+                            keywords = node.get("metadata").get("keywords").asText();
+                        }
+
+                        // document 추출
+                        String document = node.has("document") ? node.get("document").asText() : null;
+                        if (document == null || document.isEmpty()) {
+                            log.warn("document가 없는 항목 스킵");
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // embedding 추출 (embedding.values 배열)
+                        float[] embedding = null;
+                        if (node.has("embedding") && node.get("embedding").has("values")) {
+                            JsonNode valuesNode = node.get("embedding").get("values");
+                            if (valuesNode.isArray()) {
+                                int dimension = valuesNode.size();
+                                embedding = new float[dimension];
+                                for (int i = 0; i < dimension; i++) {
+                                    embedding[i] = (float) valuesNode.get(i).asDouble();
+                                }
+                            }
+                        }
+
+                        // InternalEval 엔티티 생성
+                        InternalEval internalEval = InternalEval.builder()
+                                .keywords(keywords)
+                                .document(document)
+                                .embedding(embedding)
+                                .build();
+
+                        batch.add(internalEval);
+                        loadedCount++;
+
+                        // 배치 단위로 저장
+                        if (batch.size() >= BATCH_SIZE) {
+                            internalEvalRepository.saveAll(batch);
+                            batch.clear();
+                            log.info("사내 평가 문서 로드 중... {}건 완료", loadedCount);
+                        }
+
+                    } catch (Exception e) {
+                        if (skippedCount < 10) { // 처음 10개만 상세 로그
+                            log.error("사내 평가 문서 처리 중 오류", e);
+                        }
+                        skippedCount++;
+                    }
+                }
+
+                // 남은 데이터 저장
+                if (!batch.isEmpty()) {
+                    internalEvalRepository.saveAll(batch);
+                    batch.clear();
+                }
+            }
+
+            log.info("사내 평가 문서 로드 완료: {}건 저장, {}건 스킵", loadedCount, skippedCount);
+
+        } catch (Exception e) {
+            log.error("사내 평가 문서 로드 실패", e);
         }
     }
 }
