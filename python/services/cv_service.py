@@ -64,7 +64,8 @@ class CVService:
         Returns:
             분석 결과 딕셔너리
         """
-        pipeline = self.load_pipeline()
+        # 파이프라인 로드 (모델 포함)
+        self.load_pipeline()
         
         # 임시 파일로 저장
         temp_dir = Path("./temp_input")
@@ -74,8 +75,8 @@ class CVService:
         
         logger.info(f"이미지 분석 시작: {filename}")
         
-        # CV 파이프라인 실행
-        results = pipeline.run(
+        # CV 파이프라인 실행 (self.pipeline 사용)
+        results = self.pipeline.run(
             temp_path,
             save_json=save_json,
             save_visualization=save_visualization
