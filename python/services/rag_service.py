@@ -8,37 +8,35 @@ from typing import Optional, Dict, Any
 
 from CV.rag_system.config import RAGConfig
 from CV.rag_system.embeddings import EmbeddingManager
-from CV.rag_system.vector_store import VectorStore
 from CV.rag_system.llm_client import OpenAIClient
 from CV.rag_system.schemas import FloorPlanAnalysis
 from CV.rag_system.prompts import SYSTEM_PROMPT, build_analysis_prompt
+from services.pgvector_service import pgvector_service
 
 logger = logging.getLogger("RAGService")
 
 
 class RAGService:
     """RAG 시스템 관리 서비스"""
-    
+
     def __init__(self):
         self.config: Optional[RAGConfig] = None
         self.embedding_manager: Optional[EmbeddingManager] = None
-        self.vector_store: Optional[VectorStore] = None
         self.llm_client: Optional[OpenAIClient] = None
-    
+
     def load_components(self):
         """RAG 컴포넌트를 lazy loading 방식으로 로드"""
         if self.llm_client is not None:
             return
-        
+
         logger.info("RAG 컴포넌트 로딩 중...")
-        
+
         try:
             self.config = RAGConfig()
             self.embedding_manager = EmbeddingManager(
                 api_key=self.config.OPENAI_API_KEY,
                 model="text-embedding-3-small"
             )
-            self.vector_store = VectorStore(db_path="CV/rag_data")
             self.llm_client = OpenAIClient(
                 api_key=self.config.OPENAI_API_KEY,
                 model=self.config.OPENAI_MODEL,
@@ -66,8 +64,8 @@ class RAGService:
         query_text = f"{stats.get('structure_type', '혼합형')} 건축물 {stats.get('bay_count', 0)}Bay 침실 {stats.get('room_count', 0)}개"
         query_embedding = self.embedding_manager.embed_text(query_text)
         
-        # RAG 검색
-        rag_results = self.vector_store.search_evaluation(
+        # RAG 검색 (PostgreSQL pgvector)
+        rag_results = pgvector_service.search_internal_eval(
             query_embedding=query_embedding,
             k=self.config.TOP_K
         )
