@@ -361,7 +361,7 @@ GET /api/regulation/query?address=서울특별시 강남구 역삼동 123-45
   },
   "law": [
     {
-      "law_name": ""건축법시행령별표 1 제1호가목"",
+      "law_name": "건축법시행령별표 1 제1호가목",
       "zone_district_name": "제1종주거지역",
       "lane_use_activity": "아파트",
       "permission_status": "건축가능",
@@ -481,4 +481,5 @@ SKN20-final/
     ├── 2주차/                          # 2주차 산출물
     └── 3주차/                          # 3주차 산출물
         └── finetunned_models/         # Fine-tuned 모델
+
 
