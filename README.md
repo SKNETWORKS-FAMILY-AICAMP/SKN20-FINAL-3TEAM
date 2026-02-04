@@ -83,7 +83,9 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 - **Vision AI**
   - 건축 도면 이미지 분석
   - 공간 구성, 면적 비율, Bay 수 등 도면의 정량·구조 정보 추출
-  - YOLOv5 기반 객체 검출 (OBJ, OCR, STR, SPA)
+  - OBJ: YOLOv5 기반 객체 검출 (위생설비, 주방기기)
+  - OCR: YOLOv5 + CRNN 기반 텍스트 검출 및 인식
+  - STR/SPA: DeepLabV3+ 기반 구조 및 공간 분석
   
 - **sLLM**
   - 도면 요약 텍스트 생성
@@ -186,16 +188,17 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 │  │    CV Inference Pipeline          │  │
 │  │                                   │  │
 │  │  1️⃣ OBJ Model (YOLOv5)            │  │
-│  │     └─→ 객체 검출 (방, 문, 창문)    │  │
+│  │     └─→ 객체 검출 (변기, 세면대,   │  │
+│  │         싱크대, 욕조, 가스레인지)   │  │
 │  │                                   │  │
-│  │  2️⃣ OCR Model                     │  │
-│  │     └─→ 텍스트 영역 검출           │  │
+│  │  2️⃣ OCR Model (YOLOv5 + CRNN)    │  │
+│  │     └─→ 텍스트 영역 검출 및 인식   │  │
 │  │                                   │  │
-│  │  3️⃣ STR Model                     │  │
-│  │     └─→ 구조 분석                 │  │
+│  │  3️⃣ STR Model (DeepLabV3+)       │  │
+│  │     └─→ 출입문, 창호, 벽체 검출    │  │
 │  │                                   │  │
-│  │  4️⃣ SPA Model                     │  │
-│  │     └─→ 공간 관계 분석             │  │
+│  │  4️⃣ SPA Model (DeepLabV3+)       │  │
+│  │     └─→ 13개 공간 타입 분석        │  │
 │  │                                   │  │
 │  │  5️⃣ Aggregator                    │  │
 │  │     └─→ 결과 통합 및 후처리         │  │
@@ -549,18 +552,26 @@ SKN20-final/
 │   │   │   ├── config.py             # 설정
 │   │   │   ├── aggregator.py         # 결과 통합
 │   │   │   ├── visualizer.py         # 시각화
-│   │   │   ├── model/                # 모델 가중치
-│   │   │   └── models/               # 모델 클래스
-│   │   │       ├── obj_model.py      # 객체 검출
-│   │   │       ├── ocr_model.py      # OCR
-│   │   │       ├── str_model.py      # 구조 인식
-│   │   │       └── spa_model.py      # 공간 분석
-│   │   └── rag_system/                # RAG 시스템
-│   │       ├── config.py             # RAG 설정
-│   │       ├── embeddings.py         # 임베딩 생성
-│   │       ├── llm_client.py         # LLM 클라이언트
-│   │       ├── prompts.py            # 프롬프트 템플릿
-│   │       └── schemas.py            # 데이터 스키마
+│   │   │   ├── model/                # 모델별 학습/평가 코드
+│   │   │   │   ├── OBJ/source_code/  # OBJ 모델 학습 코드
+│   │   │   │   ├── OCR/source_code/  # OCR 모델 학습 코드
+│   │   │   │   ├── STR/source_code/  # STR 모델 학습 코드
+│   │   │   │   └── SPA/source_code/  # SPA 모델 학습 코드
+│   │   │   ├── models/               # 모델 래퍼 클래스
+│   │   │   │   ├── base_model.py     # 베이스 모델
+│   │   │   │   ├── obj_model.py      # 객체 검출 (YOLOv5)
+│   │   │   │   ├── ocr_model.py      # OCR (YOLOv5+CRNN)
+│   │   │   │   ├── str_model.py      # 구조 분석 (DeepLabV3+)
+│   │   │   │   └── spa_model.py      # 공간 분석 (DeepLabV3+)
+│   │   │   └── yolov5/               # YOLOv5 소스 코드
+│   │   ├── rag_data/                  # RAG 데이터
+│   │   ├── rag_system/                # RAG 시스템
+│   │   │   ├── config.py             # RAG 설정
+│   │   │   ├── embeddings.py         # 임베딩 생성
+│   │   │   ├── llm_client.py         # LLM 클라이언트
+│   │   │   ├── prompts.py            # 프롬프트 템플릿
+│   │   │   └── schemas.py            # 데이터 스키마
+│   │   └── test_images/               # 테스트 이미지
 │   │
 │   ├── services/                       # 비즈니스 로직
 │   │   ├── cv_service.py              # CV 서비스
