@@ -346,6 +346,16 @@ const ChatPage: React.FC = () => {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
+              {isSending && (
+                <div className={styles.thinkingMessage}>
+                  <div className={styles.thinkingBubble}>
+                    <span className={styles.thinkingDots}>
+                      <span>.</span><span>.</span><span>.</span>
+                    </span>
+                    <span>답변 작성 중</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
