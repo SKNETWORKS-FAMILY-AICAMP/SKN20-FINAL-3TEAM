@@ -78,12 +78,10 @@ const ChatPage: React.FC = () => {
       setIsLoading(true);
       const rooms = await getChatRooms();
       const convertedSessions = rooms.map(convertRoomToSession);
+      // 최신순 정렬 (id가 큰 것이 최신)
+      convertedSessions.sort((a, b) => parseInt(b.id) - parseInt(a.id));
       setSessions(convertedSessions);
-
-      // 첫 번째 방 선택
-      if (rooms.length > 0) {
-        setCurrentRoomId(rooms[0].id);
-      }
+      // 채팅방 자동 선택 안 함 - 빈 화면으로 시작
     } catch (error) {
       console.error('채팅방 목록 로드 실패:', error);
     } finally {
@@ -346,6 +344,16 @@ const ChatPage: React.FC = () => {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
+              {isSending && (
+                <div className={styles.thinkingMessage}>
+                  <div className={styles.thinkingBubble}>
+                    <span className={styles.thinkingDots}>
+                      <span>.</span><span>.</span><span>.</span>
+                    </span>
+                    <span>답변 작성 중</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}

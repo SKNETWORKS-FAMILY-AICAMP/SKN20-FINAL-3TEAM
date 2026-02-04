@@ -29,6 +29,7 @@ const FileUploadPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // 이미지 확대 모달 상태
   const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
@@ -277,19 +278,24 @@ const FileUploadPage: React.FC = () => {
     );
   };
 
-  const handleSaveToDb = async () => {
+  // 저장 버튼 클릭 시 확인 모달 표시
+  const handleSaveClick = () => {
     if (!analysisResult || !selectedFile || !llmAnalysisJsonRaw) {
       setToastMessage('저장에 필요한 데이터가 없습니다.');
       return;
     }
+    setShowSaveConfirm(true);
+  };
 
+  // 실제 저장 수행
+  const handleSaveConfirm = async () => {
+    setShowSaveConfirm(false);
     setIsSaving(true);
     try {
-      // FormData로 백엔드에 저장 요청
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('name', analysisResult.name || selectedFile.name);
-      formData.append('assessmentJson', llmAnalysisJsonRaw); // llm_analysis.json 원본
+      formData.append('file', selectedFile!);
+      formData.append('name', analysisResult!.name || selectedFile!.name);
+      formData.append('assessmentJson', llmAnalysisJsonRaw);
 
       await saveFloorPlan(formData);
       setToastMessage('DB에 저장되었습니다');
@@ -790,7 +796,7 @@ const FileUploadPage: React.FC = () => {
 
           <div className={styles.buttonGroup}>
             <button
-              onClick={handleSaveToDb}
+              onClick={handleSaveClick}
               disabled={analysisStatus !== 'completed' || isSaving}
               className={styles.actionBtn}
               style={{
@@ -807,6 +813,33 @@ const FileUploadPage: React.FC = () => {
       </div>
 
       {toastMessage && <div className={styles.toast}>{toastMessage}</div>}
+
+      {/* 저장 확인 모달 */}
+      {showSaveConfirm && (
+        <div className={styles.confirmOverlay} onClick={() => setShowSaveConfirm(false)}>
+          <div className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.confirmIcon}>
+              <FiSave size={32} color="#10B981" />
+            </div>
+            <h3 className={styles.confirmTitle}>저장하시겠습니까?</h3>
+            <p className={styles.confirmText}>분석 결과가 데이터베이스에 저장됩니다.</p>
+            <div className={styles.confirmButtons}>
+              <button
+                className={styles.confirmCancelBtn}
+                onClick={() => setShowSaveConfirm(false)}
+              >
+                취소
+              </button>
+              <button
+                className={styles.confirmOkBtn}
+                onClick={handleSaveConfirm}
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 이미지 확대 모달 */}
       {zoomModalImage && (
