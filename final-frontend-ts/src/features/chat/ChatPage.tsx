@@ -68,6 +68,7 @@ const ChatPage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const skipLoadHistoryRef = useRef(false); // 새 채팅방 생성 시 히스토리 로드 스킵용
 
   // ============================================
   // 채팅방 목록 로드
@@ -119,8 +120,16 @@ const ChatPage: React.FC = () => {
   // ============================================
   useEffect(() => {
     if (currentRoomId !== null) {
+      // 새 채팅방 생성 직후에는 히스토리 로드 스킵
+      if (skipLoadHistoryRef.current) {
+        console.log('[ChatPage] 새 채팅방이므로 히스토리 로드 스킵');
+        skipLoadHistoryRef.current = false;
+        return;
+      }
+      console.log('[ChatPage] 채팅 기록 로드:', currentRoomId);
       loadChatHistory(currentRoomId);
     } else {
+      console.log('[ChatPage] 새 채팅 - 메시지 초기화');
       setMessages([]);
     }
   }, [currentRoomId, loadChatHistory]);
@@ -155,6 +164,8 @@ const ChatPage: React.FC = () => {
   // 채팅방 삭제
   // ============================================
   const handleDeleteSession = async (sessionId: string) => {
+    if (!window.confirm('이 채팅방을 삭제하시겠습니까?')) return;
+
     try {
       await deleteRoom({ chatRoomId: Number(sessionId) });
 
@@ -221,6 +232,8 @@ const ChatPage: React.FC = () => {
     setInputMessage('');
     setIsSending(true);
 
+    console.log('[ChatPage] 메시지 전송 시작, currentRoomId:', currentRoomId);
+
     // 사용자 메시지 즉시 표시
     const userMessage: ChatMessageType = {
       id: `temp-user-${Date.now()}`,
@@ -228,7 +241,10 @@ const ChatPage: React.FC = () => {
       content: question,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => {
+      console.log('[ChatPage] 사용자 메시지 추가, 이전 메시지 수:', prev.length);
+      return [...prev, userMessage];
+    });
 
     try {
       // API 호출
@@ -237,10 +253,25 @@ const ChatPage: React.FC = () => {
         question,
       });
 
-      // 새 채팅방이면 세션 목록에 추가하고 현재 방 ID 설정
+      console.log('[ChatPage] API 응답 받음, chatRoomId:', response.chatRoomId);
+
       const isNewRoom = currentRoomId === null;
       
+      // AI 응답 즉시 표시 (roomId 변경 전에 먼저 추가)
+      const aiMessage: ChatMessageType = {
+        id: `temp-ai-${Date.now()}`,
+        role: 'assistant',
+        content: response.answer,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => {
+        console.log('[ChatPage] AI 응답 추가, 이전 메시지 수:', prev.length);
+        return [...prev, aiMessage];
+      });
+
+      // 새 채팅방이면 세션 목록에 추가하고 현재 방 ID 설정
       if (isNewRoom) {
+        console.log('[ChatPage] 새 채팅방 생성');
         const newSession: ChatSession = {
           id: String(response.chatRoomId),
           title: question.slice(0, 30),
@@ -248,24 +279,16 @@ const ChatPage: React.FC = () => {
           createdAt: new Date(),
         };
         setSessions((prev) => [newSession, ...prev]);
+        
+        // 새 채팅방이므로 useEffect에서 히스토리 로드 스킵
+        skipLoadHistoryRef.current = true;
+        console.log('[ChatPage] skipLoadHistoryRef 설정 완료, roomId 변경:', response.chatRoomId);
         setCurrentRoomId(response.chatRoomId);
-      }
-
-      // AI 응답 즉시 표시
-      const aiMessage: ChatMessageType = {
-        id: `temp-ai-${Date.now()}`,
-        role: 'assistant',
-        content: response.answer,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-
-      // 백엔드와 동기화를 위해 채팅 기록 다시 로드
-      // 새 채팅방인 경우 useEffect가 자동으로 로드하므로 기존 방만 처리
-      if (!isNewRoom && currentRoomId !== null) {
-        // 약간의 지연 후 로드 (DB 저장 시간 고려)
+      } else {
+        console.log('[ChatPage] 기존 채팅방에 메시지 추가');
+        // 기존 채팅방: 백엔드와 동기화를 위해 채팅 기록 다시 로드
         setTimeout(() => {
-          loadChatHistory(currentRoomId);
+          loadChatHistory(currentRoomId!);
         }, 300);
       }
 
