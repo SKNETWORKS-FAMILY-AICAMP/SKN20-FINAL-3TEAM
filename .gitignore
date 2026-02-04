@@ -117,3 +117,6 @@ final-frontend-ts/public/result/
 
 # Claude Code
 .claude/
+
+# Postman
+postman/
