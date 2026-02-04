@@ -13,7 +13,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 // ======== Axios 인스턴스 생성 ========
 const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 120000, // 120초 (도면 분석에 시간이 오래 걸림)
+  timeout: 600000, // 600초 = 10분 (CV 분석에 시간이 오래 걸림)
   headers: {
     'Content-Type': 'application/json',
   },

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiEdit, FiFolder, FiSave } from 'react-icons/fi';
+import { FiMessageSquare, FiEdit, FiFolder, FiSave, FiX, FiZoomIn } from 'react-icons/fi';
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -9,7 +9,7 @@ import { convertCocoToFloorPlan } from './utils/cocoParser';
 import type { CocoData } from './utils/cocoParser';
 import { convertTopologyToFloorPlan, isTopologyFormat } from './utils/topologyParser';
 import type { TopologyData } from './utils/topologyParser';
-import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox } from './types/floor-plan.types';
+import type { AnalysisStatus, FloorPlanUploadResponse, HoverableItem, Bbox, ComplianceData, LLMAnalysisData } from './types/floor-plan.types';
 import { uploadFloorPlan, saveFloorPlan } from './api/floor-plan.api';
 import JsonInspector from './components/JsonInspector';
 import styles from './FileUploadPage.module.css';
@@ -24,9 +24,19 @@ const FileUploadPage: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<FloorPlanUploadResponse | null>(null);
   const [jsonResult, setJsonResult] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
+  const [llmAnalysis, setLlmAnalysis] = useState<LLMAnalysisData | null>(null);
+  const [llmAnalysisJsonRaw, setLlmAnalysisJsonRaw] = useState<string>(''); // 저장용 원본 JSON 문자열
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
+
+  // 이미지 확대 모달 상태
+  const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
+  const [zoomModalTitle, setZoomModalTitle] = useState<string>('');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panPosition, setPanPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Hover 상태 (그룹화로 인해 배열로 변경)
   const [hoveredItems, setHoveredItems] = useState<HoverableItem[]>([]);
@@ -137,6 +147,8 @@ const FileUploadPage: React.FC = () => {
     setAnalysisStatus('analyzing');
     setJsonResult('');
     setAiSummary('');
+    setLlmAnalysis(null);
+    setLlmAnalysisJsonRaw('');
     setAnalysisResult(null);
     setHoveredItems([]);
     setTopologyGraphUrl(null);
@@ -190,11 +202,34 @@ const FileUploadPage: React.FC = () => {
           }
         }
 
-        // AI 평가가 있으면 설정
+        // LLM 분석 데이터 파싱 (llmAnalysisJson 필드에서)
+        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llm_analysis_json;
+        if (llmAnalysisJson) {
+          try {
+            // 원본 JSON 문자열 저장 (저장 API용)
+            const rawJsonStr = typeof llmAnalysisJson === 'string'
+              ? llmAnalysisJson
+              : JSON.stringify(llmAnalysisJson);
+            setLlmAnalysisJsonRaw(rawJsonStr);
+
+            const parsedLlmAnalysis = typeof llmAnalysisJson === 'string'
+              ? JSON.parse(llmAnalysisJson)
+              : llmAnalysisJson;
+            setLlmAnalysis(parsedLlmAnalysis as LLMAnalysisData);
+            // summary를 기본 AI 요약으로 설정
+            if (parsedLlmAnalysis.summary) {
+              setAiSummary(parsedLlmAnalysis.summary);
+            }
+          } catch (parseError) {
+            console.error('LLM 분석 데이터 파싱 실패:', parseError);
+          }
+        }
+
+        // AI 평가가 있으면 설정 (llmAnalysis가 없을 경우 폴백)
         const analysisDescription = apiResult.analysisDescription || apiResult.eval;
-        if (analysisDescription) {
+        if (!llmAnalysisJson && analysisDescription) {
           setAiSummary(analysisDescription);
-        } else {
+        } else if (!llmAnalysisJson && !analysisDescription) {
           setAiSummary(generateSummary(result));
         }
 
@@ -243,19 +278,20 @@ const FileUploadPage: React.FC = () => {
   };
 
   const handleSaveToDb = async () => {
-    if (!analysisResult) return;
+    if (!analysisResult || !selectedFile || !llmAnalysisJsonRaw) {
+      setToastMessage('저장에 필요한 데이터가 없습니다.');
+      return;
+    }
 
     setIsSaving(true);
     try {
-      // 백엔드에 저장 요청
-      const saveData = {
-        name: analysisResult.name,
-        imageUrl: imageUrl,
-        elementJson: analysisResult,
-        eval: aiSummary,
-        embedding: analysisResult.embedding || null,
-      };
-      await saveFloorPlan(saveData);
+      // FormData로 백엔드에 저장 요청
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('name', analysisResult.name || selectedFile.name);
+      formData.append('assessmentJson', llmAnalysisJsonRaw); // llm_analysis.json 원본
+
+      await saveFloorPlan(formData);
       setToastMessage('DB에 저장되었습니다');
     } catch (error) {
       console.error('저장 실패:', error);
@@ -272,8 +308,56 @@ const FileUploadPage: React.FC = () => {
     setAnalysisResult(null);
     setJsonResult('');
     setAiSummary('');
+    setLlmAnalysis(null);
+    setLlmAnalysisJsonRaw('');
     setHoveredItems([]);
     setTopologyGraphUrl(null);
+  };
+
+  // 이미지 확대 모달 열기
+  const openZoomModal = (imageSrc: string, title: string) => {
+    setZoomModalImage(imageSrc);
+    setZoomModalTitle(title);
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 이미지 확대 모달 닫기
+  const closeZoomModal = () => {
+    setZoomModalImage(null);
+    setZoomModalTitle('');
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  // 스크롤로 확대/축소
+  const handleZoomWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoomLevel((prev) => Math.min(Math.max(prev + delta, 0.5), 5));
+  };
+
+  // 드래그 시작
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+    }
+  };
+
+  // 드래그 중
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (isPanning && zoomLevel > 1) {
+      setPanPosition({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+    }
+  };
+
+  // 드래그 종료
+  const handlePanEnd = () => {
+    setIsPanning(false);
   };
 
   const renderStatusBadge = () => {
@@ -367,6 +451,14 @@ const FileUploadPage: React.FC = () => {
                     alt="도면 미리보기"
                     className={styles.previewImage}
                   />
+                  {/* 확대 버튼 */}
+                  <button
+                    className={styles.zoomButton}
+                    onClick={() => openZoomModal(imageUrl, '도면 이미지')}
+                    title="확대해서 보기"
+                  >
+                    <FiZoomIn size={18} />
+                  </button>
                   {/* Segmentation Polygon 또는 Bbox Overlay (여러 개 동시 표시) */}
                   {hoveredItems.length > 0 && (
                     <>
@@ -513,11 +605,20 @@ const FileUploadPage: React.FC = () => {
               )}
               {analysisStatus === 'completed' && (
                 topologyGraphUrl ? (
-                  <img
-                    src={topologyGraphUrl}
-                    alt="공간 위상 그래프"
-                    className={styles.topologyGraphImage}
-                  />
+                  <div className={styles.graphImageWrapper}>
+                    <img
+                      src={topologyGraphUrl}
+                      alt="공간 위상 그래프"
+                      className={styles.topologyGraphImage}
+                    />
+                    <button
+                      className={styles.zoomButton}
+                      onClick={() => openZoomModal(topologyGraphUrl, '공간 위상 그래프')}
+                      title="확대해서 보기"
+                    >
+                      <FiZoomIn size={18} />
+                    </button>
+                  </div>
                 ) : (
                   <div style={{ textAlign: 'center' }}>
                     <div className={styles.statusIcon}><AiOutlineHome size={32} /></div>
@@ -544,10 +645,6 @@ const FileUploadPage: React.FC = () => {
               <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
                 <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>총 공간</p>
                 <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.roomCount}개</p>
-              </div>
-              <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
-                <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>총 면적</p>
-                <p className={styles.summaryValue} style={{ color: colors.textPrimary }}>{analysisResult.totalArea}㎡</p>
               </div>
               <div className={styles.summaryCard} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${colors.border}` }}>
                 <p className={styles.summaryLabel} style={{ color: colors.textSecondary }}>구조물/객체</p>
@@ -613,9 +710,81 @@ const FileUploadPage: React.FC = () => {
                 <RiRobot2Line size={18} style={{ color: '#10B981' }} />
                 <span className={styles.aiSummaryTitle} style={{ color: colors.textPrimary }}>AI 요약</span>
               </div>
-              <p className={styles.aiSummaryText} style={{ color: colors.textSecondary }}>
+
+              {/* 기본 요약 */}
+              <p className={styles.aiSummaryText} style={{ color: colors.textSecondary, marginBottom: '1rem' }}>
                 {aiSummary}
               </p>
+
+              {/* Compliance 상세 정보 */}
+              {llmAnalysis?.compliance && (
+                <div className={styles.complianceSection}>
+                  {/* 종합 등급 */}
+                  <div className={styles.complianceGrade}>
+                    <span className={styles.complianceGradeLabel}>종합 등급</span>
+                    <span
+                      className={styles.complianceGradeBadge}
+                      style={{
+                        backgroundColor: llmAnalysis.compliance.overall_grade === '불합격' ? '#FEE2E2' :
+                          llmAnalysis.compliance.overall_grade === '미흡' ? '#FEF3C7' :
+                          llmAnalysis.compliance.overall_grade === '보통' ? '#E0E7FF' :
+                          '#D1FAE5',
+                        color: llmAnalysis.compliance.overall_grade === '불합격' ? '#DC2626' :
+                          llmAnalysis.compliance.overall_grade === '미흡' ? '#D97706' :
+                          llmAnalysis.compliance.overall_grade === '보통' ? '#4F46E5' :
+                          '#059669',
+                      }}
+                    >
+                      {llmAnalysis.compliance.overall_grade}
+                    </span>
+                  </div>
+
+                  {/* 적합 항목 */}
+                  {llmAnalysis.compliance.compliant_items?.length > 0 && (
+                    <div className={styles.complianceItems}>
+                      <span className={styles.complianceItemsLabel}>적합 항목</span>
+                      <div className={styles.complianceItemsTags}>
+                        {llmAnalysis.compliance.compliant_items.map((item, idx) => (
+                          <span key={idx} className={styles.complianceTagPass}>
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 부적합 항목 */}
+                  {llmAnalysis.compliance.non_compliant_items?.length > 0 && (
+                    <div className={styles.nonCompliantSection}>
+                      <span className={styles.complianceItemsLabel}>부적합 항목</span>
+                      {llmAnalysis.compliance.non_compliant_items.map((item, idx) => (
+                        <div key={idx} className={styles.nonCompliantItem}>
+                          <div className={styles.nonCompliantHeader}>
+                            <span className={styles.nonCompliantCategory}>{item.category}</span>
+                            <span className={styles.nonCompliantTarget}>{item.item}</span>
+                          </div>
+                          <p className={styles.nonCompliantReason}>{item.reason}</p>
+                          <p className={styles.nonCompliantRecommendation}>
+                            <strong>권고:</strong> {item.recommendation}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 개선 제안 */}
+                  {llmAnalysis.recommendations?.length > 0 && (
+                    <div className={styles.recommendationsSection}>
+                      <span className={styles.complianceItemsLabel}>개선 제안</span>
+                      <ul className={styles.recommendationsList}>
+                        {llmAnalysis.recommendations.map((rec, idx) => (
+                          <li key={idx}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -638,6 +807,54 @@ const FileUploadPage: React.FC = () => {
       </div>
 
       {toastMessage && <div className={styles.toast}>{toastMessage}</div>}
+
+      {/* 이미지 확대 모달 */}
+      {zoomModalImage && (
+        <div className={styles.zoomModal} onClick={closeZoomModal}>
+          <div className={styles.zoomModalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.zoomModalHeader}>
+              <h3 className={styles.zoomModalTitle}>{zoomModalTitle}</h3>
+              <div className={styles.zoomControls}>
+                <span className={styles.zoomLevelText}>{Math.round(zoomLevel * 100)}%</span>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5))}
+                >
+                  -
+                </button>
+                <button
+                  className={styles.zoomControlBtn}
+                  onClick={() => setZoomLevel((prev) => Math.min(prev + 0.25, 5))}
+                >
+                  +
+                </button>
+              </div>
+              <button className={styles.zoomModalClose} onClick={closeZoomModal}>
+                <FiX size={24} />
+              </button>
+            </div>
+            <div
+              className={styles.zoomModalBody}
+              onWheel={handleZoomWheel}
+              onMouseDown={handlePanStart}
+              onMouseMove={handlePanMove}
+              onMouseUp={handlePanEnd}
+              onMouseLeave={handlePanEnd}
+              style={{ cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default' }}
+            >
+              <img
+                src={zoomModalImage}
+                alt={zoomModalTitle}
+                className={styles.zoomModalImage}
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                }}
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
