@@ -62,6 +62,7 @@ AI 서버:   http://localhost:8000
 
 ```http
 POST /api/auth/login
+Content-Type: application/x-www-form-urlencoded
 ```
 
 **Request**
@@ -71,7 +72,7 @@ POST /api/auth/login
 | email | String | ✅ | 사용자 이메일 |
 | password | String | ✅ | 비밀번호 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
@@ -83,13 +84,23 @@ POST /api/auth/login
 }
 ```
 
-**Status Codes**
+**Response 401 (인증 실패)**
 
-| 코드 | 설명 |
-|------|------|
-| 200 | 로그인 성공 |
-| 401 | 이메일 또는 비밀번호 불일치 |
-| 500 | 서버 오류 |
+```json
+{
+  "success": false,
+  "message": "이메일 또는 비밀번호가 일치하지 않습니다"
+}
+```
+
+**Response 500 (서버 오류)**
+
+```json
+{
+  "success": false,
+  "message": "서버 오류가 발생했습니다"
+}
+```
 
 ---
 
@@ -99,6 +110,7 @@ POST /api/auth/login
 
 ```http
 POST /api/auth/signup
+Content-Type: application/x-www-form-urlencoded
 ```
 
 **Request**
@@ -110,7 +122,7 @@ POST /api/auth/signup
 | name | String | ✅ | 사용자 이름 |
 | phonenumber | String | ✅ | 전화번호 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
@@ -119,13 +131,23 @@ POST /api/auth/signup
 }
 ```
 
-**Status Codes**
+**Response 400 (중복 이메일)**
 
-| 코드 | 설명 |
-|------|------|
-| 200 | 회원가입 성공 |
-| 400 | 이미 존재하는 이메일 |
-| 500 | 서버 오류 |
+```json
+{
+  "success": false,
+  "message": "이미 사용 중인 이메일입니다"
+}
+```
+
+**Response 500 (서버 오류)**
+
+```json
+{
+  "success": false,
+  "message": "서버 오류가 발생했습니다"
+}
+```
 
 ---
 
@@ -133,6 +155,7 @@ POST /api/auth/signup
 
 ```http
 POST /api/auth/check-email
+Content-Type: application/x-www-form-urlencoded
 ```
 
 **Request**
@@ -141,11 +164,15 @@ POST /api/auth/check-email
 |----------|------|------|------|
 | email | String | ✅ | 확인할 이메일 |
 
-**Response**
+**Response 200 (사용 가능)**
 
 ```json
 "사용 가능한 이메일입니다"
-// 또는
+```
+
+**Response 200 (중복)**
+
+```json
 "이미 사용 중인 이메일입니다"
 ```
 
@@ -157,15 +184,11 @@ POST /api/auth/check-email
 
 ```http
 GET /api/auth/me
-```
-
-**Headers**
-
-```
+Content-Type: application/json
 Authorization: Bearer {token}
 ```
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
@@ -179,6 +202,15 @@ Authorization: Bearer {token}
 }
 ```
 
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
+```
+
 ---
 
 ### 2.5 프로필 수정
@@ -187,11 +219,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/auth/profile
-```
-
-**Headers**
-
-```
+Content-Type: application/x-www-form-urlencoded
 Authorization: Bearer {token}
 ```
 
@@ -202,12 +230,21 @@ Authorization: Bearer {token}
 | name | String | ✅ | 새 이름 |
 | phonenumber | String | ✅ | 새 전화번호 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "success": true,
   "message": "프로필 수정 성공"
+}
+```
+
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
 }
 ```
 
@@ -219,11 +256,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/auth/change-password
-```
-
-**Headers**
-
-```
+Content-Type: application/x-www-form-urlencoded
 Authorization: Bearer {token}
 ```
 
@@ -234,12 +267,21 @@ Authorization: Bearer {token}
 | email | String | ✅ | 사용자 이메일 |
 | newPassword | String | ✅ | 새 비밀번호 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "success": true,
   "message": "비밀번호 변경 성공"
+}
+```
+
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
 }
 ```
 
@@ -249,6 +291,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/auth/mailSend
+Content-Type: application/x-www-form-urlencoded
 ```
 
 **Request**
@@ -257,12 +300,21 @@ POST /api/auth/mailSend
 |----------|------|------|------|
 | email | String | ✅ | 인증받을 이메일 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "success": true,
   "message": "인증 메일이 발송되었습니다"
+}
+```
+
+**Response 500 (메일 발송 실패)**
+
+```json
+{
+  "success": false,
+  "message": "메일 발송에 실패했습니다"
 }
 ```
 
@@ -274,19 +326,28 @@ POST /api/auth/mailSend
 GET /api/auth/mailCheck
 ```
 
-**Request**
+**Request (Query Parameters)**
 
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | mail | String | ✅ | 이메일 |
 | userNumber | String | ✅ | 입력한 인증번호 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "success": true,
   "message": "인증 성공"
+}
+```
+
+**Response 400 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "인증번호가 일치하지 않습니다"
 }
 ```
 
@@ -357,13 +418,23 @@ Content-Type: multipart/form-data
 | analysisDescription | String | 상세 분석 설명 |
 | embedding | Float[] | 임베딩 벡터 (512차원) |
 
-**Status Codes**
+**Response 400 (파일 오류)**
 
-| 코드 | 설명 |
-|------|------|
-| 200 | 분석 성공 |
-| 400 | 파일 없음 또는 잘못된 형식 |
-| 500 | AI 서버 오류 |
+```json
+{
+  "success": false,
+  "message": "파일이 없거나 잘못된 형식입니다"
+}
+```
+
+**Response 500 (AI 서버 오류)**
+
+```json
+{
+  "success": false,
+  "message": "AI 서버 연결에 실패했습니다"
+}
+```
 
 ---
 
@@ -387,23 +458,35 @@ Authorization: Bearer {token}
 | name | String | ✅ | 도면 이름 |
 | assessmentJson | String | ✅ | LLM 분석 JSON (llmAnalysisJson) |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "floorplanId": 1,
   "analysisId": 1,
-  "message": "저장 성공"
+  "name": "내 도면",
+  "createdAt": "2024-01-15",
+  "message": "도면 분석 결과가 성공적으로 저장되었습니다."
 }
 ```
 
-**Status Codes**
+**Response 401 (인증 실패)**
 
-| 코드 | 설명 |
-|------|------|
-| 200 | 저장 성공 |
-| 401 | 인증 실패 |
-| 500 | 저장 실패 |
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
+```
+
+**Response 500 (저장 실패)**
+
+```json
+{
+  "success": false,
+  "message": "도면 저장에 실패했습니다"
+}
+```
 
 ---
 
@@ -415,12 +498,8 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/chat
-```
-
-**Headers** (선택)
-
-```
-Authorization: Bearer {token}
+Content-Type: application/x-www-form-urlencoded
+Authorization: Bearer {token}  (선택)
 ```
 
 **Request**
@@ -430,12 +509,21 @@ Authorization: Bearer {token}
 | chatRoomId | Long | ❌ | 채팅방 ID (없으면 새 방 생성) |
 | question | String | ✅ | 질문 내용 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "answer": "건축법에 따르면...",
   "chatRoomId": 123
+}
+```
+
+**Response 500 (AI 서버 오류)**
+
+```json
+{
+  "success": false,
+  "message": "AI 서버 연결에 실패했습니다"
 }
 ```
 
@@ -447,10 +535,11 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/sessionuser
+Content-Type: application/json
 Authorization: Bearer {token}
 ```
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 [
@@ -467,6 +556,15 @@ Authorization: Bearer {token}
 ]
 ```
 
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
+```
+
 ---
 
 ### 4.3 채팅 기록 조회
@@ -475,6 +573,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/roomhistory
+Content-Type: application/x-www-form-urlencoded
 Authorization: Bearer {token}
 ```
 
@@ -484,7 +583,7 @@ Authorization: Bearer {token}
 |----------|------|------|------|
 | chatRoomId | Long | ✅ | 채팅방 ID |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 [
@@ -503,6 +602,24 @@ Authorization: Bearer {token}
 ]
 ```
 
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
+```
+
+**Response 404 (채팅방 없음)**
+
+```json
+{
+  "success": false,
+  "message": "채팅방을 찾을 수 없습니다"
+}
+```
+
 ---
 
 ### 4.4 채팅방 이름 수정
@@ -511,6 +628,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/editroomname
+Content-Type: application/x-www-form-urlencoded
 Authorization: Bearer {token}
 ```
 
@@ -521,10 +639,19 @@ Authorization: Bearer {token}
 | chatRoomId | Long | ✅ | 채팅방 ID |
 | newName | String | ✅ | 새 이름 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 "success"
+```
+
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
 ```
 
 ---
@@ -535,6 +662,7 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/deleteroom
+Content-Type: application/x-www-form-urlencoded
 Authorization: Bearer {token}
 ```
 
@@ -544,10 +672,19 @@ Authorization: Bearer {token}
 |----------|------|------|------|
 | chatRoomId | Long | ✅ | 채팅방 ID |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 "success"
+```
+
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
 ```
 
 ---
@@ -558,13 +695,23 @@ Authorization: Bearer {token}
 
 ```http
 POST /api/chatbot/deleteallrooms
+Content-Type: application/json
 Authorization: Bearer {token}
 ```
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 "success"
+```
+
+**Response 401 (인증 실패)**
+
+```json
+{
+  "success": false,
+  "message": "토큰이 유효하지 않습니다"
+}
 ```
 
 ---
@@ -586,13 +733,29 @@ Content-Type: multipart/form-data
 |----------|------|------|------|
 | file | File | ✅ | 도면 이미지 |
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "topology_json": "{...}",
   "topology_image_url": "data:image/png;base64,...",
   "llm_analysis_json": "{...}"
+}
+```
+
+**Response 400 (파일 오류)**
+
+```json
+{
+  "detail": "파일이 없거나 잘못된 형식입니다"
+}
+```
+
+**Response 500 (분석 실패)**
+
+```json
+{
+  "detail": "도면 분석 중 오류가 발생했습니다"
 }
 ```
 
@@ -613,7 +776,7 @@ Content-Type: application/json
 }
 ```
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
@@ -625,6 +788,22 @@ Content-Type: application/json
   },
   "document": "본 도면은 3베이 구조의...",
   "embedding": [0.123, -0.456, ...]
+}
+```
+
+**Response 400 (잘못된 요청)**
+
+```json
+{
+  "detail": "llm_analysis_json이 필요합니다"
+}
+```
+
+**Response 500 (처리 실패)**
+
+```json
+{
+  "detail": "메타데이터 생성 중 오류가 발생했습니다"
 }
 ```
 
@@ -646,12 +825,28 @@ Content-Type: application/json
 }
 ```
 
-**Response**
+**Response 200 (성공)**
 
 ```json
 {
   "summaryTitle": "건축법규 채광 기준",
   "answer": "건축법 시행령 제51조에 따르면..."
+}
+```
+
+**Response 400 (잘못된 요청)**
+
+```json
+{
+  "detail": "question이 필요합니다"
+}
+```
+
+**Response 500 (처리 실패)**
+
+```json
+{
+  "detail": "질의 처리 중 오류가 발생했습니다"
 }
 ```
 
@@ -663,12 +858,21 @@ Content-Type: application/json
 GET /health
 ```
 
-**Response**
+**Response 200 (정상)**
 
 ```json
 {
   "status": "healthy",
   "version": "1.0.0"
+}
+```
+
+**Response 503 (서비스 불가)**
+
+```json
+{
+  "status": "unhealthy",
+  "message": "서비스 준비 중입니다"
 }
 ```
 
