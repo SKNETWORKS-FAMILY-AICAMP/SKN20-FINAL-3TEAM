@@ -16,10 +16,6 @@ export function SettingsPage() {
           <div className={styles.settingsCard}>
             <h3 className={styles.settingsTitle}>🔧 일반 설정</h3>
             <div className={styles.settingItem}>
-              <label>사이트 이름</label>
-              <input type="text" defaultValue="Floor Plan AI" className={styles.settingInput} />
-            </div>
-            <div className={styles.settingItem}>
               <label>관리자 이메일</label>
               <input type="email" defaultValue="admin@example.com" className={styles.settingInput} />
             </div>
