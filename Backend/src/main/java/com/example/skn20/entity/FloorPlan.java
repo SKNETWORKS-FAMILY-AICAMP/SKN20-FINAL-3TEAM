@@ -35,6 +35,6 @@ public class FloorPlan {
     @Column(name = "assessment_json", columnDefinition = "TEXT")
     private String assessmentJson; // 3번: 요약, 평가 json (Python 전송용)
     
-    @OneToOne(mappedBy = "floorPlan", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(mappedBy = "floorPlan", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private FloorplanAnalysis analysis; // 4번: 메타데이터는 여기에 쪼개서 저장
 }

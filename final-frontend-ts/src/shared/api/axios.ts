@@ -8,7 +8,7 @@ import { getToken, removeToken } from '@/shared/utils/tokenManager';
 
 // ======== 환경 변수 설정 ========
 // 실제 배포 시 .env 파일에서 관리
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 // ======== Axios 인스턴스 생성 ========
 const apiClient: AxiosInstance = axios.create({
