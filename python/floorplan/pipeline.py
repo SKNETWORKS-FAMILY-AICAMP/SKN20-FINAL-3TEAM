@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import psycopg2
 from openai import OpenAI
 
@@ -37,6 +37,7 @@ class ArchitecturalHybridRAG:
         "kitchen_ratio",
     }
     BOOL_FILTERS = {"has_special_space", "has_etc_space"}
+    VALID_RATIO_OPERATORS = {"이상", "이하", "초과", "미만", "동일"}
 
     def __init__(
         self,
@@ -55,6 +56,7 @@ class ArchitecturalHybridRAG:
             )
 
         self.conn = psycopg2.connect(**db_config)
+        self._ensure_ratio_cmp_function()
         self.client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
@@ -93,11 +95,11 @@ class ArchitecturalHybridRAG:
             "Return ONLY valid JSON in this exact schema:\n"
             "{\n"
             '  "filters": {\n'
-            '    "windowless_ratio": "number(optional)",\n'
-            '    "balcony_ratio": "number(optional)",\n'
-            '    "living_room_ratio": "number(optional)",\n'
-            '    "bathroom_ratio": "number(optional)",\n'
-            '    "kitchen_ratio": "number(optional)",\n'
+            '    "windowless_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "balcony_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "living_room_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "bathroom_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "kitchen_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
             '    "structure_type": "string(optional)",\n'
             '    "bay_count": "integer(optional)",\n'
             '    "room_count": "integer(optional)",\n'
@@ -177,6 +179,18 @@ class ArchitecturalHybridRAG:
             coerced = self._coerce_filter_value(canonical_key, value)
             if coerced is not None:
                 normalized[canonical_key] = coerced
+
+        # Also support split pair keys like kitchen_ratio_op + kitchen_ratio_val.
+        for ratio_key in self.FLOAT_FILTERS:
+            if ratio_key in normalized:
+                continue
+            op = raw_filters.get(f"{ratio_key}_op", raw_filters.get(f"{ratio_key}_operator"))
+            val = raw_filters.get(f"{ratio_key}_val", raw_filters.get(f"{ratio_key}_value"))
+            if op is None and val is None:
+                continue
+            coerced = self._coerce_filter_value(ratio_key, {"op": op, "val": val})
+            if coerced is not None:
+                normalized[ratio_key] = coerced
         return normalized
 
     def _coerce_filter_value(self, key: str, value: Any) -> Any:
@@ -195,14 +209,9 @@ class ArchitecturalHybridRAG:
             return None
 
         if key in self.FLOAT_FILTERS:
-            if isinstance(value, bool):
-                return None
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str):
-                match = re.search(r"-?\d+(\.\d+)?", value)
-                if match:
-                    return float(match.group())
+            ratio_filter = self._coerce_ratio_filter(value)
+            if ratio_filter is not None:
+                return ratio_filter
             return None
 
         if key in self.BOOL_FILTERS:
@@ -220,6 +229,84 @@ class ArchitecturalHybridRAG:
             cleaned = value.strip()
             return cleaned if cleaned else None
         return str(value)
+
+    def _coerce_ratio_filter(self, value: Any) -> Optional[dict[str, Any]]:
+        if value is None or isinstance(value, bool):
+            return None
+
+        # Backward compatibility: numeric-only input means exact match.
+        if isinstance(value, (int, float)):
+            return {"op": "동일", "val": float(value)}
+
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            # Accept forms like "이상 20", "20 이하", or plain number.
+            op_match = re.search(r"(이상|이하|초과|미만|동일)", text)
+            num_match = re.search(r"-?\d+(\.\d+)?", text)
+            if num_match:
+                op = self._normalize_ratio_operator(op_match.group(1) if op_match else None)
+                return {"op": op or "동일", "val": float(num_match.group())}
+            return None
+
+        if isinstance(value, dict):
+            raw_op = value.get("op", value.get("operator"))
+            raw_val = value.get("val", value.get("value"))
+            val = self._parse_float(raw_val)
+            # If op is present but invalid, keep it as None so SQL treats it as no filter.
+            op = self._normalize_ratio_operator(raw_op)
+            if raw_op is None and val is None:
+                return None
+            return {"op": op, "val": val}
+
+        return None
+
+    def _normalize_ratio_operator(self, op: Any) -> Optional[str]:
+        if not isinstance(op, str):
+            return None
+        cleaned = op.strip()
+        return cleaned if cleaned in self.VALID_RATIO_OPERATORS else None
+
+    def _parse_float(self, value: Any) -> Optional[float]:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            match = re.search(r"-?\d+(\.\d+)?", value)
+            if match:
+                return float(match.group())
+        return None
+
+    def _ensure_ratio_cmp_function(self) -> None:
+        sql = """
+        CREATE OR REPLACE FUNCTION public.ratio_cmp(
+            field_val double precision,
+            op text,
+            val double precision
+        ) RETURNS boolean
+        LANGUAGE sql
+        IMMUTABLE
+        AS $$
+        SELECT CASE
+            WHEN op IS NULL OR val IS NULL THEN TRUE
+            WHEN op = '이상' THEN field_val >= val
+            WHEN op = '이하' THEN field_val <= val
+            WHEN op = '초과' THEN field_val > val
+            WHEN op = '미만' THEN field_val < val
+            WHEN op = '동일' THEN field_val = val
+            ELSE TRUE
+        END
+        $$;
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            self.logger.exception("Failed to create ratio_cmp function.")
 
     def _augment_filters_from_query(
         self, query: str, filters: dict[str, Any]
@@ -270,7 +357,7 @@ class ArchitecturalHybridRAG:
         self, query: str, filters: dict[str, Any]
     ) -> dict[str, Any]:
         # Ratio filters should be applied only when the user explicitly gives numeric intent.
-        if re.search(r"(%|퍼센트|비율|ratio)", query, flags=re.IGNORECASE):
+        if re.search(r"(%|퍼센트|비율|ratio|이상|이하|초과|미만|동일)", query, flags=re.IGNORECASE):
             return filters
 
         sanitized = dict(filters)
@@ -302,8 +389,14 @@ class ArchitecturalHybridRAG:
             value = filters.get(column)
             if value is None:
                 continue
-            where_clauses.append(f"{column} = %s")
-            params.append(value)
+            if column in self.FLOAT_FILTERS:
+                op = value.get("op") if isinstance(value, dict) else None
+                val = value.get("val") if isinstance(value, dict) else None
+                where_clauses.append(f"ratio_cmp({column}::double precision, %s, %s)")
+                params.extend([op, val])
+            else:
+                where_clauses.append(f"{column} = %s")
+                params.append(value)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
         params.append(self.vector_weight)
@@ -312,7 +405,7 @@ class ArchitecturalHybridRAG:
 
         sql = f"""
             WITH scored AS (
-                SELECT document_id, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+                SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
                 structure_type, bay_count, room_count, bathroom_count,
                 compliance_grade, ventilation_grade, has_special_space, has_etc_space,
                 (1 - (embedding <=> %s::vector)) AS vector_similarity,
@@ -323,7 +416,7 @@ class ArchitecturalHybridRAG:
                 FROM FP_Analysis
                 WHERE {where_sql}
             )
-            SELECT document_id, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+            SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
             structure_type, bay_count, room_count, bathroom_count,
             compliance_grade, ventilation_grade, has_special_space, has_etc_space,
             (%s * vector_similarity + %s * text_score) AS similarity
@@ -336,50 +429,140 @@ class ArchitecturalHybridRAG:
             cur.execute(sql, params)
             return cur.fetchall()
 
-    def _generate_answer(self, query: str, docs: list) -> str:
+    def _generate_answer(self, query: str, query_json: dict, docs: list) -> str:
         """
         Format retrieved docs as documents and send to the LLM to generate the answer
         """
         if not docs:
             return "Try searching again."
 
-        documents_lines = []
-        for idx, row in enumerate(docs, start=1):
-            (
-                document_id,
-                windowless_ratio,
-                balcony_ratio,
-                living_room_ratio,
-                bathroom_ratio,
-                kitchen_ratio,
-                structure_type,
-                bay_count,
-                room_count,
-                bathroom_count,
-                compliance_grade,
-                ventilation_grade,
-                has_special_space,
-                has_etc_space,
-                similarity,
-            ) = row
-            documents_lines.append(
-                f"[Candidate {idx}] ID: {document_id}, "
-                f"Structure: {structure_type}, Bay: {bay_count}, "
-                f"Rooms: {room_count}, Bathrooms: {bathroom_count}, "
-                f"Compliance: {compliance_grade}, Similarity: {similarity:.4f}, "
-                f"WindowlessRatio: {windowless_ratio}, BalconyRatio: {balcony_ratio}, "
-                f"LivingRoomRatio: {living_room_ratio}, BathroomRatio: {bathroom_ratio}, KitchenRatio: {kitchen_ratio}, "
-                f"Ventilation: {ventilation_grade}, SpecialSpace: {has_special_space}, EtcSpace: {has_etc_space}"
-            )
+        filters_json = json.dumps(query_json.get("filters", {}), ensure_ascii=False, indent=2)
+        (
+            document_id,
+            document,
+            windowless_ratio,
+            balcony_ratio,
+            living_room_ratio,
+            bathroom_ratio,
+            kitchen_ratio,
+            structure_type,
+            bay_count,
+            room_count,
+            bathroom_count,
+            compliance_grade,
+            ventilation_grade,
+            has_special_space,
+            has_etc_space,
+            _similarity,
+        ) = docs[0]
 
-        documents = "\n".join(documents_lines)
-        system_prompt = (
-            "You are an architectural drawing recommendation expert.\n"
-            "Requirements:\n"
-            "1) Explicitly state the document_id of the recommended drawing.\n"
-            "2) Explain why it matches the user query using only provided features.\n"
-            "3) Do not fabricate facts not present in the documents."
-        )
+        metadata = {
+            "room_count": room_count,
+            "bathroom_count": bathroom_count,
+            "bay_count": bay_count,
+            "living_room_ratio": living_room_ratio,
+            "kitchen_ratio": kitchen_ratio,
+            "bathroom_ratio": bathroom_ratio,
+            "balcony_ratio": balcony_ratio,
+            "windowless_ratio": windowless_ratio,
+            "structure_type": structure_type,
+            "ventilation_quality": ventilation_grade,
+            "has_special_space": has_special_space,
+            "has_etc_space": has_etc_space,
+            "compliance_grade": compliance_grade,
+        }
+
+        system_prompt = """너는 ‘건축 도면 찾기’ 전용 sLLM이다.
+너의 역할은 검색된 도면에 대해
+① 왜 이 도면이 검색되었는지 설명하고,
+② 도면의 메타데이터를 중립적으로 나열·설명하며,
+③ 해당 도면의 document를 해석 없이 가시성 좋게 정리하는 것이다.
+
+너는 판단, 평가, 추천, 해석을 절대 수행하지 않는다.
+
+========================
+절대 금지 사항
+========================
+- 도면의 적합성, 우수성, 문제점을 판단하지 않는다.
+- 설계 조언이나 개선 의견을 제시하지 않는다.
+- 법규·인허가 가능 여부를 해석하지 않는다.
+- 수치 값을 비교하거나 의미를 확장하지 않는다.
+- 제공되지 않은 정보를 추론하거나 생성하지 않는다.
+
+========================
+입력
+========================
+- 검색된 도면 id
+- 사용자가 설정한 검색 조건
+- 검색된 도면의 메타데이터
+- 해당 도면의 document 원문 텍스트
+
+========================
+출력 형식 (반드시 그대로 유지)
+========================
+
+검색된 도면 id: {id}
+
+1. 왜 이 도면이 나왔는지 / 어떤 조건이 충족했는지
+- 사용자가 설정한 검색 조건과
+- 해당 도면의 실제 값을 대응시켜 설명한다.
+- 사실만 서술하며, 평가적 표현을 사용하지 않는다.
+
+허용되는 서술 방식:
+- “이 도면은 ‘방 3개 이상’ 조건을 충족합니다.”
+- “주방 공간 비율은 사용자가 설정한 최소 기준을 만족합니다.”
+
+금지되는 서술 방식:
+- “이 도면은 적합한 설계입니다.”
+- “조건을 잘 만족하는 도면입니다.”
+
+2. 도면에 대한 설명 (메타데이터)
+- 수치 값은 입력된 그대로 사용한다.
+- 값을 비교하거나 해석하지 않는다.
+- 판단이나 결론을 추가하지 않는다.
+
+[개수]
+- 방 개수: {room_count}
+- 화장실 개수: {bathroom_count}
+- Bay 개수: {bay_count}
+
+[전체 면적 대비 공간 비율 (ratio, %)]
+- 거실 공간: {living_room_ratio}
+- 주방 공간: {kitchen_ratio}
+- 욕실 공간: {bathroom_ratio}
+- 발코니 공간: {balcony_ratio}
+- 창문이 없는 공간: {windowless_ratio}
+
+[구조 유형]
+- 건물 구조 유형: {structure_type}
+
+[환기]
+- 환기 성능 평가 결과: {ventilation_quality}
+
+[공간 구성 여부]
+- 특화 공간: {has_special_space}
+- 기타 공간: {has_etc_space}
+
+[평가 결과]
+{compliance_grade}
+※ 위 평가는 사내 기준에 따른 결과 값이며, 법적 판단이나 인허가 판단이 아니다.
+
+3. {id}의 document를 해석 없이 가시성 좋게 정리한다.
+
+정리 규칙:
+- 원문 문장은 그대로 유지한다.
+- 요약하거나 의미를 바꾸지 않는다.
+- 다음 작업만 허용한다.
+  - 문단 나누기
+  - 항목화
+  - 제목 또는 레이블 추가
+
+========================
+작성 스타일
+========================
+- 설명 중심, 중립적인 문체를 사용한다.
+- 평가·권유·해석 표현을 사용하지 않는다.
+- 이모지는 사용하지 않는다."""
 
         response = self.client.chat.completions.create(
             model="gpt-4o",
@@ -387,7 +570,13 @@ class ArchitecturalHybridRAG:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": f"User Query:\n{query}\n\nRetrieved Documents:\n{documents}",
+                    "content": (
+                        f"검색된 도면 id:\n{document_id}\n\n"
+                        f"사용자가 설정한 검색 조건:\n{filters_json}\n\n"
+                        f"검색된 도면의 메타데이터:\n{json.dumps(metadata, ensure_ascii=False, indent=2)}\n\n"
+                        f"해당 도면의 document 원문 텍스트:\n{document}\n\n"
+                        f"사용자 질의 원문:\n{query}"
+                    ),
                 },
             ],
             temperature=0.0,
@@ -405,4 +594,4 @@ class ArchitecturalHybridRAG:
         docs = self._retrieve_hybrid(query_json)
 
         self.logger.info("Stage 3/3: Generate answer")
-        return self._generate_answer(query, docs)
+        return self._generate_answer(query, query_json, docs)
