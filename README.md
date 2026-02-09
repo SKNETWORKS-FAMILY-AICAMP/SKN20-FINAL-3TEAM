@@ -348,24 +348,17 @@ GET /api/regulation/query?address=서울특별시 강남구 역삼동 123-45
 **Response**
 ```json
 {
-  "meta": { "source": "F4", "query_key": "..." },
-  "land_char": {
-    "zone1": "제1종일반주거지역",
-    "zone2": "지정되지않음",
-    "land_category": "대",
-    "land_area": 15622.1,
-    "land_use":"연립",
-    "terrain_height":"완경사",
-    "terrain_shape":"부정형",
-    "road_access":"소로한면"
+  "address": "서울특별시 강남구 역삼동 123-45",
+  "land_info": {
+    "zone": "제2종일반주거지역",
+    "building_coverage": 0.60,
+    "floor_area_ratio": 2.50
   },
-  "law": [
+  "regulations": [
     {
-      "law_name": "건축법시행령별표 1 제1호가목",
-      "zone_district_name": "제1종주거지역",
-      "lane_use_activity": "아파트",
-      "permission_status": "건축가능",
-      "condition_exception": "..."
+      "regulation_id": "REG_001",
+      "title": "건축법 제60조 (건폐율)",
+      "content": "..."
     },
     ...
   ]
@@ -481,5 +474,3 @@ SKN20-final/
     ├── 2주차/                          # 2주차 산출물
     └── 3주차/                          # 3주차 산출물
         └── finetunned_models/         # Fine-tuned 모델
-
-
