@@ -365,7 +365,7 @@ class ArchitecturalHybridRAG:
             sanitized.pop(key, None)
         return sanitized
 
-    def _retrieve_hybrid(self, query_json: dict, top_k: int = 3) -> list:
+    def _retrieve_hybrid(self, query_json: dict, top_k: int = 50) -> list:
         """
         Generate embedding -> build query -> execute DB query -> return results
         """
@@ -429,7 +429,32 @@ class ArchitecturalHybridRAG:
             cur.execute(sql, params)
             return cur.fetchall()
 
-    def _generate_answer(self, query: str, query_json: dict, docs: list) -> str:
+    def _count_matches(self, filters: dict[str, Any]) -> int:
+        where_clauses = []
+        params: list[Any] = []
+
+        for column in self.ALLOWED_FILTER_COLUMNS:
+            value = filters.get(column)
+            if value is None:
+                continue
+            if column in self.FLOAT_FILTERS:
+                op = value.get("op") if isinstance(value, dict) else None
+                val = value.get("val") if isinstance(value, dict) else None
+                where_clauses.append(f"ratio_cmp({column}::double precision, %s, %s)")
+                params.extend([op, val])
+            else:
+                where_clauses.append(f"{column} = %s")
+                params.append(value)
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
+        sql = f"SELECT COUNT(*) FROM FP_Analysis WHERE {where_sql}"
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+            return int(cur.fetchone()[0])
+
+    def _generate_answer(
+        self, query: str, query_json: dict, docs: list, total_match_count: int
+    ) -> str:
         """
         Format retrieved docs as documents and send to the LLM to generate the answer
         """
@@ -455,6 +480,8 @@ class ArchitecturalHybridRAG:
             has_etc_space,
             _similarity,
         ) = docs[0]
+        retrieved_ids = [row[0] for row in docs]
+        id_list_text = ", ".join(retrieved_ids)
 
         metadata = {
             "room_count": room_count,
@@ -475,8 +502,8 @@ class ArchitecturalHybridRAG:
         system_prompt = """너는 ‘건축 도면 찾기’ 전용 sLLM이다.
 너의 역할은 검색된 도면에 대해
 ① 왜 이 도면이 검색되었는지 설명하고,
-② 도면의 메타데이터를 중립적으로 나열·설명하며,
-③ 해당 도면의 document를 해석 없이 가시성 좋게 정리하는 것이다.
+② 도면의 메타데이터를 중립적으로 설명하며,
+③ 해당 도면의 document를 해석 없이, 짧고 가독성 있게 정리하는 것이다.
 
 너는 판단, 평가, 추천, 해석을 절대 수행하지 않는다.
 
@@ -486,20 +513,15 @@ class ArchitecturalHybridRAG:
 - 도면의 적합성, 우수성, 문제점을 판단하지 않는다.
 - 설계 조언이나 개선 의견을 제시하지 않는다.
 - 법규·인허가 가능 여부를 해석하지 않는다.
-- 수치 값을 비교하거나 의미를 확장하지 않는다.
-- 제공되지 않은 정보를 추론하거나 생성하지 않는다.
+- metadata에 이미 존재하는 평가 결과를 document에서 반복하지 않는다.
+- document에서 “불합격”, “우수”, “개선 필요” 등
+  평가·판단 표현을 그대로 노출하지 않는다.
 
 ========================
-입력
+출력 형식 (반드시 유지)
 ========================
-- 검색된 도면 id
-- 사용자가 설정한 검색 조건
-- 검색된 도면의 메타데이터
-- 해당 도면의 document 원문 텍스트
 
-========================
-출력 형식 (반드시 그대로 유지)
-========================
+조건을 만족하는 도면 총 개수: {total_count}
 
 검색된 도면 id: {id}
 
@@ -508,70 +530,65 @@ class ArchitecturalHybridRAG:
 - 해당 도면의 실제 값을 대응시켜 설명한다.
 - 사실만 서술하며, 평가적 표현을 사용하지 않는다.
 
-허용되는 서술 방식:
-- “이 도면은 ‘방 3개 이상’ 조건을 충족합니다.”
-- “주방 공간 비율은 사용자가 설정한 최소 기준을 만족합니다.”
-
-금지되는 서술 방식:
-- “이 도면은 적합한 설계입니다.”
-- “조건을 잘 만족하는 도면입니다.”
-
 2. 도면에 대한 설명 (메타데이터)
-- 수치 값은 입력된 그대로 사용한다.
-- 값을 비교하거나 해석하지 않는다.
-- 판단이나 결론을 추가하지 않는다.
-
 [개수]
 - 방 개수: {room_count}
 - 화장실 개수: {bathroom_count}
 - Bay 개수: {bay_count}
-
 [전체 면적 대비 공간 비율 (ratio, %)]
 - 거실 공간: {living_room_ratio}
 - 주방 공간: {kitchen_ratio}
 - 욕실 공간: {bathroom_ratio}
 - 발코니 공간: {balcony_ratio}
 - 창문이 없는 공간: {windowless_ratio}
-
 [구조 유형]
 - 건물 구조 유형: {structure_type}
-
 [환기]
 - 환기 성능 평가 결과: {ventilation_quality}
-
 [공간 구성 여부]
 - 특화 공간: {has_special_space}
 - 기타 공간: {has_etc_space}
-
 [평가 결과]
 {compliance_grade}
-※ 위 평가는 사내 기준에 따른 결과 값이며, 법적 판단이나 인허가 판단이 아니다.
 
-3. {id}의 document를 해석 없이 가시성 좋게 정리한다.
+3. {id}의 document 정리 (공간 설명용)
 
-정리 규칙:
-- 원문 문장은 그대로 유지한다.
-- 요약하거나 의미를 바꾸지 않는다.
-- 다음 작업만 허용한다.
-  - 문단 나누기
-  - 항목화
-  - 제목 또는 레이블 추가
+document는 내부 평가용 텍스트이므로,
+다음 규칙에 따라 사용자에게 읽기 쉬운 형태로 재구성한다.
 
-========================
-작성 스타일
-========================
-- 설명 중심, 중립적인 문체를 사용한다.
-- 평가·권유·해석 표현을 사용하지 않는다.
-- 이모지는 사용하지 않는다."""
+정리 원칙:
+- 원문에 포함된 사실 정보만 사용한다.
+- 사내 기준, 적합성, 불합격, 우수/부족 등
+  평가·판단·결론 표현은 제거한다.
+- 동일한 의미의 문장은 하나로 합친다.
+- 문장은 자연스러운 한국어로 재서술할 수 있다
+  (의미 변경은 금지).
+- 조언, 개선 제안, 기준 비교는 포함하지 않는다.
+
+출력 형식:
+- 전체 요약 1~2문장 (공간 전반 특성만 서술)
+- 이후 공간별 설명
+- 각 공간당 1문장
+
+출력 예시 형식:
+
+전반적으로 4Bay 구조로 설계되어 채광과 환기 측면의 특성이 확인되며, 안방에는 외기창이 설치되어 있지 않다.
+[거실] 넓은 공간과 충분한 채광을 확보해 가족융화가 우수함
+[침실] 개인 공간으로 적절함, 외기창은 설치되어 있지 않음
+[주방/식당] 환기창이 설치되어 있어 환기 우수
+
+"""
 
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": (
-                        f"검색된 도면 id:\n{document_id}\n\n"
+                        f"검색된 도면 id(조회 결과 목록):\n{id_list_text}\n\n"
+                        f"대표 도면 id(메타데이터/문서 설명 대상):\n{document_id}\n\n"
+                        f"조건 일치 전체 건수(total_count):\n{total_match_count}\n\n"
                         f"사용자가 설정한 검색 조건:\n{filters_json}\n\n"
                         f"검색된 도면의 메타데이터:\n{json.dumps(metadata, ensure_ascii=False, indent=2)}\n\n"
                         f"해당 도면의 document 원문 텍스트:\n{document}\n\n"
@@ -590,8 +607,11 @@ class ArchitecturalHybridRAG:
         self.logger.info("Stage 1/3: Analyze query")
         query_json = self._analyze_query(query)
 
+        total_match_count = self._count_matches(query_json.get("filters", {}) or {})
+        retrieve_k = min(max(total_match_count, 1), 50)
+
         self.logger.info("Stage 2/3: Retrieve documents")
-        docs = self._retrieve_hybrid(query_json)
+        docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
 
         self.logger.info("Stage 3/3: Generate answer")
-        return self._generate_answer(query, query_json, docs)
+        return self._generate_answer(query, query_json, docs, total_match_count)
