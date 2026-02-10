@@ -13,11 +13,15 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # 로컬 모듈 import
-from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse, ChatRequest, ChatResponse
+from api_models.schemas import (
+    AnalyzeResponse, SaveRequest, SaveResponse,
+    ChatRequest, ChatResponse, IntentClassification
+)
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
 from services.chatbot_service import chatbot_service
+from services.intent_classifier_service import intent_classifier_service
 from api_utils.image_utils import image_to_base64
 
 # 로깅 설정
@@ -247,6 +251,44 @@ async def ask_chatbot(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"챗봇 오류: {str(e)}")
 
 
+@app.post("/classify-intent", response_model=IntentClassification)
+async def classify_intent_endpoint(request: ChatRequest):
+    """
+    의도 분류 디버그 엔드포인트
+
+    Input: 질문이 포함된 ChatRequest
+    Output: IntentClassification 결과 (FLOORPLAN_SEARCH 또는 REGULATION_SEARCH)
+    """
+    logger.info("=" * 80)
+    logger.info("=== /classify-intent 엔드포인트 호출됨 ===")
+    logger.info(f"Question: {request.question}")
+    logger.info("=" * 80)
+
+    try:
+        # 의도 분류 서비스 호출
+        result = intent_classifier_service.classify_intent(request.question)
+
+        logger.info("=" * 80)
+        logger.info("=== 의도 분류 완료! ===")
+        logger.info(f"Intent Type: {result.intent_type}")
+        logger.info(f"Confidence: {result.confidence:.2f}")
+        logger.info(f"Metadata: {result.extracted_metadata}")
+        logger.info(f"Reasoning: {result.reasoning}")
+        logger.info("=" * 80)
+
+        return result
+
+    except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"!!! 의도 분류 중 오류 !!!")
+        logger.error(f"에러 타입: {type(e).__name__}")
+        logger.error(f"에러 메시지: {str(e)}")
+        logger.error("=" * 80)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"의도 분류 오류: {str(e)}")
+
+
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
@@ -255,7 +297,8 @@ def health_check():
         "cv_pipeline_loaded": cv_service.is_loaded(),
         "rag_loaded": rag_service.is_loaded(),
         "embedding_loaded": embedding_service.is_loaded(),
-        "chatbot_loaded": chatbot_service.is_loaded()
+        "chatbot_loaded": chatbot_service.is_loaded(),
+        "intent_classifier_loaded": intent_classifier_service.is_loaded()
     }
 
 
