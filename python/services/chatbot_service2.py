@@ -665,6 +665,33 @@ class ChatbotService:
         # 법정동명 추출 (광역시/도 + 시군구 + 동)
         dong_parts = []
 
+        # [V3 개선] 오탐 방지: 문장 내 맥락 체크
+        # "그러면", "도로접면", "이면", "하면" 같은 일반 단어 필터링
+        false_positive_patterns = [
+            # 접속사/조사
+            r'그러면', r'그럼', r'그리고', r'그런데', r'그래도', r'그치만',
+            r'이면', r'하면', r'되면', r'라면', r'처럼', r'같은', r'같이',
+            
+            # 토지/건축 용어 (면, 동 포함)
+            r'도로\s*접면', r'접면', r'정면', r'남면', r'북면', r'동면', r'서면',
+            r'건물\s*면', r'대지\s*면', r'연면', r'바닥\s*면',
+            r'면적', r'면허', r'면세', r'면제', r'변경', r'발급',
+            
+            # 일반 동사/명사 (시, 도, 군, 구 포함)
+            r'시설', r'시간', r'시작', r'시행', r'시공', r'시점', r'시험',
+            r'도로', r'도면', r'도표', r'도시', r'도입', r'필요하',
+            r'군데', r'군청', r'필요한',
+            r'구조', r'구성', r'구분', r'구역', r'구축', r'구비', r'필요',
+            
+            # 동작 동사 (동 포함)
+            r'가동', r'작동', r'운동', r'이동', r'자동', r'활동', r'감동',
+            r'행동', r'변동', r'등록', r'등기', r'공동', r'동의',
+            
+            # 기타 (~리)
+            r'거리', r'처리', r'관리', r'정리', r'수리', r'심리',
+            r'요리', r'원리', r'진리', r'매리', r'유리',
+        ]
+        
         # 광역시/도 목록 (중복 방지용)
         sido_keywords = [
             '서울특별시', '서울시', '부산광역시', '대구광역시', '인천광역시',
@@ -674,24 +701,42 @@ class ChatbotService:
         ]
 
         # 1. 광역시/도 추출 (서울특별시, 경기도, 부산광역시 등)
-        sido_match = re.search(r'(서울특별시|서울시|서울|부산광역시|부산|대구광역시|대구|인천광역시|인천|광주광역시|광주|대전광역시|대전|울산광역시|울산|세종특별자치시|세종|경기도|경기|강원도|강원|충청북도|충북|충청남도|충남|전라북도|전북|전라남도|전남|경상북도|경북|경상남도|경남|제주특별자치도|제주도|제주)', text)
+        # [V3 개선] 오탐 방지: 앞뒤 문맥 확인
+        sido_pattern = r'(?<![가-힣])(서울특별시|서울시|서울|부산광역시|부산|대구광역시|대구|인천광역시|인천|광주광역시|광주|대전광역시|대전|울산광역시|울산|세종특별자치시|세종|경기도|경기|강원도|강원|충청북도|충북|충청남도|충남|전라북도|전북|전라남도|전남|경상북도|경북|경상남도|경남|제주특별자치도|제주도|제주)(?![가-힣])'
+        sido_match = re.search(sido_pattern, text)
+        
         if sido_match:
-            # 약칭을 정식 명칭으로 정규화 (DB 매칭용)
-            sido_normalize = {
-                '서울': '서울특별시', '서울시': '서울특별시',
-                '부산': '부산광역시', '대구': '대구광역시',
-                '인천': '인천광역시', '광주': '광주광역시',
-                '대전': '대전광역시', '울산': '울산광역시',
-                '세종': '세종특별자치시',
-                '경기': '경기도', '강원': '강원도',
-                '충북': '충청북도', '충남': '충청남도',
-                '전북': '전라북도', '전남': '전라남도',
-                '경북': '경상북도', '경남': '경상남도',
-                '제주': '제주특별자치도', '제주도': '제주특별자치도',
-            }
             sido_raw = sido_match.group(1)
-            sido_full = sido_normalize.get(sido_raw, sido_raw)
-            dong_parts.append(sido_full)
+            match_pos = sido_match.start()
+            
+            # [V3 개선] 앞 5글자 확인하여 오탐 패턴 제외
+            before_text = text[max(0, match_pos-5):match_pos]
+            is_false_positive = False
+            
+            for fp_pattern in false_positive_patterns:
+                if re.search(fp_pattern, before_text + sido_raw):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{sido_raw}' 제외: 앞 문맥='{before_text}'")
+                    break
+            
+            if not is_false_positive:
+                # 약칭을 정식 명칭으로 정규화 (DB 매칭용)
+                sido_normalize = {
+                    '서울': '서울특별시', '서울시': '서울특별시',
+                    '부산': '부산광역시', '대구': '대구광역시',
+                    '인천': '인천광역시', '광주': '광주광역시',
+                    '대전': '대전광역시', '울산': '울산광역시',
+                    '세종': '세종특별자치시',
+                    '경기': '경기도', '강원': '강원도',
+                    '충북': '충청북도', '충남': '충청남도',
+                    '전북': '전라북도', '전남': '전라남도',
+                    '경북': '경상북도', '경남': '경상남도',
+                    '제주': '제주특별자치도', '제주도': '제주특별자치도',
+                }
+                sido_full = sido_normalize.get(sido_raw, sido_raw)
+                dong_parts.append(sido_full)
+            else:
+                sido_match = None  # 오탐이면 무효화
 
         # 2. 시군구 추출 (광역시/도 부분을 제외하고 검색)
         # [V2 버그픽스] 토지이용 키워드가 시/군/구 패턴에 오탐되는 것 방지
@@ -713,10 +758,71 @@ class ChatbotService:
                     dong_parts.append(sigungu)
 
         # 3. 읍면동 추출 (동 뒤에 조사/숫자/공백이 올 수 있음)
-        dong_match = re.search(r'([\w]{1,10}(?:동|읍|면|리))(?:\s|\d|에|을|의|로|은|는|이|가|$)', text)
-        if dong_match:
+        # [V3 개선] 오탐 방지: "면", "동", "리" 문맥 체크
+        dong_pattern = r'([\w]{1,10}(?:동|읍|면|리))(?:\s|\d|에|을|의|로|은|는|이|가|$)'
+        dong_matches = re.finditer(dong_pattern, text)
+        
+        for dong_match in dong_matches:
             dong = dong_match.group(1)
-            if dong not in dong_parts:
+            match_pos = dong_match.start()
+            
+            # [V3 개선] 앞뒤 맥락 확인
+            before_text = text[max(0, match_pos-6):match_pos]
+            after_text = text[dong_match.end():dong_match.end()+4]
+            
+            # 오탐 패턴 체크
+            is_false_positive = False
+            
+            # [V3 확장] "면" 오탐 패턴 강화
+            if dong.endswith('면'):
+                # 앞 문맥: 토지용어, 접속사, 조건문
+                if re.search(r'(도로\s*접|접|정|남|북|동|서|건물|대지|연|바닥|그러|이|하|되|라|같)', before_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}'")
+                # 뒤 문맥: ~면적, ~면허, ~면세, ~면제
+                elif re.search(r'(적|허|세|제|건|의|에)', after_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 뒤 문맥='{after_text}'")
+                # 단일 음절 + 면은 제외 (예: "이면", "저면", "그면")
+                elif len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+면)")
+            
+            # [V3 확장] "동" 오탐 패턴 강화
+            if dong.endswith('동'):
+                # 짧은 동 (2글자): 가동, 작동, 운동, 이동, 자동, 활동, 감동, 행동, 변동, 공동
+                if len(dong) <= 2:
+                    if re.search(r'(가|작|운|이|자|활|감|행|변|공|등|시)', before_text):
+                        is_false_positive = True
+                        logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}' (짧은 동)")
+                # 뒤 문맥: ~동의, ~동일, ~동안, ~동시
+                elif re.search(r'(의|일|안|시|작|에)', after_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 뒤 문맥='{after_text}'")
+                # "등록", "등기" 같은 단어
+                elif dong in ['등록', '등기', '등동', '등']:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 일반 단어")
+            
+            # [V3 확장] "리" 오탐 패턴 강화
+            if dong.endswith('리'):
+                # 1~2글자 리는 대부분 오탐 (예: 거리, 관리, 처리, 정리, 수리)
+                if len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+리)")
+                # 앞 문맥: 일반 동사 (거리, 처리, 관리 등)
+                elif re.search(r'(거|처|관|정|수|심|요|원|진|매|유)', before_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}'")
+            
+            # [V3 신규] "읍" 오탐 패턴
+            if dong.endswith('읍'):
+                # 너무 짧은 경우 제외 (2글자 이하)
+                if len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+읍)")
+            
+            if not is_false_positive and dong not in dong_parts:
                 dong_parts.append(dong)
 
         # "가" 주소 별도 처리 (숫자+가 형태: 종로1가, 명동2가 등)
