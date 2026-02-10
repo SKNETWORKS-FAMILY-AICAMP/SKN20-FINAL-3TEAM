@@ -25,17 +25,20 @@ public class Law {
     @Column(name = "region_code", columnDefinition = "TEXT")
     private String regionCode; // 지역 코드 (시군구 코드)
     
-    @Column(name = "zone_district_name", columnDefinition = "TEXT")
-    private String zoneDistrictName; // 용도지역/지구명 (제1종일반주거지역 등)
+    @Column(name = "region_name", columnDefinition = "TEXT")
+    private String regionName; // 지역명 (서울특별시 종로구 등) - 전처리 추가
     
     @Column(name = "law_name", columnDefinition = "TEXT")
     private String lawName; // 관련 법률명 (국토의 계획 및 이용에 관한 법률 등)
     
+    @Column(name = "zone_district_name", columnDefinition = "TEXT")
+    private String zoneDistrictName; // 용도지역/지구명 (제1종일반주거지역 등)
+    
     @Column(name = "land_use_activity", columnDefinition = "TEXT")
     private String landUseActivity; // 토지 이용 행위 (건축, 개발 등)
     
-    @Column(name = "permission_status", columnDefinition = "TEXT")
-    private String permissionStatus; // 허가 상태 (허용, 불허, 조건부허용 등)
+    @Column(name = "permission_category", columnDefinition = "TEXT")
+    private String permissionCategory; // 가능여부 정규화 (가능/불가/조건부/알수없음) - 전처리 추가
     
     @Column(name = "condition_exception", columnDefinition = "TEXT")
     private String conditionException; // 조건 및 예외사항 (상세 설명)
