@@ -1,0 +1,86 @@
+SELECT
+document_id
+FROM "FP-Analysis"
+WHERE 1=1
+
+-- 환기 등급
+AND (derived_vent_grade = :'vent_grade' OR :'vent_grade' = 'NULL')
+AND (
+    :'vent_grade' = 'NULL' OR
+    document ~ ('ventilation은\(는\)\s*' || :'vent_grade')
+)
+
+-- 채광 등급
+AND (derived_light_grade = :'light_grade' OR :'light_grade' = 'NULL')
+AND (
+    :'light_grade' = 'NULL' OR
+    CASE
+        WHEN :'light_grade' = '적합' THEN document ~ 'lighting은\(는\)\s*(우수|적합)'
+        WHEN :'light_grade' = '보통' THEN document ~ 'lighting은\(는\)\s*보통'
+        WHEN :'light_grade' = '부족' THEN document ~ 'lighting은\(는\)\s*(부족|미흡)'
+        WHEN :'light_grade' = '부적합' THEN document ~ 'lighting은\(는\)\s*(부적합|불합격)'
+        ELSE document ~ ('lighting은\(는\)\s*' || :'light_grade')
+    END
+)
+
+-- 수납공간 등급
+AND (
+    :'storage_grade' = 'NULL' OR
+    CASE
+        WHEN :'storage_grade' = '적합' THEN document ~ 'storage은\(는\)\s*(우수|적합)'
+        WHEN :'storage_grade' = '보통' THEN document ~ 'storage은\(는\)\s*보통'
+        WHEN :'storage_grade' = '부족' THEN document ~ 'storage은\(는\)\s*(부족|미흡)'
+        WHEN :'storage_grade' = '부적합' THEN document ~ 'storage은\(는\)\s*(부적합|불합격)'
+        ELSE document ~ ('storage은\(는\)\s*' || :'storage_grade')
+    END
+)
+
+-- A. 기본 구조 필터
+AND (:'bay_cnt' = 'NULL' OR bay_count::text IN (SELECT unnest(string_to_array(:'bay_cnt', ','))))
+AND (:'comp_grade' = 'NULL' OR compliance_grade = :'comp_grade')
+AND (:'struc_type' = 'NULL' OR structure_type IN (SELECT unnest(string_to_array(:'struc_type', ','))))
+
+-- B. 주방 비율 (5종 연산자)
+AND (
+CASE :'k_op'
+WHEN '이상' THEN kitchen_ratio::float >= :'k_val'::float
+WHEN '이하' THEN kitchen_ratio::float <= :'k_val'::float
+WHEN '초과' THEN kitchen_ratio::float > :'k_val'::float
+WHEN '미만' THEN kitchen_ratio::float < :'k_val'::float
+WHEN '동일' THEN kitchen_ratio::float = :'k_val'::float
+ELSE TRUE
+END
+)
+
+-- C. 거실 비율 (5종 연산자)
+AND (
+CASE :'lr_op'
+WHEN '이상' THEN living_room_ratio::float >= :'lr_val'::float
+WHEN '이하' THEN living_room_ratio::float <= :'lr_val'::float
+WHEN '초과' THEN living_room_ratio::float > :'lr_val'::float
+WHEN '미만' THEN living_room_ratio::float < :'lr_val'::float
+WHEN '동일' THEN living_room_ratio::float = :'lr_val'::float
+ELSE TRUE
+END
+)
+
+-- D. 무창 공간 비율 (5종 연산자)
+AND (
+CASE :'wl_op'
+WHEN '이상' THEN windowless_ratio::float >= :'wl_val'::float
+WHEN '이하' THEN windowless_ratio::float <= :'wl_val'::float
+WHEN '초과' THEN windowless_ratio::float > :'wl_val'::float
+WHEN '미만' THEN windowless_ratio::float < :'wl_val'::float
+WHEN '동일' THEN windowless_ratio::float = :'wl_val'::float
+ELSE TRUE
+END
+)
+
+-- E. 공간 명칭 키워드 및 상태 패턴
+AND (
+:'keyword' = 'NULL' OR
+document ~* ALL(
+SELECT TRIM(k)
+FROM unnest(string_to_array(:'keyword', ',')) k
+)
+);
