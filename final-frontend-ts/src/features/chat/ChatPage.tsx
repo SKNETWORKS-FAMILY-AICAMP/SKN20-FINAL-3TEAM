@@ -261,6 +261,24 @@ const ChatPage: React.FC = () => {
         role: 'assistant',
         content: response.answer,
         timestamp: new Date(),
+        // MOCK: 도면 이미지 테스트용 (나중에 백엔드 연동 시 제거)
+        images: [
+          {
+            url: 'https://picsum.photos/seed/floor1/400/300',
+            name: 'A동 1층 평면도',
+            description: '방 3개, 화장실 2개 구조의 32평형 아파트입니다. 남향 배치로 거실 채광이 우수하며, 주방과 거실이 오픈형으로 연결되어 있습니다.',
+          },
+          {
+            url: 'https://picsum.photos/seed/floor2/400/300',
+            name: 'B동 2층 평면도',
+            description: '방 4개, 화장실 2개 구조의 42평형 아파트입니다. 넓은 거실과 분리형 주방이 특징이며, 안방에 드레스룸이 포함되어 있습니다.',
+          },
+          {
+            url: 'https://picsum.photos/seed/floor3/400/300',
+            name: 'C동 3층 평면도',
+            description: '방 2개, 화장실 1개 구조의 24평형 아파트입니다. 소형 평수로 효율적인 공간 활용이 돋보이며, 발코니 확장이 가능합니다.',
+          },
+        ],
       };
       setMessages((prev) => {
         console.log('[ChatPage] AI 응답 추가, 이전 메시지 수:', prev.length);
@@ -284,10 +302,6 @@ const ChatPage: React.FC = () => {
         setCurrentRoomId(response.chatRoomId);
       } else {
         console.log('[ChatPage] 기존 채팅방에 메시지 추가');
-        // 기존 채팅방: 백엔드와 동기화를 위해 채팅 기록 다시 로드
-        setTimeout(() => {
-          loadChatHistory(currentRoomId!);
-        }, 300);
       }
 
     } catch (error) {

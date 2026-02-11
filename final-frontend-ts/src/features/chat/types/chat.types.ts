@@ -53,12 +53,20 @@ export interface RoomHistoryRequest {
 // UI Component Types
 // ============================================
 
+// 도면 이미지 정보
+export interface ChatImage {
+  url: string;
+  name: string;
+  description: string;
+}
+
 // 채팅 메시지 타입 (UI용)
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  images?: ChatImage[];   // 도면 이미지 배열 (optional)
 }
 
 // 채팅 세션 타입 (UI용 - ChatRoom 기반)
