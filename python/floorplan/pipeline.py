@@ -141,6 +141,51 @@ class ArchitecturalHybridRAG:
             payload = str(fields)
         self.logger.log(level, "event=%s data=%s", event, payload)
 
+    @staticmethod
+    def _compress_compound_space_label(label: str) -> str:
+        tokens = [token.strip() for token in str(label).split("/") if token.strip()]
+        if len(tokens) < 2:
+            return label
+
+        first = re.fullmatch(r"(.+?)(\d+)$", tokens[0])
+        if not first:
+            return label
+
+        base = first.group(1).strip()
+        numbers = [first.group(2)]
+        if not base:
+            return label
+
+        for token in tokens[1:]:
+            if token.isdigit():
+                numbers.append(token)
+                continue
+            match = re.fullmatch(r"(.+?)(\d+)$", token)
+            if not match or match.group(1).strip() != base:
+                return label
+            numbers.append(match.group(2))
+
+        return f"{base}{'/'.join(numbers)}"
+
+    def _normalize_space_section_labels(self, answer: str) -> str:
+        text = str(answer or "")
+        if not text:
+            return text
+
+        def _replace(match: re.Match[str]) -> str:
+            prefix = match.group("prefix")
+            label = match.group("label")
+            sep = match.group("sep")
+            body = match.group("body")
+            compacted = self._compress_compound_space_label(label)
+            return f"{prefix}{compacted}{sep}{body}"
+
+        return re.sub(
+            r"(?m)^(?P<prefix>\s*■\s*)(?P<label>[^:\n]+?)(?P<sep>\s*:\s*)(?P<body>.*)$",
+            _replace,
+            text,
+        )
+
     def _validate_answer_format(
         # LLM 답변 형식이 지켜졌는가 
         self,
@@ -254,7 +299,7 @@ class ArchitecturalHybridRAG:
         expected_document_id: Optional[str] = None,
     ) -> str:
         try:
-            answer = generate_fn()
+            answer = self._normalize_space_section_labels(generate_fn())
         except Exception:
             self.logger.exception("answer_generation_exception mode=%s attempt=0", mode)
             if self.answer_validation_safe_fallback:
@@ -303,7 +348,7 @@ class ArchitecturalHybridRAG:
         for attempt in range(1, self.answer_validation_retry_max + 1):
             self.logger.warning("answer_validation_retry mode=%s attempt=%d", mode, attempt)
             try:
-                last_answer = generate_fn()
+                last_answer = self._normalize_space_section_labels(generate_fn())
             except Exception:
                 self.logger.exception("answer_generation_exception mode=%s attempt=%d", mode, attempt)
                 continue
@@ -888,6 +933,10 @@ it must be restructured into a form that is easy for users to read according to 
 * Overall summary: 1–2 sentences (describing overall spatial characteristics only)
 * Followed by space-by-space descriptions
 * One sentence per space
+* If multiple spaces have exactly the same description, merge them into one line using slash-joined labels.
+* When merged labels share the same base name, keep the base only once.
+  Example: `침실1/침실2` -> `침실1/2`, `기타1/기타2/기타3` -> `기타1/2/3`.
+  Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
 도면은 3Bay 판상형 구조이며, 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합(거실 중심 배치), 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
@@ -1205,6 +1254,10 @@ it must be restructured into a form that is easy for users to read according to 
 * Overall summary: 1–2 sentences (describing overall spatial characteristics only)
 * Followed by space-by-space descriptions
 * One sentence per space
+* If multiple spaces have exactly the same description, merge them into one line using slash-joined labels.
+* When merged labels share the same base name, keep the base only once.
+  Example: `침실1/침실2` -> `침실1/2`, `기타1/기타2/기타3` -> `기타1/2/3`.
+  Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
 도면은 3Bay 판상형 구조이며, 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합(거실 중심 배치), 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
