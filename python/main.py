@@ -20,7 +20,7 @@ from api_models.schemas import (
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
-from services.chatbot_service import chatbot_service
+from services.chatbot_service2 import chatbot_service
 from services.intent_classifier_service import intent_classifier_service
 from api_utils.image_utils import image_to_base64
 

@@ -72,7 +72,7 @@ public class DataInitializer implements CommandLineRunner {
             }
 
             log.info("토지특성정보 데이터 로드 중...");
-            ClassPathResource resource = new ClassPathResource("data/토지특성정보_혼합_final_2.csv");
+            ClassPathResource resource = new ClassPathResource("data/토지특성정보_전처리완료.csv");
 
             int loadedCount = 0;
             int skippedCount = 0;
@@ -100,11 +100,11 @@ public class DataInitializer implements CommandLineRunner {
                 int terrainHeightIdx = findColumnIndex(headers, "지형높이", "terrain_height");
                 int terrainShapeIdx = findColumnIndex(headers, "지형형상", "terrain_shape");
                 int roadAccessIdx = findColumnIndex(headers, "도로접면", "road_access");
-                int queryKeyIdx = findColumnIndex(headers, "query_key");
+                int addressTextIdx = findColumnIndex(headers, "주소_텍스트", "address_text");
                 int regionCodeIdx = findColumnIndex(headers, "구분코드", "region_code");
                 
-                log.info("컬럼 매핑: 법정동코드={}, 법정동명={}, 대장구분명={}, 지번={}, 지목명={}, 토지면적={}, 용도지역명1={}, 용도지역명2={}, 토지이용상황={}, 지형높이={}, 지형형상={}, 도로접면={}, query_key={}, 구분코드={}", 
-                    legalDongCodeIdx, legalDongNameIdx, ledgerTypeIdx, lotNumberIdx, landCategoryIdx, landAreaIdx, zone1Idx, zone2Idx, landUseIdx, terrainHeightIdx, terrainShapeIdx, roadAccessIdx, queryKeyIdx, regionCodeIdx);
+                log.info("컬럼 매핑: 법정동코드={}, 법정동명={}, 대장구분명={}, 지번={}, 지목명={}, 토지면적={}, 용도지역명1={}, 용도지역명2={}, 토지이용상황={}, 지형높이={}, 지형형상={}, 도로접면={}, 주소_텍스트={}, 구분코드={}", 
+                    legalDongCodeIdx, legalDongNameIdx, ledgerTypeIdx, lotNumberIdx, landCategoryIdx, landAreaIdx, zone1Idx, zone2Idx, landUseIdx, terrainHeightIdx, terrainShapeIdx, roadAccessIdx, addressTextIdx, regionCodeIdx);
 
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -133,7 +133,7 @@ public class DataInitializer implements CommandLineRunner {
                                 .terrainHeight(getValueOrNull(columns, terrainHeightIdx))
                                 .terrainShape(getValueOrNull(columns, terrainShapeIdx))
                                 .roadAccess(getValueOrNull(columns, roadAccessIdx))
-                                .queryKey(getValueOrNull(columns, queryKeyIdx))
+                                .addressText(getValueOrNull(columns, addressTextIdx))
                                 .regionCode(getValueOrNull(columns, regionCodeIdx))
                                 .build();
 
@@ -183,7 +183,7 @@ public class DataInitializer implements CommandLineRunner {
             }
 
             log.info("법규조례 데이터 로드 중...");
-            ClassPathResource resource = new ClassPathResource("data/법규조례_final.csv");
+            ClassPathResource resource = new ClassPathResource("data/법규조례_전처리완료.csv");
 
             int loadedCount = 0;
             int skippedCount = 0;
@@ -200,14 +200,15 @@ public class DataInitializer implements CommandLineRunner {
                 
                 String[] headers = parseCsvLine(headerLine);
                 int regionCodeIdx = findColumnIndex(headers, "구분코드", "region_code");
+                int regionNameIdx = findColumnIndex(headers, "지역명", "region_name");
                 int lawNameIdx = findColumnIndex(headers, "법률명", "law_name");
-                int landUseActivityIdx = findColumnIndex(headers, "토지이용명", "land_use_activity");
-                int permissionStatusIdx = findColumnIndex(headers, "가능여부", "permission_status");
-                int conditionExceptionIdx = findColumnIndex(headers, "조건제한예외사항", "condition_exception");
                 int zoneDistrictNameIdx = findColumnIndex(headers, "용도지역지구명", "zone_district_name");
+                int landUseActivityIdx = findColumnIndex(headers, "토지이용명", "land_use_activity");
+                int permissionCategoryIdx = findColumnIndex(headers, "가능여부_정규화", "permission_category");
+                int conditionExceptionIdx = findColumnIndex(headers, "조건제한예외사항", "condition_exception");
                 
-                log.info("컬럼 매핑: 구분코드={}, 법률명={}, 토지이용명={}, 가능여부={}, 조건제한예외사항={}, 용도지역지구명={}", 
-                    regionCodeIdx, lawNameIdx, landUseActivityIdx, permissionStatusIdx, conditionExceptionIdx, zoneDistrictNameIdx);
+                log.info("컬럼 매핑: 구분코드={}, 지역명={}, 법률명={}, 용도지역지구명={}, 토지이용명={}, 가능여부_정규화={}, 조건제한예외사항={}", 
+                    regionCodeIdx, regionNameIdx, lawNameIdx, zoneDistrictNameIdx, landUseActivityIdx, permissionCategoryIdx, conditionExceptionIdx);
 
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -215,8 +216,8 @@ public class DataInitializer implements CommandLineRunner {
                     try {
                         String[] columns = parseCsvLine(line);
                         
-                        if (columns.length < 6) {
-                            log.warn("[라인 {}] 컬럼 수 부족: {} (최소 6개 필요)", lineNumber, columns.length);
+                        if (columns.length < 7) {
+                            log.warn("[라인 {}] 컬럼 수 부족: {} (최소 7개 필요)", lineNumber, columns.length);
                             skippedCount++;
                             continue;
                         }
@@ -224,10 +225,11 @@ public class DataInitializer implements CommandLineRunner {
                         // Law 엔티티 생성
                         Law law = Law.builder()
                                 .regionCode(getValueOrNull(columns, regionCodeIdx))
-                                .zoneDistrictName(getValueOrNull(columns, zoneDistrictNameIdx))
+                                .regionName(getValueOrNull(columns, regionNameIdx))
                                 .lawName(getValueOrNull(columns, lawNameIdx))
+                                .zoneDistrictName(getValueOrNull(columns, zoneDistrictNameIdx))
                                 .landUseActivity(getValueOrNull(columns, landUseActivityIdx))
-                                .permissionStatus(getValueOrNull(columns, permissionStatusIdx))
+                                .permissionCategory(getValueOrNull(columns, permissionCategoryIdx))
                                 .conditionException(getValueOrNull(columns, conditionExceptionIdx))
                                 .build();
 
