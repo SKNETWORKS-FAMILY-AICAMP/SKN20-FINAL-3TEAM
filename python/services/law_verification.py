@@ -459,6 +459,15 @@ class ArchitectureLawValidator:
 3. 답변이 법령의 의미를 왜곡하거나 잘못 해석했는가?
 4. 건축법과 조례가 충돌하는 경우 조례를 우선시했는가?
 5. 조건부 허용인 경우 구체적인 조건을 명시했는가?
+6. **"📖 건축물 용도 설명" 섹션 검증** (매우 중요):
+   - STEP 1: 답변에 "📖 건축물 용도 설명" 또는 "────────" 구분선이 있는지 확인
+   - STEP 2: 없으면 → unnecessary_facility_explanation = FALSE (검증 종료)
+   - STEP 3: 있으면 → 해당 섹션에 나열된 시설이 질문에서 직접 물어본 시설인지 확인
+   - 예시:
+     * 질문: "카페 가능해?" + 구분선 이후 "카페" 설명만 있음 → FALSE (OK)
+     * 질문: "카페 가능해?" + 구분선 이후 "카페", "체육관" 설명 있음 → TRUE (NOT OK)
+     * 구분선이 아예 없음 → FALSE (OK, 본문만 있는 것)
+   - 주의: 본문에 다른 시설이 언급되는 것은 무시 (본문은 검증 안 함)
 
 JSON 형식:
 {{
@@ -467,6 +476,7 @@ JSON 형식:
     "misinterpretation": true/false,
     "ordinance_priority": true/false,
     "condition_specified": true/false,
+    "unnecessary_facility_explanation": true/false,  // 답변에 "📖" 또는 "────"가 없으면 무조건 false
     "consistency_score": 0-100,
     "issues": ["이슈1", "이슈2"],
     "explanation": "검증 설명"
@@ -477,7 +487,7 @@ JSON 형식:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "너는 건축 법규 검증 전문가야. JSON 형식으로만 답변해."},
+                    {"role": "system", "content": "너는 건축 법규 검증 전문가야. JSON 형식으로만 답변해. unnecessary_facility_explanation 필드는 반드시 정확하게 판단해야 해. '📖 건축물 용도 설명' 또는 '────' 구분선이 없으면 무조건 false야."},
                     {"role": "user", "content": consistency_prompt}
                 ],
                 temperature=0.1,
@@ -490,10 +500,16 @@ JSON 형식:
             issues = result.get('issues', [])
             score = result.get('consistency_score', 50)
             
+            # 불필요한 건축물 용도 설명이 있으면 이슈로 추가 (RETRY 유도)
+            if result.get('unnecessary_facility_explanation', False):
+                issues.append("❌ 질문에서 요청하지 않은 건축물 용도 설명이 포함됨")
+                score = max(0, score - 15)  # 15점 감점
+            
             # 심각한 문제가 있으면 실패
             passed = (
                 not result.get('hallucination_detected', False) and
                 not result.get('misinterpretation', False) and
+                not result.get('unnecessary_facility_explanation', False) and
                 len(result.get('missing_items', [])) == 0
             )
             
