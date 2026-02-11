@@ -118,3 +118,4 @@ final-frontend-ts/public/result/
 
 # Claude Code
 .claude/
+python/floorplan/test_val.py
