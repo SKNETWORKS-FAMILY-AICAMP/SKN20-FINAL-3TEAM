@@ -13,15 +13,12 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # 로컬 모듈 import
-from api_models.schemas import (
-    AnalyzeResponse, SaveRequest, SaveResponse,
-    ChatRequest, ChatResponse, IntentClassification
-)
+from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse, ChatRequest, ChatResponse
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
-from services.chatbot_service2 import chatbot_service
-from services.intent_classifier_service import intent_classifier_service
+from services.chatbot_service_v2 import chatbot_service
+from services.law_verification import ArchitectureLawValidator, QuestionContext, VerificationStatus
 from api_utils.image_utils import image_to_base64
 
 # 로깅 설정
@@ -211,10 +208,16 @@ async def generate_metadata(request: SaveRequest):
 @app.post("/ask", response_model=ChatResponse)
 async def ask_chatbot(request: ChatRequest):
     """
-    챗봇 질의응답 엔드포인트
+    챗봇 질의응답 엔드포인트 (검증 에이전트 통합)
     
     Input: email, question
-    Output: summaryTitle, answer
+    Output: summaryTitle, answer (검증 완료된 답변)
+    
+    Flow:
+    1. 챗봇이 답변 생성
+    2. 법/조례 검증 에이전트로 검증
+    3. PASS: 그대로 반환
+    4. RETRY/FAIL: 피드백과 함께 재생성 (최대 3회)
     """
     logger.info("=" * 80)
     logger.info("=== /ask 엔드포인트 호출됨 ===")
@@ -223,19 +226,126 @@ async def ask_chatbot(request: ChatRequest):
     logger.info("=" * 80)
     
     try:
-        # 챗봇 서비스로 질문 처리
-        result = chatbot_service.ask(
-            email=request.email,
-            question=request.question
+        # 검증 에이전트 초기화
+        validator = ArchitectureLawValidator()
+        
+        max_attempts = 3
+        final_result = None
+        
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"\n[Attempt {attempt}/{max_attempts}] 답변 생성 중...")
+            
+            # 챗봇 서비스로 질문 처리
+            if attempt == 1:
+                # 첫 시도: 원래 질문으로 답변 생성
+                result = chatbot_service.ask(
+                    email=request.email,
+                    question=request.question
+                )
+            else:
+                # 재시도: 검증 피드백을 포함한 질문 생성
+                feedback_question = (
+                    f"{request.question}\n\n"
+                    f"[이전 답변 검증 결과]\n"
+                    f"- 상태: {final_result.status}\n"
+                    f"- 점수: {final_result.score}/100\n"
+                    f"- 문제점: {', '.join(final_result.issues)}\n"
+                    f"- 권장사항: {final_result.recommendation}\n\n"
+                    f"위 검증 결과를 반영하여 정확한 답변을 생성해주세요."
+                )
+                logger.info(f"[Retry] 피드백 포함 질문:\n{feedback_question[:200]}...")
+                
+                result = chatbot_service.ask(
+                    email=request.email,
+                    question=feedback_question
+                )
+            
+            answer = result["answer"]
+            summary_title = result["summaryTitle"]
+            
+            logger.info(f"[Attempt {attempt}] 답변 생성 완료 (길이: {len(answer)}자)")
+            
+            # 법/조례 검증 실행
+            logger.info(f"[Attempt {attempt}] 검증 시작...")
+            
+            # QuestionContext는 주소, 용도지역 등의 세부 정보를 담는 용도
+            # 현재는 검증에 필요한 정보가 답변에서 추출되므로 빈 컨텍스트 전달
+            question_context = QuestionContext()
+            
+            verification_result = validator.verify(
+                llm_answer=answer,
+                question=request.question,
+                question_context=question_context
+            )
+            
+            final_result = verification_result
+            
+            logger.info(f"[Attempt {attempt}] 검증 완료:")
+            logger.info(f"  - 상태: {verification_result.status}")
+            logger.info(f"  - 점수: {verification_result.score}/100")
+            
+            # details에서 세부 점수 추출 (있는 경우)
+            if 'hard_rule' in verification_result.details:
+                logger.info(f"  - Hard Rule: {verification_result.details.get('hard_rule', {}).get('passed', 'N/A')}")
+            if 'semantic_consistency' in verification_result.details:
+                semantic_score = verification_result.details['semantic_consistency'].get('score', 'N/A')
+                logger.info(f"  - Semantic: {semantic_score}/100" if isinstance(semantic_score, (int, float)) else f"  - Semantic: {semantic_score}")
+            
+            if verification_result.issues:
+                logger.warning(f"  - 문제점: {', '.join(verification_result.issues)}")
+            
+            if verification_result.warnings:
+                logger.info(f"  - 경고: {', '.join(verification_result.warnings)}")
+            
+            # 검증 결과에 따른 처리
+            if verification_result.status == VerificationStatus.PASS:
+                logger.info(f"✅ [Attempt {attempt}] 검증 통과! 답변 반환")
+                response = ChatResponse(
+                    summaryTitle=summary_title,
+                    answer=answer
+                )
+                
+                logger.info("=" * 80)
+                logger.info("=== 챗봇 응답 완료 (검증 통과) ===")
+                logger.info("=" * 80)
+                
+                return response
+            
+            elif verification_result.status == VerificationStatus.RETRY:
+                logger.warning(f"⚠️ [Attempt {attempt}] 재시도 필요 (점수: {verification_result.score})")
+                if attempt == max_attempts:
+                    logger.warning(f"⚠️ 최대 재시도 횟수 도달. 마지막 답변 반환")
+                else:
+                    logger.info(f"   → 피드백 반영하여 재생성 시도...")
+                    continue
+            
+            else:  # FAIL
+                logger.error(f"❌ [Attempt {attempt}] 검증 실패 (점수: {verification_result.score})")
+                if attempt == max_attempts:
+                    logger.error(f"❌ 최대 재시도 횟수 도달. 마지막 답변 반환")
+                else:
+                    logger.info(f"   → 피드백 반영하여 재생성 시도...")
+                    continue
+        
+        # 최대 재시도 후에도 PASS 못한 경우: 마지막 답변 반환 (경고 포함)
+        logger.warning(f"⚠️ {max_attempts}회 시도 후에도 검증 통과 실패. 마지막 답변 반환 (상태: {final_result.status})")
+        
+        # 경고 메시지를 답변에 추가
+        warning_message = (
+            "\n\n⚠️ **검증 안내**\n"
+            f"이 답변은 자동 검증에서 완전히 통과하지 못했습니다 (점수: {final_result.score}/100).\n"
+            "실제 적용 전에 관할 구청 건축과에 확인하시기 바랍니다."
         )
         
+        final_answer = answer + warning_message
+        
         response = ChatResponse(
-            summaryTitle=result["summaryTitle"],
-            answer=result["answer"]
+            summaryTitle=summary_title,
+            answer=final_answer
         )
         
         logger.info("=" * 80)
-        logger.info("=== 챗봇 응답 완료! ===")
+        logger.info("=== 챗봇 응답 완료 (검증 미통과, 경고 포함) ===")
         logger.info("=" * 80)
         
         return response
@@ -251,44 +361,6 @@ async def ask_chatbot(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"챗봇 오류: {str(e)}")
 
 
-@app.post("/classify-intent", response_model=IntentClassification)
-async def classify_intent_endpoint(request: ChatRequest):
-    """
-    의도 분류 디버그 엔드포인트
-
-    Input: 질문이 포함된 ChatRequest
-    Output: IntentClassification 결과 (FLOORPLAN_SEARCH 또는 REGULATION_SEARCH)
-    """
-    logger.info("=" * 80)
-    logger.info("=== /classify-intent 엔드포인트 호출됨 ===")
-    logger.info(f"Question: {request.question}")
-    logger.info("=" * 80)
-
-    try:
-        # 의도 분류 서비스 호출
-        result = intent_classifier_service.classify_intent(request.question)
-
-        logger.info("=" * 80)
-        logger.info("=== 의도 분류 완료! ===")
-        logger.info(f"Intent Type: {result.intent_type}")
-        logger.info(f"Confidence: {result.confidence:.2f}")
-        logger.info(f"Metadata: {result.extracted_metadata}")
-        logger.info(f"Reasoning: {result.reasoning}")
-        logger.info("=" * 80)
-
-        return result
-
-    except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"!!! 의도 분류 중 오류 !!!")
-        logger.error(f"에러 타입: {type(e).__name__}")
-        logger.error(f"에러 메시지: {str(e)}")
-        logger.error("=" * 80)
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"의도 분류 오류: {str(e)}")
-
-
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
@@ -297,8 +369,7 @@ def health_check():
         "cv_pipeline_loaded": cv_service.is_loaded(),
         "rag_loaded": rag_service.is_loaded(),
         "embedding_loaded": embedding_service.is_loaded(),
-        "chatbot_loaded": chatbot_service.is_loaded(),
-        "intent_classifier_loaded": intent_classifier_service.is_loaded()
+        "chatbot_loaded": chatbot_service.is_loaded()
     }
 
 
