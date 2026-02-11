@@ -635,6 +635,8 @@ class ArchitecturalHybridRAG:
                 augmented["structure_type"] = "판상형"
             elif "타워형" in query:
                 augmented["structure_type"] = "타워형"
+            elif "혼합형" in query:
+                augmented["structure_type"] = "혼합형"
             elif "복도형" in query:
                 augmented["structure_type"] = "복도형"
 
