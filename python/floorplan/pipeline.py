@@ -288,7 +288,7 @@ class ArchitecturalHybridRAG:
             return (
                 "조건을 만족하는 도면 총 개수: 0\n"
                 "검색된 도면 id: 없음\n"
-                "요청 조건과 일치하는 도면을 찾지 못했습니다."
+                "요청 조건과 일치하는 도면이 존재하지 않습니다."
             )
         raise ValueError(f"Unsupported validation mode: {mode}")
 
