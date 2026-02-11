@@ -57,3 +57,13 @@ class ChatResponse(BaseModel):
     """챗봇 응답 모델"""
     summaryTitle: str
     answer: str
+
+
+# 의도 분류 관련 스키마
+
+class IntentClassification(BaseModel):
+    """의도 분류 결과 (FLOORPLAN_SEARCH 또는 REGULATION_SEARCH)"""
+    intent_type: str  # "FLOORPLAN_SEARCH" | "REGULATION_SEARCH"
+    confidence: float  # 0.0 - 1.0
+    extracted_metadata: Dict[str, Any]
+    reasoning: str
