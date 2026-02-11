@@ -93,6 +93,14 @@ class ArchitecturalHybridRAG:
         re.IGNORECASE,
     )
     NO_MATCH_MESSAGE_TOKEN = "요청 조건과 일치하는 도면을 찾지 못했습니다."
+    BALCONY_POSITIVE_HINT_RE = re.compile(
+        r"(활용도\s*높|활용\s*가능|외부\s*공간.*활용|연결.*원활|채광.*좋|넓)",
+        re.IGNORECASE,
+    )
+    BALCONY_NEGATIVE_HINT_RE = re.compile(
+        r"(활용도\s*낮|활용\s*어려|연결.*불편|채광.*부족|좁|없음)",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -480,6 +488,7 @@ class ArchitecturalHybridRAG:
             documents = str(documents).strip()
             if not documents:
                 documents = query
+            documents = self._augment_documents_from_query(query, documents)
 
             filters = self._normalize_filters(raw_filters)
             filters = self._augment_filters_from_query(query, filters)
@@ -686,6 +695,33 @@ class ArchitecturalHybridRAG:
     def _is_floorplan_image_name(self, query: str) -> bool:
         return bool(self.FLOORPLAN_IMAGE_NAME_RE.fullmatch(query.strip()))
 
+    def _augment_documents_from_query(self, query: str, documents: str) -> str:
+        base = str(documents or "").strip()
+        text = str(query or "")
+        if not base:
+            return base
+
+        if not re.search(r"(발코니|베란다)", text, flags=re.IGNORECASE):
+            return base
+
+        if not re.search(
+            r"(활용|활용도|연결|채광|좋|우수|양호|넓)",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            return base
+
+        intent_terms = [
+            "발코니 활용 가능",
+            "발코니 활용도가 높",
+            "외부 공간으로 활용",
+            "외부 공간과의 연결이 원활",
+            "발코니 채광이 좋",
+            "발코니는 넓고",
+        ]
+        joined = " OR ".join(f'"{term}"' for term in intent_terms)
+        return f"({base}) OR ({joined})"
+
     def _extract_document_signals(self, document: str) -> list[dict[str, str]]:
         text = str(document or "")
         if not text.strip():
@@ -765,7 +801,29 @@ class ArchitecturalHybridRAG:
             preferences["ventilation"] = preferred
         if re.search(r"(가족\s*융화|family_harmony)", text, flags=re.IGNORECASE):
             preferences["family_harmony"] = preferred
+        if re.search(r"(발코니|베란다)", text, flags=re.IGNORECASE):
+            preferences["balcony_usage"] = preferred
         return preferences
+
+    def _infer_balcony_utilization_polarity(self, document: str) -> Optional[str]:
+        text = str(document or "")
+        if not text.strip():
+            return None
+
+        segments = re.split(r"[.\n]", text)
+        balcony_segments = [
+            segment for segment in segments if re.search(r"(발코니|베란다)", segment, re.IGNORECASE)
+        ]
+        if not balcony_segments:
+            return None
+
+        balcony_text = " ".join(segment.strip() for segment in balcony_segments if segment.strip())
+        normalized = re.sub(r"\s+", " ", balcony_text)
+        if self.BALCONY_NEGATIVE_HINT_RE.search(normalized):
+            return "negative"
+        if self.BALCONY_POSITIVE_HINT_RE.search(normalized):
+            return "positive"
+        return None
 
     def _rerank_by_query_signal_preferences(
         self, docs: list[tuple[Any, ...]], query: str
@@ -783,6 +841,13 @@ class ArchitecturalHybridRAG:
 
             bonus = 0.0
             for key, desired in preferences.items():
+                if key == "balcony_usage":
+                    polarity = self._infer_balcony_utilization_polarity(document_text)
+                    if polarity == desired:
+                        bonus += 0.08
+                    elif polarity and polarity != desired:
+                        bonus -= 0.04
+                    continue
                 value = signal_map.get(key)
                 if not value:
                     continue
@@ -1107,7 +1172,21 @@ it must be restructured into a form that is easy for users to read according to 
         try:
             with self.conn.cursor() as cur:
                 cur.execute(sql, params)
-                return int(cur.fetchone()[0])
+                matched_count = int(cur.fetchone()[0])
+            if normalized_documents and matched_count == 0 and filters:
+                self._log_event(
+                    event="count_matches_zero_text_fallback",
+                    level=logging.INFO,
+                    reason="strict_text_zero_match",
+                    text_query=normalized_documents,
+                    filter_count=len(filters),
+                )
+                fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
+                fallback_sql = f"SELECT COUNT(*) FROM FP_Analysis WHERE {fallback_where_sql}"
+                with self.conn.cursor() as cur:
+                    cur.execute(fallback_sql, fallback_params)
+                    return int(cur.fetchone()[0])
+            return matched_count
         except Exception as exc:
             # If tsquery parsing fails for malformed text, fall back to filter-only count.
             if normalized_documents:
