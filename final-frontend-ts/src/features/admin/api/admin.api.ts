@@ -4,14 +4,10 @@
 
 import apiClient from '@/shared/api/axios';
 import type {
-  AdminUser,
   AdminFloorPlan,
-  AdminChatRoom,
   AdminStats,
-  EditUserRequest,
-  SearchUserRequest,
-  UserDetailRequest,
-  UserHistoryRequest,
+  ActivityLog,
+  ChatHistoryDetail,
   SearchFloorPlanRequest,
   FloorPlanDetailRequest,
 } from '../types/admin.types';
@@ -19,52 +15,28 @@ import type {
 const ADMIN_BASE = '/api/admin';
 
 // ============================================
-// 유저 관련 API
+// 통계 API
 // ============================================
 
-// 전체 유저 목록 조회
-export const getUsers = async (): Promise<AdminUser[]> => {
-  const response = await apiClient.get<AdminUser[]>(`${ADMIN_BASE}/users`);
+// 관리자 통계 조회
+export const getAdminStats = async (): Promise<AdminStats> => {
+  const response = await apiClient.get<AdminStats>(`${ADMIN_BASE}/stats`);
   return response.data;
 };
 
-// 유저 검색 (이름/이메일)
-export const searchUsers = async (params: SearchUserRequest): Promise<AdminUser[]> => {
-  const response = await apiClient.post<AdminUser[]>(
-    `${ADMIN_BASE}/searchuser`,
-    null,
-    { params }
-  );
+// ============================================
+// 활동 로그 API
+// ============================================
+
+// 활동 로그 조회 (도면 업로드 + 챗봇 사용)
+export const getActivityLogs = async (): Promise<ActivityLog[]> => {
+  const response = await apiClient.get<ActivityLog[]>(`${ADMIN_BASE}/logs`);
   return response.data;
 };
 
-// 유저 정보 수정
-export const editUser = async (params: EditUserRequest): Promise<string> => {
-  const response = await apiClient.post<string>(
-    `${ADMIN_BASE}/edituser`,
-    null,
-    { params }
-  );
-  return response.data;
-};
-
-// 유저 상세 조회
-export const getUserDetail = async (params: UserDetailRequest): Promise<AdminUser> => {
-  const response = await apiClient.post<AdminUser>(
-    `${ADMIN_BASE}/userdetail`,
-    null,
-    { params }
-  );
-  return response.data;
-};
-
-// 유저 채팅 기록 조회
-export const getUserHistory = async (params: UserHistoryRequest): Promise<AdminChatRoom[]> => {
-  const response = await apiClient.post<AdminChatRoom[]>(
-    `${ADMIN_BASE}/userhistory`,
-    null,
-    { params }
-  );
+// 챗봇 대화 상세 조회
+export const getChatHistoryDetail = async (id: number): Promise<ChatHistoryDetail> => {
+  const response = await apiClient.get<ChatHistoryDetail>(`${ADMIN_BASE}/chathistory/${id}`);
   return response.data;
 };
 
@@ -99,22 +71,12 @@ export const getFloorPlanDetail = async (params: FloorPlanDetailRequest): Promis
 };
 
 // ============================================
-// 통계 API
-// ============================================
-
-// 관리자 통계 조회
-export const getAdminStats = async (): Promise<AdminStats> => {
-  const response = await apiClient.get<AdminStats>(`${ADMIN_BASE}/stats`);
-  return response.data;
-};
-
-// ============================================
 // 삭제 API
 // ============================================
 
-// 유저 또는 도면 삭제 (일괄 삭제 지원)
+// 도면 삭제 (일괄 삭제 지원)
 export const deleteEntities = async (
-  type: 'user' | 'floorplan',
+  type: 'floorplan',
   ids: number[]
 ): Promise<string> => {
   const response = await apiClient.post<string>(

@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 법률/규제 정보 Repository
- * 지역 코드, 용도지역, 허가 상태 등으로 법률/규제 정보를 조회
+ * 지역 코드, 용도지역, 가능여부 카테고리 등으로 법률/규제 정보를 조회
  */
 @Repository
 public interface LawRepository extends JpaRepository<Law, Long> {
@@ -29,14 +29,24 @@ public interface LawRepository extends JpaRepository<Law, Long> {
     List<Law> findByRegionCodeAndZoneDistrictName(String regionCode, String zoneDistrictName);
     
     /**
-     * 허가 상태로 법률/규제 정보 조회
+     * 가능여부 카테고리로 법률/규제 정보 조회 (가능/불가/조건부/알수없음)
      */
-    List<Law> findByPermissionStatus(String permissionStatus);
+    List<Law> findByPermissionCategory(String permissionCategory);
     
     /**
-     * 지역 코드와 허가 상태로 법률/규제 정보 조회
+     * 지역 코드와 가능여부 카테고리로 법률/규제 정보 조회
      */
-    List<Law> findByRegionCodeAndPermissionStatus(String regionCode, String permissionStatus);
+    List<Law> findByRegionCodeAndPermissionCategory(String regionCode, String permissionCategory);
+    
+    /**
+     * 지역명으로 법률/규제 정보 조회
+     */
+    List<Law> findByRegionName(String regionName);
+    
+    /**
+     * 지역명 포함 검색
+     */
+    List<Law> findByRegionNameContaining(String regionName);
     
     /**
      * 법률명으로 법률/규제 정보 조회

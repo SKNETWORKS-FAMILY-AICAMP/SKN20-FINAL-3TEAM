@@ -21,6 +21,7 @@ pgvector>=0.2.0
 # 3. AI/ML - LLM & Embedding
 # ==========================================
 openai>=1.0.0
+sentence-transformers>=2.2.0  # Cross-encoder Reranker (chatbot_service_v2)
 
 # ==========================================
 # 4. Deep Learning (CV 파이프라인)

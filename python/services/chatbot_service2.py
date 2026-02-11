@@ -1,12 +1,21 @@
 ﻿"""
-챗봇 서비스
-RAG 기반 평면도 관련 질의응답 + PostgreSQL 이전 대화 내역 활용
+chatbot_service_v2.py - RAG 성능 개선 버전
+
+변경사항:
+1. [Reranker] Cross-encoder 기반 재정렬 추가
+2. [캐싱] 임베딩 LRU 캐시 (500개)
+3. [k값] 검색 후보 확대 (k=2 → k=15, Reranker 후 top=3~5)
+
+의존성 추가:
+- sentence-transformers (pip install sentence-transformers)
 """
 
 import logging
 import os
 import re
-from typing import Optional, Dict, Any, List
+import time  # [V2 변경] 성능 측정용
+from typing import Optional, Dict, Any, List, Tuple
+from collections import OrderedDict  # [V2 변경] LRU 캐시용
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -17,6 +26,58 @@ from CV.rag_system.embeddings import EmbeddingManager
 from services.pgvector_service import pgvector_service
 
 logger = logging.getLogger("ChatbotService")
+
+
+# ==========================================
+# [V2 변경] 임베딩 LRU 캐시 클래스
+# ==========================================
+class EmbeddingCache:
+    """
+    임베딩 벡터 LRU 캐시
+    - 같은 질문에 대해 OpenAI API 중복 호출 방지
+    - 최대 500개 저장, 초과 시 가장 오래된 항목 제거
+    """
+
+    def __init__(self, max_size: int = 500):
+        self._cache: OrderedDict[str, List[float]] = OrderedDict()
+        self._max_size = max_size
+        self._hits = 0
+        self._misses = 0
+
+    def get(self, key: str) -> Optional[List[float]]:
+        """캐시에서 임베딩 조회 (히트 시 순서 갱신)"""
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            self._hits += 1
+            return self._cache[key]
+        self._misses += 1
+        return None
+
+    def put(self, key: str, embedding: List[float]) -> None:
+        """캐시에 임베딩 저장 (초과 시 LRU 제거)"""
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        else:
+            if len(self._cache) >= self._max_size:
+                self._cache.popitem(last=False)  # 가장 오래된 항목 제거
+        self._cache[key] = embedding
+
+    @property
+    def hit_rate(self) -> float:
+        """캐시 히트율 (%)"""
+        total = self._hits + self._misses
+        return (self._hits / total * 100) if total > 0 else 0.0
+
+    @property
+    def stats(self) -> Dict[str, Any]:
+        """캐시 통계"""
+        return {
+            "size": len(self._cache),
+            "max_size": self._max_size,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": f"{self.hit_rate:.1f}%"
+        }
 
 
 # ==========================================
@@ -32,6 +93,11 @@ ZONE_DISTRICT_DICTIONARY = {
     "공업지역": ["전용공업지역", "일반공업지역", "준공업지역"],
     "녹지지역": ["보전녹지지역", "생산녹지지역", "자연녹지지역"],
     "관리지역": ["보전관리지역", "생산관리지역", "계획관리지역"],
+
+    # "제N종주거지역" (전용/일반 누락) → 양쪽 모두 포함
+    "제1종주거지역": ["제1종전용주거지역", "제1종일반주거지역"],
+    "제2종주거지역": ["제2종전용주거지역", "제2종일반주거지역"],
+    "제3종주거지역": ["제3종일반주거지역"],
 
     # 축약어 → 정식명칭
     "1종주거": "제1종일반주거지역",
@@ -221,6 +287,7 @@ SPECIAL_QUERY_KEYWORDS = {
     "건폐율": "coverage_ratio",
     "용적률": "floor_area_ratio",
     # 법률 비교 (띄어쓰기는 normalize_query()에서 처리)
+    "조례": "law_comparison",
     "법과조례": "law_comparison",
     "건축법과조례": "law_comparison",
     "법규비교": "law_comparison",
@@ -232,6 +299,8 @@ SPECIAL_QUERY_KEYWORDS = {
     "층수제한": "floor_limit",
     "건축가능": "building_permit",
     "신축": "building_permit",
+    "규제": "coverage_ratio",
+    "제한": "coverage_ratio",
 }
 
 # ==========================================
@@ -277,8 +346,8 @@ ZONE_REGULATIONS = {
 
 
 class ChatbotService:
-    """RAG 기반 챗봇 서비스 + PostgreSQL 대화 내역 활용"""
-    
+    """RAG 기반 챗봇 서비스 + PostgreSQL 대화 내역 활용 (V2: Reranker + 캐싱)"""
+
     # PostgreSQL 연결 정보 (application.properties와 동일)
     DB_CONFIG = {
         "host": "localhost",
@@ -287,41 +356,38 @@ class ChatbotService:
         "user": "postgres",
         "password": "1234"
     }
-    
+
+    # [V2 변경] Reranker 설정
+    RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     def __init__(self):
         self.config: Optional[RAGConfig] = None
         self.embedding_manager: Optional[EmbeddingManager] = None
         self.openai_client: Optional[OpenAI] = None
         self.db_conn = None
+        self._reranker = None  # [V2 변경] Cross-encoder reranker
+        self._reranker_available = False  # [V2 변경] Reranker 사용 가능 여부
+        self._embedding_cache = EmbeddingCache(max_size=500)  # [V2 변경] 임베딩 캐시
 
     def _get_cursor(self):
         """
         DB 커서 반환 (연결 끊김 시 자동 재연결)
-
-        Returns:
-            RealDictCursor: DB 커서
-
-        Raises:
-            Exception: 재연결 실패 시
+        - SELECT 1 핑 제거: closed 속성 + OperationalError catch로 대체
         """
         try:
-            # 연결 상태 확인 및 재연결
             if self.db_conn is None or self.db_conn.closed:
                 logger.warning("DB 연결 끊김 감지, 재연결 시도...")
                 self.db_conn = psycopg2.connect(**self.DB_CONFIG)
                 self.db_conn.autocommit = True
                 logger.info("DB 재연결 성공 (autocommit=True)")
 
-            # 연결 유효성 테스트
-            try:
-                with self.db_conn.cursor() as test_cursor:
-                    test_cursor.execute("SELECT 1")
-            except Exception:
-                logger.warning("DB 연결 유효하지 않음, 재연결 시도...")
-                self.db_conn = psycopg2.connect(**self.DB_CONFIG)
-                self.db_conn.autocommit = True
-                logger.info("DB 재연결 성공 (autocommit=True)")
+            return self.db_conn.cursor(cursor_factory=RealDictCursor)
 
+        except psycopg2.OperationalError:
+            logger.warning("DB 연결 유효하지 않음, 재연결 시도...")
+            self.db_conn = psycopg2.connect(**self.DB_CONFIG)
+            self.db_conn.autocommit = True
+            logger.info("DB 재연결 성공 (autocommit=True)")
             return self.db_conn.cursor(cursor_factory=RealDictCursor)
 
         except Exception as e:
@@ -332,9 +398,9 @@ class ChatbotService:
         """RAG 컴포넌트를 lazy loading 방식으로 로드"""
         if self.openai_client is not None:
             return
-        
+
         logger.info("챗봇 컴포넌트 로딩 중...")
-        
+
         try:
             self.config = RAGConfig()
             self.embedding_manager = EmbeddingManager(
@@ -342,35 +408,172 @@ class ChatbotService:
                 model="text-embedding-3-small"
             )
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
-            
+
             # PostgreSQL 연결 (autocommit으로 트랜잭션 꼬임 방지)
             self.db_conn = psycopg2.connect(**self.DB_CONFIG)
             self.db_conn.autocommit = True
             logger.info("PostgreSQL 연결 완료 (autocommit=True)")
-            
+
+            # [V2 변경] Reranker 로드 (실패해도 서비스 계속)
+            self._load_reranker()
+
             logger.info("챗봇 컴포넌트 로딩 완료!")
         except Exception as e:
             logger.error(f"챗봇 컴포넌트 로딩 실패: {e}")
             raise
-    
+
+    # ==========================================
+    # [V2 변경] Reranker 관련 메서드
+    # ==========================================
+
+    def _load_reranker(self) -> None:
+        """
+        Cross-encoder Reranker 모델 로드 (lazy loading)
+        - 실패 시 fallback으로 기존 유사도 순서 사용
+        """
+        try:
+            from sentence_transformers import CrossEncoder
+            logger.info(f"Reranker 로딩 중: {self.RERANKER_MODEL_NAME}")
+            start = time.time()
+            self._reranker = CrossEncoder(self.RERANKER_MODEL_NAME)
+            elapsed = time.time() - start
+            self._reranker_available = True
+            logger.info(f"Reranker 로딩 완료 ({elapsed:.1f}초)")
+        except ImportError:
+            logger.warning("sentence-transformers 미설치. Reranker 비활성화 (pip install sentence-transformers)")
+            self._reranker_available = False
+        except Exception as e:
+            logger.warning(f"Reranker 로딩 실패, fallback 사용: {e}")
+            self._reranker_available = False
+
+    def _rerank_results(
+        self,
+        query: str,
+        results: List[Dict[str, Any]],
+        top_n: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Cross-encoder로 검색 결과 재정렬
+
+        Args:
+            query: 사용자 질문 (정규화 후)
+            results: pgvector 검색 결과 리스트 [{'document': ..., 'distance': ...}, ...]
+            top_n: 최종 반환할 결과 수
+
+        Returns:
+            재정렬된 상위 top_n개 결과 (rerank_score 필드 추가)
+        """
+        if not results:
+            return []
+
+        # [V2 버그픽스] 빈/쓰레기 document 필터링
+        # - 빈 문자열 제거
+        # - 너무 짧은 document 제거 (빈 템플릿: "[필지 44 정보]\n- 주소:\n- 용도지역: -")
+        # - "판정: ?" 같은 빈 필드만 있는 document 제거
+        def _is_meaningful_doc(doc_text: str) -> bool:
+            if not doc_text or not doc_text.strip():
+                return False
+            if len(doc_text.strip()) < 50:  # 50자 미만은 의미 없음
+                return False
+            if doc_text.count("판정: ?") > 0:  # 빈 템플릿
+                return False
+            if doc_text.count("용도지역: -") > 2:  # 빈 필지 데이터 반복
+                return False
+            return True
+
+        results = [r for r in results if _is_meaningful_doc(r.get("document", ""))]
+        if not results:
+            logger.warning("[Reranker] 유효한 document가 없음")
+            return []
+
+        # Reranker 사용 불가 시 기존 순서 그대로 반환 (fallback)
+        if not self._reranker_available or self._reranker is None:
+            logger.info(f"[Reranker] fallback - 기존 순서 유지 (top {top_n})")
+            return results[:top_n]
+
+        try:
+            start = time.time()
+
+            # Cross-encoder 입력: [(query, document), ...] 쌍 생성
+            pairs = [(query, r.get("document", "")) for r in results]
+
+            # Cross-encoder 점수 계산
+            scores = self._reranker.predict(pairs)
+
+            # 결과에 rerank_score 추가
+            for i, result in enumerate(results):
+                result["rerank_score"] = float(scores[i])
+
+            # rerank_score 기준 내림차순 정렬
+            reranked = sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
+
+            elapsed = time.time() - start
+            logger.info(
+                f"[Reranker] {len(results)}개 → top {top_n} 재정렬 완료 "
+                f"({elapsed:.3f}초, 최고점: {reranked[0]['rerank_score']:.3f})"
+            )
+
+            return reranked[:top_n]
+
+        except Exception as e:
+            logger.warning(f"[Reranker] 재정렬 실패, fallback 사용: {e}")
+            return results[:top_n]
+
+    # ==========================================
+    # [V2 변경] 임베딩 캐싱 메서드
+    # ==========================================
+
+    def get_embedding_cached(self, text: str) -> List[float]:
+        """
+        임베딩 벡터 조회 (캐시 우선, 미스 시 API 호출)
+
+        Args:
+            text: 임베딩할 텍스트 (normalize_query 적용 후)
+
+        Returns:
+            임베딩 벡터 (List[float], 512차원)
+        """
+        # 캐시 키: 정규화된 텍스트 (공백 제거)
+        cache_key = text.strip()
+
+        # 캐시 히트 확인
+        cached = self._embedding_cache.get(cache_key)
+        if cached is not None:
+            logger.debug(f"[캐시] HIT - '{cache_key[:30]}...' (히트율: {self._embedding_cache.hit_rate:.1f}%)")
+            return cached
+
+        # 캐시 미스: OpenAI API 호출
+        start = time.time()
+        embedding = self.embedding_manager.embed_text(text)
+        elapsed = time.time() - start
+
+        # 캐시 저장
+        self._embedding_cache.put(cache_key, embedding)
+        logger.debug(
+            f"[캐시] MISS - '{cache_key[:30]}...' API 호출 ({elapsed:.3f}초, "
+            f"캐시 크기: {self._embedding_cache.stats['size']})"
+        )
+
+        return embedding
+
     def get_recent_chat_history(self, email: str, limit: int = 5) -> List[Dict[str, str]]:
         """
         PostgreSQL에서 사용자의 최근 대화 내역 조회
-        
+
         Args:
             email: 사용자 이메일
             limit: 가져올 대화 개수
-            
+
         Returns:
             [{"question": str, "answer": str, "created_at": str}, ...]
         """
         if self.db_conn is None:
             logger.warning("PostgreSQL 연결 안됨. 이전 대화 내역 없이 진행")
             return []
-        
+
         if email == "anonymous":
             return []
-        
+
         try:
             query = """
             SELECT ch.question, ch.answer, ch.created_at
@@ -381,11 +584,11 @@ class ChatbotService:
             ORDER BY ch.created_at DESC
             LIMIT %s
             """
-            
+
             with self._get_cursor() as cursor:
                 cursor.execute(query, (email, limit))
                 results = cursor.fetchall()
-                
+
                 history = [
                     {
                         "question": row["question"],
@@ -394,10 +597,10 @@ class ChatbotService:
                     }
                     for row in reversed(results)
                 ]
-                
+
                 logger.info(f"{email}의 이전 대화 {len(history)}개 조회 완료")
                 return history
-                
+
         except Exception as e:
             logger.error(f"대화 내역 조회 실패: {e}")
             if self.db_conn:
@@ -418,12 +621,20 @@ class ChatbotService:
         text = re.sub(r'용\s*적\s*률', '용적률', text)
         text = re.sub(r'법\s*규\s*비\s*교', '법규비교', text)
 
-        # 3. 띄어쓰기 정규화 (용도지역)
-        text = re.sub(r'제\s*(\d)\s*종\s*일반', r'제\1종일반', text)
-        text = re.sub(r'제\s*(\d)\s*종\s*전용', r'제\1종전용', text)
+        # 3. "제" 누락 보정 ("2종" → "제2종")
+        text = re.sub(r'(?<![제])(\d)\s*종', r'제\1종', text)
+
+        # 4. 띄어쓰기 정규화 (용도지역)
+        text = re.sub(r'제\s*(\d)\s*종\s*일\s*반', r'제\1종일반', text)
+        text = re.sub(r'제\s*(\d)\s*종\s*전\s*용', r'제\1종전용', text)
+        text = re.sub(r'일\s*반\s*주\s*거\s*지\s*역', '일반주거지역', text)
+        text = re.sub(r'전\s*용\s*주\s*거\s*지\s*역', '전용주거지역', text)
         text = re.sub(r'주\s*거\s*지\s*역', '주거지역', text)
         text = re.sub(r'상\s*업\s*지\s*역', '상업지역', text)
         text = re.sub(r'공\s*업\s*지\s*역', '공업지역', text)
+        text = re.sub(r'녹\s*지\s*지\s*역', '녹지지역', text)
+        text = re.sub(r'준\s*주\s*거', '준주거', text)
+        text = re.sub(r'준\s*공\s*업', '준공업', text)
 
         # 4. 띄어쓰기 정규화 (특수 키워드)
         text = text.replace("높이 제한", "높이제한")
@@ -437,12 +648,50 @@ class ChatbotService:
         return text
 
     def parse_address(self, text: str) -> Dict[str, str]:
-        """질문에서 주소 정보 추출"""
-        result = {"legal_dong_name": "", "lot_number": "", "region_code": ""}
+        """
+        질문에서 주소 정보 추출
+
+        Returns:
+            dict with keys: legal_dong_name, lot_number, region_code, address_depth
+            address_depth:
+                0 = 주소 없음
+                1 = 시/도만 (서울시)
+                2 = 시/도 + 구/군 (서울시 노원구)
+                3 = 시/도 + 구/군 + 동/읍/면 (서울시 노원구 중계동)
+                4 = 시/도 + 구/군 + 동/읍/면 + 지번 (서울시 노원구 중계동 1-1)
+        """
+        result = {"legal_dong_name": "", "lot_number": "", "region_code": "", "address_depth": 0}
 
         # 법정동명 추출 (광역시/도 + 시군구 + 동)
         dong_parts = []
 
+        # [V3 개선] 오탐 방지: 문장 내 맥락 체크
+        # "그러면", "도로접면", "이면", "하면" 같은 일반 단어 필터링
+        false_positive_patterns = [
+            # 접속사/조사
+            r'그러면', r'그럼', r'그리고', r'그런데', r'그래도', r'그치만',
+            r'이면', r'하면', r'되면', r'라면', r'처럼', r'같은', r'같이',
+            
+            # 토지/건축 용어 (면, 동 포함)
+            r'도로\s*접면', r'접면', r'정면', r'남면', r'북면', r'동면', r'서면',
+            r'건물\s*면', r'대지\s*면', r'연면', r'바닥\s*면',
+            r'면적', r'면허', r'면세', r'면제', r'변경', r'발급',
+            
+            # 일반 동사/명사 (시, 도, 군, 구 포함)
+            r'시설', r'시간', r'시작', r'시행', r'시공', r'시점', r'시험',
+            r'도로', r'도면', r'도표', r'도시', r'도입', r'필요하',
+            r'군데', r'군청', r'필요한',
+            r'구조', r'구성', r'구분', r'구역', r'구축', r'구비', r'필요',
+            
+            # 동작 동사 (동 포함)
+            r'가동', r'작동', r'운동', r'이동', r'자동', r'활동', r'감동',
+            r'행동', r'변동', r'등록', r'등기', r'공동', r'동의',
+            
+            # 기타 (~리)
+            r'거리', r'처리', r'관리', r'정리', r'수리', r'심리',
+            r'요리', r'원리', r'진리', r'매리', r'유리',
+        ]
+        
         # 광역시/도 목록 (중복 방지용)
         sido_keywords = [
             '서울특별시', '서울시', '부산광역시', '대구광역시', '인천광역시',
@@ -452,44 +701,128 @@ class ChatbotService:
         ]
 
         # 1. 광역시/도 추출 (서울특별시, 경기도, 부산광역시 등)
-        sido_match = re.search(r'(서울특별시|서울시|서울|부산광역시|부산|대구광역시|대구|인천광역시|인천|광주광역시|광주|대전광역시|대전|울산광역시|울산|세종특별자치시|세종|경기도|경기|강원도|강원|충청북도|충북|충청남도|충남|전라북도|전북|전라남도|전남|경상북도|경북|경상남도|경남|제주특별자치도|제주도|제주)', text)
+        # [V3 개선] 오탐 방지: 앞뒤 문맥 확인
+        sido_pattern = r'(?<![가-힣])(서울특별시|서울시|서울|부산광역시|부산|대구광역시|대구|인천광역시|인천|광주광역시|광주|대전광역시|대전|울산광역시|울산|세종특별자치시|세종|경기도|경기|강원도|강원|충청북도|충북|충청남도|충남|전라북도|전북|전라남도|전남|경상북도|경북|경상남도|경남|제주특별자치도|제주도|제주)(?![가-힣])'
+        sido_match = re.search(sido_pattern, text)
+        
         if sido_match:
-            # 약칭을 정식 명칭으로 정규화 (DB 매칭용)
-            sido_normalize = {
-                '서울': '서울특별시', '서울시': '서울특별시',
-                '부산': '부산광역시', '대구': '대구광역시',
-                '인천': '인천광역시', '광주': '광주광역시',
-                '대전': '대전광역시', '울산': '울산광역시',
-                '세종': '세종특별자치시',
-                '경기': '경기도', '강원': '강원도',
-                '충북': '충청북도', '충남': '충청남도',
-                '전북': '전라북도', '전남': '전라남도',
-                '경북': '경상북도', '경남': '경상남도',
-                '제주': '제주특별자치도', '제주도': '제주특별자치도',
-            }
             sido_raw = sido_match.group(1)
-            sido_full = sido_normalize.get(sido_raw, sido_raw)
-            dong_parts.append(sido_full)
+            match_pos = sido_match.start()
+            
+            # [V3 개선] 앞 5글자 확인하여 오탐 패턴 제외
+            before_text = text[max(0, match_pos-5):match_pos]
+            is_false_positive = False
+            
+            for fp_pattern in false_positive_patterns:
+                if re.search(fp_pattern, before_text + sido_raw):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{sido_raw}' 제외: 앞 문맥='{before_text}'")
+                    break
+            
+            if not is_false_positive:
+                # 약칭을 정식 명칭으로 정규화 (DB 매칭용)
+                sido_normalize = {
+                    '서울': '서울특별시', '서울시': '서울특별시',
+                    '부산': '부산광역시', '대구': '대구광역시',
+                    '인천': '인천광역시', '광주': '광주광역시',
+                    '대전': '대전광역시', '울산': '울산광역시',
+                    '세종': '세종특별자치시',
+                    '경기': '경기도', '강원': '강원도',
+                    '충북': '충청북도', '충남': '충청남도',
+                    '전북': '전라북도', '전남': '전라남도',
+                    '경북': '경상북도', '경남': '경상남도',
+                    '제주': '제주특별자치도', '제주도': '제주특별자치도',
+                }
+                sido_full = sido_normalize.get(sido_raw, sido_raw)
+                dong_parts.append(sido_full)
+            else:
+                sido_match = None  # 오탐이면 무효화
 
         # 2. 시군구 추출 (광역시/도 부분을 제외하고 검색)
-        # "종로구", "강남구", "수원시", "성남시" 등
+        # [V2 버그픽스] 토지이용 키워드가 시/군/구 패턴에 오탐되는 것 방지
+        # 예: "근린생활시설" → "생활시" 오탐, "공업지역" → "공업지" 오탐
+        sigungu_false_positives = [
+            '생활시', '시설시', '공업시', '상업시', '주거시',  # ~시 오탐
+            '생활구', '시설구', '다가구',  # ~구 오탐 (다가구주택의 "다가구")
+        ]
         sigungu_pattern = r'(?:서울특별시|서울시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원도|충청북도|충청남도|전라북도|전라남도|경상북도|경상남도|제주특별자치도)?\s*([\w]{2,4}(?:시|군|구))'
         sigungu_match = re.search(sigungu_pattern, text)
         if sigungu_match:
             sigungu = sigungu_match.group(1)
             # 광역시명과 중복 방지
             if sigungu not in ['서울시', '부산시', '대구시', '인천시', '광주시', '대전시', '울산시', '세종시']:
-                # 이미 추가된 것과 중복되지 않으면 추가
-                if sigungu not in dong_parts:
+                # [V2 버그픽스] 토지이용 키워드 오탐 방지
+                if sigungu in sigungu_false_positives:
+                    sigungu_match = None  # 오탐이면 무효화
+                elif sigungu not in dong_parts:
                     dong_parts.append(sigungu)
 
         # 3. 읍면동 추출 (동 뒤에 조사/숫자/공백이 올 수 있음)
-        # "가"는 숫자+가 형태만 매칭 (종로1가, 을지로2가 등) - "뭐가" 같은 오탐 방지
-        dong_match = re.search(r'([\w]{1,10}(?:동|읍|면|리))(?:\s|\d|에|을|의|로|은|는|이|가|$)', text)
-        if dong_match:
+        # [V3 개선] 오탐 방지: "면", "동", "리" 문맥 체크
+        dong_pattern = r'([\w]{1,10}(?:동|읍|면|리))(?:\s|\d|에|을|의|로|은|는|이|가|$)'
+        dong_matches = re.finditer(dong_pattern, text)
+        
+        for dong_match in dong_matches:
             dong = dong_match.group(1)
-            # 이미 추가된 것과 중복되지 않으면 추가
-            if dong not in dong_parts:
+            match_pos = dong_match.start()
+            
+            # [V3 개선] 앞뒤 맥락 확인
+            before_text = text[max(0, match_pos-6):match_pos]
+            after_text = text[dong_match.end():dong_match.end()+4]
+            
+            # 오탐 패턴 체크
+            is_false_positive = False
+            
+            # [V3 확장] "면" 오탐 패턴 강화
+            if dong.endswith('면'):
+                # 앞 문맥: 토지용어, 접속사, 조건문
+                if re.search(r'(도로\s*접|접|정|남|북|동|서|건물|대지|연|바닥|그러|이|하|되|라|같)', before_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}'")
+                # 뒤 문맥: ~면적, ~면허, ~면세, ~면제
+                elif re.search(r'(적|허|세|제|건|의|에)', after_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 뒤 문맥='{after_text}'")
+                # 단일 음절 + 면은 제외 (예: "이면", "저면", "그면")
+                elif len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+면)")
+            
+            # [V3 확장] "동" 오탐 패턴 강화
+            if dong.endswith('동'):
+                # 짧은 동 (2글자): 가동, 작동, 운동, 이동, 자동, 활동, 감동, 행동, 변동, 공동
+                if len(dong) <= 2:
+                    if re.search(r'(가|작|운|이|자|활|감|행|변|공|등|시)', before_text):
+                        is_false_positive = True
+                        logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}' (짧은 동)")
+                # 뒤 문맥: ~동의, ~동일, ~동안, ~동시
+                elif re.search(r'(의|일|안|시|작|에)', after_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 뒤 문맥='{after_text}'")
+                # "등록", "등기" 같은 단어
+                elif dong in ['등록', '등기', '등동', '등']:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 일반 단어")
+            
+            # [V3 확장] "리" 오탐 패턴 강화
+            if dong.endswith('리'):
+                # 1~2글자 리는 대부분 오탐 (예: 거리, 관리, 처리, 정리, 수리)
+                if len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+리)")
+                # 앞 문맥: 일반 동사 (거리, 처리, 관리 등)
+                elif re.search(r'(거|처|관|정|수|심|요|원|진|매|유)', before_text):
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 앞 문맥='{before_text}'")
+            
+            # [V3 신규] "읍" 오탐 패턴
+            if dong.endswith('읍'):
+                # 너무 짧은 경우 제외 (2글자 이하)
+                if len(dong) <= 2:
+                    is_false_positive = True
+                    logger.debug(f"[주소 오탐 방지] '{dong}' 제외: 너무 짧음 (1~2글자+읍)")
+            
+            if not is_false_positive and dong not in dong_parts:
                 dong_parts.append(dong)
 
         # "가" 주소 별도 처리 (숫자+가 형태: 종로1가, 명동2가 등)
@@ -503,19 +836,15 @@ class ChatbotService:
             result["legal_dong_name"] = ' '.join(dong_parts)
 
         # 지번 추출 (오탐 방지: 층수/퍼센트 숫자 제외)
-        # 1순위: 명시적 지번 표현 (1-2, 123번지, 지번 123)
-        lot_match = re.search(r'(\d+-\d+)(?:번지)?(?:\s|에|$)', text)  # 본번-부번
+        lot_match = re.search(r'(\d+-\d+)(?:번지)?(?:\s|에|의|은|는|이|가|로|을|$)', text)
         if not lot_match:
-            lot_match = re.search(r'(\d+)번지', text)  # N번지
+            lot_match = re.search(r'(\d+)번지', text)
         if not lot_match:
-            lot_match = re.search(r'지번\s*(\d+)', text)  # 지번 N
-        # 2순위: 동/읍/면/리 바로 뒤의 숫자 (주소 문맥)
+            lot_match = re.search(r'지번\s*(\d+)', text)
         if not lot_match:
-            lot_match = re.search(r'(?:동|읍|면|리|가)\s+(\d+)(?:\s|에|$)', text)
-        # 층수/퍼센트/연면적 숫자는 제외 (3층, 200%, 1500제곱미터 등)
+            lot_match = re.search(r'(?:동|읍|면|리|가)\s+(\d+-?\d*)(?:\s|에|의|은|는|이|가|로|을|$)', text)
         if lot_match:
             lot_num = lot_match.group(1).replace('번지', '')
-            # 층수/퍼센트 문맥 체크
             lot_pos = lot_match.start()
             after_text = text[lot_match.end():lot_match.end()+5] if lot_match.end() < len(text) else ""
             if not re.search(r'(층|%|퍼센트|제곱)', after_text):
@@ -533,43 +862,56 @@ class ChatbotService:
                 result["region_code"] = code
                 break
 
+        # 주소 상세도(depth) 계산
+        has_sido = bool(sido_match) if 'sido_match' in dir() else False
+        has_sigungu = bool(sigungu_match) if 'sigungu_match' in dir() else False
+        has_dong = bool(dong_match) if 'dong_match' in dir() else False
+        has_lot = bool(result["lot_number"])
+
+        if has_lot:
+            result["address_depth"] = 4
+        elif has_dong:
+            result["address_depth"] = 3
+        elif has_sigungu:
+            result["address_depth"] = 2
+        elif has_sido:
+            result["address_depth"] = 1
+        else:
+            result["address_depth"] = 0
+
         return result
-    
+
     def extract_zone_district_name(self, text: str) -> List[str]:
         """질문에서 지역지구명 추출 (정확한 용도지역명 우선, 사전 매핑은 보조)"""
-        # 우선순위별 분리 (순서 유지를 위해)
-        exact_matches = []   # 1순위: ZONE_REGULATIONS exact match
-        regex_matches = []   # 2순위: 정규식 매칭
+        exact_matches = []
+        regex_matches = []
 
-        # 1. 먼저 ZONE_REGULATIONS에서 정확한 용도지역명 매칭 (가장 우선)
+        # 1. ZONE_REGULATIONS에서 정확한 용도지역명 매칭
         for zone_name in ZONE_REGULATIONS.keys():
             if zone_name in text:
                 exact_matches.append(zone_name)
 
-        # 2. 정규식으로 직접 추출 (더 다양한 패턴 대응)
+        # 2. 정규식으로 직접 추출
         zone_patterns = [
-            r'(제\d종[가-힣]{2,10}지역)',      # 제1종일반주거지역
-            r'([가-힣]{2,6}경관지구)',          # 자연경관지구
-            r'([가-힣]{2,6}미관지구)',          # 일반미관지구
-            r'([가-힣]{2,4}녹지지역)',          # 자연녹지지역
-            r'([가-힣]{2,4}주거지역)',          # 준주거지역
-            r'([가-힣]{2,4}상업지역)',          # 일반상업지역
-            r'([가-힣]{2,4}공업지역)',          # 준공업지역
-            r'([가-힣]{2,6}보호지구)',          # 문화자원보호지구
-            r'([가-힣]{2,6}관리지역)',          # 계획관리지역
+            r'(제\d종[가-힣]{2,10}지역)',
+            r'([가-힣]{2,6}경관지구)',
+            r'([가-힣]{2,6}미관지구)',
+            r'([가-힣]{2,4}녹지지역)',
+            r'([가-힣]{2,4}주거지역)',
+            r'([가-힣]{2,4}상업지역)',
+            r'([가-힣]{2,4}공업지역)',
+            r'([가-힣]{2,6}보호지구)',
+            r'([가-힣]{2,6}관리지역)',
         ]
 
         for pattern in zone_patterns:
             matches = re.findall(pattern, text)
             regex_matches.extend(matches)
 
-        # 정확한 매칭이 있으면 우선 반환 (regex 오탐 방지)
         if exact_matches:
             return list(dict.fromkeys(exact_matches))
 
-        # exact 매칭 없을 때만 regex 결과 사용 (부분 문자열 오탐 제거)
         if regex_matches:
-            # 다른 매칭의 부분 문자열인 것 제거 (예: "종일반주거지역" ⊂ "제2종일반주거지역")
             filtered = []
             for z in regex_matches:
                 is_substring = any(z != other and z in other for other in regex_matches)
@@ -577,13 +919,10 @@ class ChatbotService:
                     filtered.append(z)
             return list(dict.fromkeys(filtered))
 
-        # 3. 정확한 매칭이 없을 때만 사전 매핑 사용 (부분 키워드 매칭)
-        dict_matches = []  # 사전 매핑 결과
-
-        # 매칭된 모든 키워드 수집
+        # 3. 사전 매핑 사용
+        dict_matches = []
         matching_keywords = [kw for kw in ZONE_DISTRICT_DICTIONARY.keys() if kw in text]
 
-        # 더 긴 키워드에 포함된 짧은 키워드 제외
         filtered_keywords = []
         for kw in matching_keywords:
             has_longer_match = False
@@ -601,29 +940,49 @@ class ChatbotService:
             else:
                 dict_matches.append(db_values)
 
-        # 순서 유지하며 중복 제거
         return list(dict.fromkeys(dict_matches))
-    
+
     def extract_land_use_activity(self, text: str) -> List[str]:
         """질문에서 토지이용행위 추출 (사전 매핑 적용)"""
         activities = []
         text_lower = text.lower()
 
-        # 사전에서 매핑 검색
-        for keyword, db_values in LAND_USE_DICTIONARY.items():
-            if keyword in text or keyword in text_lower:
-                if isinstance(db_values, list):
-                    activities.extend(db_values)
-                else:
-                    activities.append(db_values)
+        # [V2 버그픽스] "건축법", "건축가능" 등 법률 용어 안의 "건축"이 오탐되는 것 방지
+        legal_suffixes = ['법', '가능', '금지', '불가', '조례', '선', '허가', '신고', '법시행령']
 
-        # 층수 관련 추출
+        # [V2 버그픽스] 1단계: 매칭되는 키워드 수집
+        matched_keywords = []
+        for keyword in LAND_USE_DICTIONARY.keys():
+            if keyword in text or keyword in text_lower:
+                if keyword == '건축':
+                    is_legal_term = any(f"건축{suffix}" in text for suffix in legal_suffixes)
+                    if is_legal_term:
+                        continue
+                matched_keywords.append(keyword)
+
+        # [V2 버그픽스] 2단계: 긴 키워드의 부분문자열인 짧은 키워드 제거
+        # "다가구주택"이 매칭되면 "주택", "다가구"는 부분문자열이므로 제거
+        matched_keywords.sort(key=len, reverse=True)
+        filtered_keywords = []
+        for kw in matched_keywords:
+            is_substring = any(kw in longer_kw and kw != longer_kw for longer_kw in filtered_keywords)
+            if not is_substring:
+                filtered_keywords.append(kw)
+
+        # 3단계: 필터링된 키워드만 DB 값으로 매핑
+        for keyword in filtered_keywords:
+            db_values = LAND_USE_DICTIONARY[keyword]
+            if isinstance(db_values, list):
+                activities.extend(db_values)
+            else:
+                activities.append(db_values)
+
         floor_match = re.search(r'(\d+)층', text)
         if floor_match:
             activities.append(f"{floor_match.group(1)}층 건축물")
 
         return list(set(activities))
-    
+
     def extract_region_codes(self, text: str) -> List[str]:
         """질문에서 구분코드 추출"""
         codes = re.findall(r'\b\d{5}\b', text)
@@ -647,18 +1006,17 @@ class ChatbotService:
         1. 먼저 정적 사전(ZONE_REGULATIONS)에서 법정 기준값 조회
         2. DB에서 추가 조건/예외사항 검색
         """
-        # 결과 구조
         regulations = {
             "zone_name": zone_name,
-            "coverage_ratio": None,           # 건폐율
+            "coverage_ratio": None,
             "coverage_ratio_source": ZONE_REGULATION_SOURCE,
-            "floor_area_ratio": None,         # 용적률
+            "floor_area_ratio": None,
             "floor_area_ratio_source": ZONE_REGULATION_SOURCE,
-            "height_limit": None,             # 높이제한
-            "floor_limit": None,              # 층수 제한
-            "total_floor_area_limit": None,   # 연면적 제한
-            "front_length_limit": None,       # 정면부 길이 제한
-            "setback_distance": None,         # 건축선 후퇴
+            "height_limit": None,
+            "floor_limit": None,
+            "total_floor_area_limit": None,
+            "front_length_limit": None,
+            "setback_distance": None,
             "description": None,
             "raw_data": []
         }
@@ -668,25 +1026,23 @@ class ChatbotService:
         if zone_name in ZONE_REGULATIONS:
             static_reg = ZONE_REGULATIONS[zone_name]
         else:
-            # 부분 매칭 시도
             for zone_key, reg in ZONE_REGULATIONS.items():
                 if zone_key in zone_name or zone_name in zone_key:
                     static_reg = reg
                     break
 
-        # 간소화된 사전 구조에서 값 추출
         if static_reg:
             regulations["coverage_ratio"] = static_reg.get("건폐율")
             regulations["floor_area_ratio"] = static_reg.get("용적률")
             regulations["height_limit"] = static_reg.get("높이")
             regulations["description"] = static_reg.get("설명")
 
-        # 2. DB에서 추가 정보 조회 (조건/예외사항 - 절대값 제한 포함)
+        # 2. DB에서 추가 정보 조회
         if self.db_conn is not None:
             try:
                 query = """
                 SELECT DISTINCT
-                    zone_district_name, law_name,
+                    region_name, zone_district_name, law_name,
                     land_use_activity, condition_exception
                 FROM law
                 WHERE zone_district_name LIKE %s
@@ -705,51 +1061,40 @@ class ChatbotService:
                     results = [dict(row) for row in cursor.fetchall()]
                     regulations["raw_data"] = results
 
-                    # DB에서 추가 정보 추출
                     for r in results:
                         condition = r.get("condition_exception", "") or ""
 
-                        # === 비율 기반 규제 ===
-                        # 건폐율 추출 (정적 사전에 없는 경우만)
                         if not regulations["coverage_ratio"]:
                             coverage_match = re.search(r'건폐율\s*(\d+)\s*(%|퍼센트)', condition)
                             if coverage_match:
                                 regulations["coverage_ratio"] = f"{coverage_match.group(1)}%"
                                 regulations["source"] = "조례"
 
-                        # 용적률 추출
                         if not regulations["floor_area_ratio"]:
                             far_match = re.search(r'용적률\s*(\d+)\s*(%|퍼센트)', condition)
                             if far_match:
                                 regulations["floor_area_ratio"] = f"{far_match.group(1)}%"
                                 regulations["source"] = "조례"
 
-                        # === 절대값 기반 규제 (키워드 근처에서만 매칭하여 오탐 방지) ===
-                        # 높이 제한 (예: "높이 20미터이하", "높이가 12m 이하")
-                        # "높이" 키워드 근처에서만 매칭 (정면부 길이 등 오탐 방지)
                         if not regulations["height_limit"]:
                             height_match = re.search(r'높이\s*(가|는|를|이)?\s*(\d+)\s*(m|미터)\s*(이하|까지|미만)?', condition)
                             if height_match:
                                 suffix = height_match.group(4) or "이하"
                                 regulations["height_limit"] = f"{height_match.group(2)}m {suffix}"
 
-                        # 층수 제한 (예: "5층이하", "3층 이하")
                         if not regulations["floor_limit"]:
                             floor_match = re.search(r'(\d+)층\s*(이하|까지|미만)?', condition)
                             if floor_match:
                                 suffix = floor_match.group(2) or "이하"
                                 regulations["floor_limit"] = f"{floor_match.group(1)}층 {suffix}"
 
-                        # 연면적 제한 (예: "연면적 1,500제곱미터이하", "연면적 3천제곱미터")
                         if not regulations["total_floor_area_limit"]:
-                            # 숫자+제곱미터 패턴
                             area_match = re.search(r'연면적\s*([\d,]+)\s*제곱미터\s*(이하|까지|미만)?', condition)
                             if area_match:
                                 area_val = area_match.group(1).replace(',', '')
                                 suffix = area_match.group(2) or "이하"
                                 regulations["total_floor_area_limit"] = f"{int(area_val):,}㎡ {suffix}"
                             else:
-                                # "3천제곱미터" 같은 패턴
                                 area_match2 = re.search(r'연면적\s*(\d+)(천|백)\s*제곱미터\s*(이하|까지)?', condition)
                                 if area_match2:
                                     num = int(area_match2.group(1))
@@ -761,23 +1106,18 @@ class ChatbotService:
                                     suffix = area_match2.group(3) or "이하"
                                     regulations["total_floor_area_limit"] = f"{num:,}㎡ {suffix}"
 
-                        # 정면부 길이 제한 (예: "정면부길이가 30미터미만")
                         if not regulations["front_length_limit"]:
                             front_match = re.search(r'정면부\s*길이\s*(가|가\s*)?\s*(\d+)\s*(m|미터)\s*(미만|이하)?', condition)
                             if front_match:
                                 suffix = front_match.group(4) or "미만"
                                 regulations["front_length_limit"] = f"{front_match.group(2)}m {suffix}"
 
-                        # 건축선 후퇴 (예: "건축선으로부터 3미터이상을후퇴")
                         if not regulations["setback_distance"]:
                             setback_match = re.search(r'건축선.*?(\d+)\s*(m|미터)\s*(이상)?.*?후퇴', condition)
                             if setback_match:
                                 regulations["setback_distance"] = f"{setback_match.group(1)}m 이상 후퇴"
 
             except Exception as e:
-                import traceback
-                print(f"[ERROR] DB 규제 정보 조회 실패: {e}")
-                traceback.print_exc()
                 logger.error(f"DB 규제 정보 조회 실패: {e}")
                 if self.db_conn:
                     self.db_conn.rollback()
@@ -785,9 +1125,7 @@ class ChatbotService:
         return regulations
 
     def compare_laws(self, zone_name: str) -> Dict[str, Any]:
-        """
-        법률과 조례 비교 (건축법 vs 지자체 조례 명확히 구분)
-        """
+        """법률과 조례 비교 (건축법 vs 지자체 조례 명확히 구분)"""
         if self.db_conn is None:
             return {}
 
@@ -806,7 +1144,6 @@ class ChatbotService:
                 cursor.execute(query, (f"%{zone_name}%",))
                 results = [dict(row) for row in cursor.fetchall()]
 
-                # 법률 유형 분류 함수
                 def classify_law_type(law_name: str) -> str:
                     if not law_name:
                         return "기타"
@@ -819,10 +1156,9 @@ class ChatbotService:
                     else:
                         return "기타법령"
 
-                # 건축법 vs 조례 분리
-                building_laws = []  # 건축법 계열
-                ordinances = []     # 조례 계열
-                other_laws = []     # 기타
+                building_laws = []
+                ordinances = []
+                other_laws = []
 
                 for r in results:
                     law_name = r.get("law_name", "")
@@ -831,7 +1167,6 @@ class ChatbotService:
                     item = {
                         "law_name": law_name,
                         "law_type": law_type,
-                        "region_name": r.get("region_name", ""),
                         "activity": r.get("land_use_activity", ""),
                         "permission_category": r.get("permission_category", ""),
                         "condition": r.get("condition_exception", "") or "조건 없음"
@@ -844,20 +1179,17 @@ class ChatbotService:
                     else:
                         other_laws.append(item)
 
-                # 조례를 지역별로 그룹화
                 ordinance_by_region = {}
                 for o in ordinances:
                     law_name = o["law_name"]
-                    # 지역명 추출 (예: "김포시도시계획조례" → "김포시")
                     region = law_name.split("조례")[0].replace("도시계획", "").replace("군계획", "")
                     if not region:
-                        region = law_name[:4]  # 앞 4글자
+                        region = law_name[:4]
 
                     if region not in ordinance_by_region:
                         ordinance_by_region[region] = []
                     ordinance_by_region[region].append(o)
 
-                # 토지이용행위별 비교 (건축법 vs 조례)
                 activity_comparison = {}
                 all_items = building_laws + ordinances + other_laws
 
@@ -877,14 +1209,13 @@ class ChatbotService:
                     else:
                         activity_comparison[activity]["기타"].append(item)
 
-                # 비교 가치 있는 항목 (건축법과 조례 둘 다 있는 것)
                 valuable_comparisons = []
                 for activity, laws in activity_comparison.items():
-                    if laws["건축법"] and laws["조례"]:  # 둘 다 있는 경우
+                    if laws["건축법"] and laws["조례"]:
                         valuable_comparisons.append({
                             "activity": activity,
-                            "building_law": laws["건축법"][0],  # 대표 1개
-                            "ordinances": laws["조례"][:5],  # 조례 최대 5개
+                            "building_law": laws["건축법"][0],
+                            "ordinances": laws["조례"][:5],
                             "has_difference": True
                         })
                     elif laws["건축법"]:
@@ -902,7 +1233,7 @@ class ChatbotService:
                     "ordinance_count": len(ordinances),
                     "ordinance_regions": list(ordinance_by_region.keys())[:10],
                     "comparisons": valuable_comparisons[:15],
-                    "sample_ordinances": ordinances[:10],  # 조례 샘플 10개
+                    "sample_ordinances": ordinances[:10],
                 }
 
         except Exception as e:
@@ -910,51 +1241,56 @@ class ChatbotService:
             if self.db_conn:
                 self.db_conn.rollback()
             return {}
-    
-    def search_by_address(self, address_info: Dict[str, str], limit: int = 20) -> List[Dict[str, Any]]:
+
+    def search_by_address(self, address_info: Dict[str, str], zone_filter: List[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
         """
         주소 정보로 land_char 테이블에서 필지 검색
 
-        Args:
-            address_info: 주소 정보 (legal_dong_name, lot_number, region_code)
-            limit: 최대 결과 수 (기본 20, 케이스 분석용은 6 권장)
-
-        Returns:
-            필지 정보 리스트
+        [V2 변경] address_depth <= 2 (구 단위)일 때 동별 샘플링
+        - 기존: ORDER BY lot_number LIMIT 6 → 한 동만 나옴
+        - 변경: 각 동에서 1~2개씩 골고루 샘플링
         """
         try:
             conditions = []
             params = []
 
-            # 법정동명 검색 (각 단어별 AND 조건으로 유연하게)
-            # "서울 종로구 청운동" → "서울특별시 종로구 청운동" 매칭 가능하도록
             if address_info.get("legal_dong_name"):
                 dong_parts = address_info["legal_dong_name"].split()
                 for part in dong_parts:
                     conditions.append("legal_dong_name LIKE %s")
                     params.append(f"%{part}%")
 
-            # 지번 검색
             if address_info.get("lot_number"):
                 lot_num = address_info['lot_number']
                 if '-' in lot_num:
-                    # 정확한 지번 (1-2)
                     conditions.append("lot_number = %s")
                     params.append(lot_num)
                 else:
-                    # 본번만 있는 경우 (1 → 1, 1-1, 1-2 등)
                     conditions.append("(lot_number = %s OR lot_number LIKE %s)")
                     params.append(lot_num)
                     params.append(f"{lot_num}-%")
 
-            # 지역코드 검색
             if address_info.get("region_code"):
                 conditions.append("region_code LIKE %s")
                 params.append(f"{address_info['region_code']}%")
 
+            if zone_filter:
+                zone_conds = []
+                for zone in zone_filter:
+                    zone_conds.append("zone1 LIKE %s")
+                    params.append(f"%{zone}%")
+                conditions.append(f"({' OR '.join(zone_conds)})")
+
             if not conditions:
                 return []
 
+            depth = address_info.get("address_depth", 0)
+
+            # [V2 변경] depth <= 2 (구 단위): 동별 샘플링으로 골고루 가져오기
+            if depth <= 2 and not address_info.get("lot_number"):
+                return self._search_by_dong_sampling(conditions, params, zone_filter, limit)
+
+            # depth 3~4 (동/지번까지): 기존 방식
             query = f"""
             SELECT DISTINCT
                 legal_dong_name, lot_number, region_code,
@@ -978,14 +1314,58 @@ class ChatbotService:
             if self.db_conn:
                 self.db_conn.rollback()
             return []
-    
+
+    def _search_by_dong_sampling(
+        self,
+        conditions: List[str],
+        params: List[Any],
+        zone_filter: List[str],
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """
+        [V2 변경] 동별 샘플링 검색 (단일 윈도우 함수 쿼리)
+        - ROW_NUMBER() OVER(PARTITION BY legal_dong_name)로 동별 N개씩 추출
+        - 기존 N+1 쿼리 → 1회 쿼리로 개선
+        """
+        try:
+            where_clause = ' AND '.join(conditions)
+            per_dong = 2  # 동별 최대 2개
+
+            query = f"""
+            SELECT legal_dong_name, lot_number, region_code,
+                   zone1, zone2, land_category, land_use
+            FROM (
+                SELECT DISTINCT
+                    legal_dong_name, lot_number, region_code,
+                    zone1, zone2, land_category, land_use,
+                    ROW_NUMBER() OVER(PARTITION BY legal_dong_name ORDER BY lot_number) AS rn
+                FROM land_char
+                WHERE {where_clause}
+            ) sub
+            WHERE rn <= {per_dong}
+            ORDER BY legal_dong_name, lot_number
+            LIMIT {limit}
+            """
+
+            with self._get_cursor() as cursor:
+                cursor.execute(query, params)
+                all_results = [dict(row) for row in cursor.fetchall()]
+
+            logger.info(f"[동별 샘플링] 단일 쿼리로 {len(all_results)}개 필지 검색")
+            return all_results
+
+        except Exception as e:
+            logger.error(f"동별 샘플링 검색 실패: {e}")
+            if self.db_conn:
+                self.db_conn.rollback()
+            return []
+
     def search_by_zone_district(self, zone_names: List[str], region_filter: Dict[str, str] = None) -> List[Dict[str, Any]]:
         """지역지구명으로 law 테이블에서 검색"""
         if self.db_conn is None or not zone_names:
             return []
 
         try:
-            # 파라미터 바인딩으로 SQL Injection 방지
             params = []
             zone_conditions = []
             for zone in zone_names:
@@ -1000,7 +1380,7 @@ class ChatbotService:
 
             query = f"""
             SELECT DISTINCT
-                region_code, region_name, zone_district_name, law_name,
+                region_name, region_code, zone_district_name, law_name,
                 land_use_activity, permission_category, condition_exception
             FROM law
             WHERE {where_clause}
@@ -1021,37 +1401,33 @@ class ChatbotService:
             if self.db_conn:
                 self.db_conn.rollback()
             return []
-    
+
     def search_by_land_use(self, activities: List[str], zone_name: str = None, region_filter: Dict[str, str] = None) -> List[Dict[str, Any]]:
         """토지이용행위로 law 테이블에서 검색"""
         if self.db_conn is None or not activities:
             return []
 
         try:
-            # 파라미터 바인딩으로 SQL Injection 방지
             params = []
             conditions = []
 
-            # 토지이용행위 조건
             activity_conditions = []
             for activity in activities:
                 activity_conditions.append("land_use_activity LIKE %s")
                 params.append(f"%{activity}%")
             conditions.append(f"({' OR '.join(activity_conditions)})")
 
-            # 용도지역 조건
             if zone_name:
                 conditions.append("zone_district_name LIKE %s")
                 params.append(f"%{zone_name}%")
 
-            # 지역코드 조건
             if region_filter and region_filter.get("region_code"):
                 conditions.append("region_code LIKE %s")
                 params.append(f"{region_filter['region_code']}%")
 
             query = f"""
             SELECT DISTINCT
-                region_code, region_name, zone_district_name, law_name,
+                region_name, region_code, zone_district_name, law_name,
                 land_use_activity, permission_category, condition_exception
             FROM law
             WHERE {' AND '.join(conditions)}
@@ -1071,59 +1447,48 @@ class ChatbotService:
             if self.db_conn:
                 self.db_conn.rollback()
             return []
-    
+
     def get_zones_by_region(self, region_filter: Dict[str, str]) -> List[str]:
         """특정 지역의 지역지구명 목록 조회"""
         if self.db_conn is None:
             return []
-        
+
         try:
             if not region_filter.get("region_code"):
                 return []
-            
+
             query = """
             SELECT DISTINCT zone_district_name
             FROM law
             WHERE region_code LIKE %s
             ORDER BY zone_district_name
             """
-            
+
             with self._get_cursor() as cursor:
                 cursor.execute(query, (f"{region_filter['region_code']}%",))
                 results = cursor.fetchall()
-                
+
                 zones = [row['zone_district_name'] for row in results]
                 logger.info(f"지역 내 지역지구명 {len(zones)}개 조회")
                 return zones
-                
+
         except Exception as e:
             logger.error(f"지역지구명 목록 조회 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
-    
+
     # ==========================================
     # 2단계: 케이스 분기 로직
     # ==========================================
 
     def classify_intent(self, address_info: Dict[str, str], zone_names: List[str], activities: List[str]) -> Dict[str, Any]:
-        """
-        질문 의도 분류 (Case1/Case2/Case3 판단)
-
-        Returns:
-            {
-                "case": "CASE1" or "CASE2" or "CASE3",
-                "sub_case": "1-1", "1-2", "1-3", "2-1", "2-2", "2-3", "3-1", "3-2",
-                "description": str
-            }
-        """
+        """질문 의도 분류 (Case1/Case2/Case3 판단)"""
         has_address = bool(address_info.get("legal_dong_name"))
         has_lot_number = bool(address_info.get("lot_number"))
         has_zone = bool(zone_names)
         has_activity = bool(activities)
 
-        # Case 2: 주소(법정동) + 용도지역이 둘 다 있을 때만 CASE2
-        # (주소 오탐 상태에서 zone만 있으면 CASE3로 가는 게 더 안전)
         if has_address and has_zone:
             return {
                 "case": "CASE2",
@@ -1131,7 +1496,6 @@ class ChatbotService:
                 "description": "주소와 용도지역이 함께 입력됨"
             }
 
-        # Case 3: 주소 없이 용도지역/토지이용행위만 질문
         if not has_address and (has_zone or has_activity):
             if has_zone and has_activity:
                 return {
@@ -1152,7 +1516,6 @@ class ChatbotService:
                     "description": "토지이용행위만 질문 (주소 없음)"
                 }
 
-        # Case 1: 주소만
         if has_lot_number:
             return {
                 "case": "CASE1",
@@ -1177,25 +1540,11 @@ class ChatbotService:
     # ==========================================
 
     def match_land_to_law(self, land_info: Dict[str, Any], activities: List[str] = None) -> Dict[str, Any]:
-        """
-        단일 필지와 법규 1:1 매칭
-
-        Args:
-            land_info: 필지 정보 (zone1, zone2 등 포함)
-            activities: 질문에서 추출한 토지이용행위 목록
-
-        Returns:
-            {
-                "land": 필지정보,
-                "laws": 매칭된 법규 목록,
-                "feasibility": 개발가능성 판정
-            }
-        """
+        """단일 필지와 법규 1:1 매칭"""
         if self.db_conn is None:
             return {"land": land_info, "laws": [], "feasibility": "판정불가"}
 
         try:
-            # 필지의 용도지역으로 법규 검색
             zones = []
             if land_info.get("zone1"):
                 zones.append(land_info["zone1"])
@@ -1205,18 +1554,15 @@ class ChatbotService:
             if not zones:
                 return {"land": land_info, "laws": [], "feasibility": "용도지역 정보 없음"}
 
-            # 파라미터 바인딩으로 SQL Injection 방지
             params = []
             conditions = []
 
-            # 용도지역 조건
             zone_conditions = []
             for zone in zones:
                 zone_conditions.append("zone_district_name LIKE %s")
                 params.append(f"%{zone}%")
             conditions.append(f"({' OR '.join(zone_conditions)})")
 
-            # 토지이용행위 조건
             if activities:
                 activity_conditions = []
                 for activity in activities:
@@ -1228,7 +1574,7 @@ class ChatbotService:
 
             query = f"""
             SELECT
-                region_code, region_name, zone_district_name, law_name,
+                region_name, region_code, zone_district_name, law_name,
                 land_use_activity, permission_category, condition_exception
             FROM law
             WHERE {where_clause}
@@ -1239,7 +1585,6 @@ class ChatbotService:
                 cursor.execute(query, params)
                 laws = [dict(row) for row in cursor.fetchall()]
 
-            # 개발가능성 판정
             feasibility = self.analyze_feasibility(laws)
 
             return {
@@ -1255,18 +1600,7 @@ class ChatbotService:
             return {"land": land_info, "laws": [], "feasibility": "판정 오류"}
 
     def analyze_feasibility(self, laws: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        법규 기반 개발가능성 분석 (개발성적표)
-
-        Returns:
-            {
-                "status": "가능" | "조건부가능" | "불가" | "정보부족",
-                "allowed": [가능한 행위 목록],
-                "conditional": [조건부 행위 목록],
-                "prohibited": [불가능한 행위 목록],
-                "summary": 요약 문자열
-            }
-        """
+        """법규 기반 개발가능성 분석 (개발성적표)"""
         if not laws:
             return {
                 "status": "정보부족",
@@ -1285,16 +1619,13 @@ class ChatbotService:
             permission = law.get("permission_category", "")
             condition = law.get("condition_exception", "")
 
-            # 허가 상태 판정 (전처리된 가능여부_정규화 컬럼 활용: 가능/불가/조건부/알수없음)
             permission_lower = permission.lower() if permission else ""
 
-            # 1순위: 불가/금지/불허
             if "불가" in permission_lower or "금지" in permission_lower or "불허" in permission_lower:
                 prohibited.append({
                     "activity": activity,
                     "reason": condition if condition else "법규상 금지"
                 })
-            # 2순위: 가능/허용
             elif "가능" in permission_lower or "허용" in permission_lower:
                 if condition and len(condition) > 5:
                     conditional.append({
@@ -1303,20 +1634,29 @@ class ChatbotService:
                     })
                 else:
                     allowed.append(activity)
-            # 3순위: 조건만 있는 경우
             elif condition and len(condition) > 5:
                 conditional.append({
                     "activity": activity,
                     "condition": condition
                 })
 
-        # 최종 판정
         if prohibited and not allowed and not conditional:
             status = "불가"
             summary = f"해당 행위는 법규상 금지되어 있습니다. (금지 항목: {len(prohibited)}건)"
         elif allowed and not prohibited:
             status = "가능"
             summary = f"해당 행위는 가능합니다. (허용 항목: {len(allowed)}건)"
+        elif allowed and prohibited:
+            # [V2 버그픽스] 같은 행위가 법률/지자체별로 가능·금지 혼재 시
+            # "검토필요" 대신 비율 기반 판정
+            if len(allowed) >= len(prohibited):
+                status = "조건부가능"
+                summary = (f"대부분 가능하나 일부 법규에서 제한됩니다. "
+                           f"(허용: {len(allowed)}건, 금지: {len(prohibited)}건, 조건부: {len(conditional)}건)")
+            else:
+                status = "조건부가능"
+                summary = (f"일부 법규에서 허용하나 제한이 많습니다. "
+                           f"(허용: {len(allowed)}건, 금지: {len(prohibited)}건, 조건부: {len(conditional)}건)")
         elif conditional:
             status = "조건부가능"
             summary = f"조건 충족 시 가능합니다. (조건부: {len(conditional)}건, 허용: {len(allowed)}건)"
@@ -1333,17 +1673,7 @@ class ChatbotService:
         }
 
     def check_zone_match(self, land_info: Dict[str, Any], user_zones: List[str]) -> Dict[str, Any]:
-        """
-        사용자 입력 용도지역과 실제 데이터 일치 여부 확인
-
-        Returns:
-            {
-                "match_type": "일치" | "불일치" | "부분일치",
-                "land_zones": 실제 필지의 용도지역,
-                "user_zones": 사용자 입력 용도지역,
-                "message": 설명
-            }
-        """
+        """사용자 입력 용도지역과 실제 데이터 일치 여부 확인"""
         land_zones = []
         if land_info.get("zone1"):
             land_zones.append(land_info["zone1"])
@@ -1366,7 +1696,6 @@ class ChatbotService:
                 "message": "사용자가 용도지역을 지정하지 않았습니다."
             }
 
-        # 일치 여부 확인
         matched = []
         unmatched_user = []
 
@@ -1404,12 +1733,70 @@ class ChatbotService:
                 "message": f"입력한 용도지역({', '.join(user_zones)})이 실제({', '.join(land_zones)})와 다릅니다."
             }
 
+    def _get_allowed_zones_for_activity(self, activities: List[str]) -> List[str]:
+        """
+        [V2 변경] 토지이용행위가 가능한 용도지역 역추적
+        - law 테이블에서 해당 행위가 '건축가능'인 용도지역 목록 조회
+        - "노원구에서 아파트 가능한 곳" → 아파트 가능 용도지역 → zone_filter로 활용
+        """
+        if self.db_conn is None or not activities:
+            return []
+
+        try:
+            # 표준 용도지역만 필터 (특수지역 제외)
+            standard_zones = list(ZONE_REGULATIONS.keys())
+            zone_placeholders = ','.join(['%s'] * len(standard_zones))
+
+            activity_conditions = []
+            params = []
+            for activity in activities[:3]:  # 최대 3개 행위
+                activity_conditions.append("land_use_activity LIKE %s")
+                params.append(f"%{activity}%")
+
+            params.extend(standard_zones)
+
+            query = f"""
+            SELECT DISTINCT zone_district_name
+            FROM law
+            WHERE ({' OR '.join(activity_conditions)})
+              AND permission_category LIKE '%%가능%%'
+              AND zone_district_name IN ({zone_placeholders})
+            ORDER BY zone_district_name
+            """
+
+            with self._get_cursor() as cursor:
+                cursor.execute(query, params)
+                zones = [row['zone_district_name'] for row in cursor.fetchall()]
+
+            logger.info(f"[역추적] {activities} → 가능 용도지역 {len(zones)}개: {zones[:5]}")
+            return zones
+
+        except Exception as e:
+            logger.error(f"용도지역 역추적 실패: {e}")
+            if self.db_conn:
+                self.db_conn.rollback()
+            return []
+
     def process_case1(self, address_info: Dict[str, str], activities: List[str]) -> Dict[str, Any]:
         """
         Case 1 처리: 주소만 입력된 경우
+        [V2 변경] 행위가 있고 depth <= 2면, 가능한 용도지역으로 zone_filter 적용
         """
-        # 필지 검색 (케이스 분석용 limit=6)
-        lands = self.search_by_address(address_info, limit=6)
+        depth = address_info.get("address_depth", 0)
+
+        # [V2 변경] "노원구에서 아파트 가능한 곳" → 아파트 가능 용도지역으로 필터
+        zone_filter = None
+        if activities and depth <= 2:
+            zone_filter = self._get_allowed_zones_for_activity(activities)
+
+        if zone_filter:
+            lands = self.search_by_address(address_info, zone_filter=zone_filter, limit=10)
+        else:
+            lands = self.search_by_address(address_info, limit=6)
+
+        # [V2 변경] zone_filter로 못 찾으면 필터 없이 재시도
+        if not lands and zone_filter:
+            lands = self.search_by_address(address_info, limit=6)
 
         if not lands:
             return {
@@ -1420,7 +1807,6 @@ class ChatbotService:
                 "analysis": []
             }
 
-        # Sub-case 결정
         if len(lands) == 1:
             sub_case = "1-1"
             message = "지번 정확히 매칭됨 (1필지)"
@@ -1428,13 +1814,11 @@ class ChatbotService:
             sub_case = "1-2"
             message = f"복수 필지 검색됨 ({len(lands)}필지)"
 
-        # 각 필지별 분석
         analysis_results = []
         for land in lands:
             result = self.match_land_to_law(land, activities)
             analysis_results.append(result)
 
-        # 비교 분석 (1-2인 경우)
         comparison = None
         if sub_case == "1-2":
             comparison = self.compare_lands(analysis_results)
@@ -1451,12 +1835,19 @@ class ChatbotService:
     def process_case2(self, address_info: Dict[str, str], zone_names: List[str], activities: List[str]) -> Dict[str, Any]:
         """
         Case 2 처리: 주소 + 용도지역 입력된 경우
+        address_depth에 따라 검색 전략 변경
         """
-        # 필지 검색 (케이스 분석용 limit=6)
-        lands = self.search_by_address(address_info, limit=6)
+        depth = address_info.get("address_depth", 0)
+
+        if depth >= 4:
+            lands = self.search_by_address(address_info, limit=6)
+        else:
+            lands = self.search_by_address(address_info, zone_filter=zone_names, limit=6)
+
+            if not lands:
+                lands = self.search_by_address(address_info, limit=6)
 
         if not lands:
-            # 필지 못 찾으면 용도지역으로만 검색
             return {
                 "case": "CASE2",
                 "sub_case": "2-0",
@@ -1465,10 +1856,8 @@ class ChatbotService:
                 "analysis": self.search_by_zone_district(zone_names)
             }
 
-        # 용도지역 일치 확인
         zone_match = self.check_zone_match(lands[0], zone_names)
 
-        # Sub-case 결정
         if zone_match["match_type"] == "일치":
             sub_case = "2-1"
         elif zone_match["match_type"] == "부분일치":
@@ -1476,7 +1865,6 @@ class ChatbotService:
         else:
             sub_case = "2-2"
 
-        # 분석 수행
         analysis_results = []
         for land in lands:
             result = self.match_land_to_law(land, activities)
@@ -1493,19 +1881,13 @@ class ChatbotService:
         }
 
     def process_case3(self, zone_names: List[str], activities: List[str]) -> Dict[str, Any]:
-        """
-        Case 3 처리: 주소 없이 용도지역/토지이용행위만 질문
-        예: "제2종일반주거지역에서 다세대주택 가능해?"
-        """
+        """Case 3 처리: 주소 없이 용도지역/토지이용행위만 질문"""
         results = []
 
-        # 용도지역 + 토지이용행위로 법규 검색
         if zone_names and activities:
-            # 각 용도지역별로 검색
-            for zone in zone_names[:3]:  # 최대 3개
+            for zone in zone_names[:3]:
                 zone_results = self.search_by_land_use(activities, zone_name=zone)
                 if zone_results:
-                    # 개발가능성 판정
                     feasibility = self.analyze_feasibility(zone_results)
                     results.append({
                         "zone": zone,
@@ -1519,10 +1901,9 @@ class ChatbotService:
                 "sub_case": "3-1",
                 "message": f"용도지역({', '.join(zone_names)})에서 {', '.join(activities)} 검색 결과",
                 "results": results,
-                "analysis": results  # 호환성을 위해 analysis도 추가
+                "analysis": results
             }
 
-        # 용도지역만으로 검색
         elif zone_names:
             zone_results = self.search_by_zone_district(zone_names)
             feasibility = self.analyze_feasibility(zone_results) if zone_results else None
@@ -1536,7 +1917,6 @@ class ChatbotService:
                 "analysis": [{"zone": zone_names, "laws": zone_results, "feasibility": feasibility}]
             }
 
-        # 토지이용행위만으로 검색
         elif activities:
             activity_results = self.search_by_land_use(activities)
             feasibility = self.analyze_feasibility(activity_results) if activity_results else None
@@ -1558,9 +1938,7 @@ class ChatbotService:
         }
 
     def compare_lands(self, analysis_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        복수 필지 비교 분석 (개발성적표)
-        """
+        """복수 필지 비교 분석 (개발성적표)"""
         comparison = {
             "total_count": len(analysis_results),
             "developable": [],
@@ -1583,7 +1961,6 @@ class ChatbotService:
             elif status == "불가":
                 comparison["not_developable"].append(lot_info)
 
-        # 요약
         parts = []
         if comparison["developable"]:
             parts.append(f"개발가능: {', '.join(comparison['developable'])}")
@@ -1596,6 +1973,39 @@ class ChatbotService:
 
         return comparison
 
+    def _get_keyword_mapping_notes(self, text: str) -> str:
+        """사용자 키워드 → DB 법적 분류 매핑 설명 생성
+        GPT가 '다가구주택 = 단독주택(법적 분류)' 등을 이해할 수 있도록 컨텍스트에 추가
+        """
+        # 매칭 키워드 수집 (extract_land_use_activity와 동일한 부분문자열 필터링)
+        matched_keywords = []
+        for keyword in LAND_USE_DICTIONARY.keys():
+            if keyword in text:
+                matched_keywords.append(keyword)
+
+        matched_keywords.sort(key=len, reverse=True)
+        filtered = []
+        for kw in matched_keywords:
+            if not any(kw in longer and kw != longer for longer in filtered):
+                filtered.append(kw)
+
+        # 매핑 노트 생성 (키워드 ≠ DB값인 경우만)
+        notes = []
+        seen = set()
+        for kw in filtered:
+            db_vals = LAND_USE_DICTIONARY[kw]
+            vals = db_vals if isinstance(db_vals, list) else [db_vals]
+            for val in vals:
+                if val != kw and (kw, val) not in seen:
+                    notes.append(f"- '{kw}'은(는) 건축법상 '{val}'으로 분류됩니다. 동일한 항목입니다.")
+                    seen.add((kw, val))
+
+        return "\n".join(notes) if notes else ""
+
+    # ==========================================
+    # [V2 변경] _build_context - Reranker + 캐싱 + k값 최적화
+    # ==========================================
+
     def _build_context(
         self,
         case_result: Dict[str, Any],
@@ -1604,16 +2014,12 @@ class ChatbotService:
         question_normalized: str
     ) -> str:
         """
-        LLM에 전달할 컨텍스트 구성 (ask()에서 분리)
+        LLM에 전달할 컨텍스트 구성
 
-        Args:
-            case_result: 케이스 처리 결과
-            special_data: 특수 쿼리 결과 (건폐율/용적률, 법률 비교)
-            email: 사용자 이메일 (이전 대화 조회용)
-            question_normalized: 정규화된 질문 (RAG 검색용)
-
-        Returns:
-            str: 구성된 컨텍스트 문자열
+        [V2 변경사항]
+        - 임베딩 캐싱 (get_embedding_cached)
+        - k=2 → k=15 확대 후 Reranker로 top 3~5 선택
+        - 질문 유형별 k값 차등 적용
         """
         context_parts = []
 
@@ -1621,6 +2027,11 @@ class ChatbotService:
         context_parts.append(
             f"[분석 케이스]\n{case_result['case']}-{case_result['sub_case']}: {case_result['message']}\n"
         )
+
+        # [V2 버그픽스] 키워드 매핑 정보 (GPT가 사용자 키워드 ↔ DB 법적 분류 관계를 이해하도록)
+        mapping_notes = self._get_keyword_mapping_notes(question_normalized)
+        if mapping_notes:
+            context_parts.append(f"[키워드 매핑 (법적 분류)]\n{mapping_notes}\n")
 
         # 용도지역 일치 여부 (Case2)
         if case_result.get("zone_match"):
@@ -1631,13 +2042,14 @@ class ChatbotService:
                 f"- 실제 용도지역: {', '.join(zm.get('land_zones', []))}\n"
                 f"- 입력 용도지역: {', '.join(zm.get('user_zones', []))}\n"
                 f"- 설명: {zm['message']}\n"
+                f"※ 불일치여도 아래 데이터는 실제 용도지역 기준으로 정확합니다. 반드시 활용하세요.\n"
             )
 
         # 필지별 분석 결과 (Case 1, 2)
         if case_result.get("analysis") and case_result["case"] != "CASE3":
             context_parts.extend(self._build_land_analysis_context(case_result["analysis"]))
 
-        # Case 3 분석 결과 (주소 없이 용도지역/행위만)
+        # Case 3 분석 결과
         elif case_result.get("analysis") and case_result["case"] == "CASE3":
             context_parts.extend(self._build_case3_context(case_result["analysis"]))
 
@@ -1650,7 +2062,7 @@ class ChatbotService:
                 f"- {comp['summary']}\n"
             )
 
-        # 특수 쿼리 결과 (건폐율/용적률, 법률 비교)
+        # 특수 쿼리 결과
         context_parts.extend(self._build_special_query_context(special_data))
 
         # 이전 대화
@@ -1662,16 +2074,48 @@ class ChatbotService:
             ])
             context_parts.append(f"[이전 대화]\n{history_text}\n")
 
-        # RAG 검색 (평면도 관련)
+        # [V2 변경] RAG 검색 (캐싱 + k값 확대 + Reranker)
         try:
-            question_embedding = self.embedding_manager.embed_text(question_normalized)
+            # [V2 변경] 질문 유형별 k값 차등 적용
+            case_type = case_result.get("case", "CASE1")
+            if case_type == "CASE3":
+                # 단순 질문: 후보 적게, 최종도 적게
+                initial_k = 10
+                final_top_n = 3
+            else:
+                # 복합 질문 (CASE1/2: 주소+행위): 후보 넓게
+                initial_k = 15  # [V2 변경] 기존 k=2 → k=15
+                final_top_n = 5
+
+            # [V2 변경] 캐시된 임베딩 사용
+            question_embedding = self.get_embedding_cached(question_normalized)
+
+            # [V2 변경] 넓은 후보군 검색
             rag_results = pgvector_service.search_internal_eval(
                 query_embedding=question_embedding,
-                k=2
+                k=initial_k  # [V2 변경] k=2 → k=10~15
             )
+
             if rag_results:
-                for i, result in enumerate(rag_results, 1):
-                    context_parts.append(f"[참고 평면도 {i}]\n{result['document']}\n")
+                # [V2 변경] Reranker로 재정렬
+                reranked = self._rerank_results(
+                    query=question_normalized,
+                    results=rag_results,
+                    top_n=final_top_n
+                )
+
+                for i, result in enumerate(reranked, 1):
+                    # [V2 변경] rerank_score가 있으면 표시
+                    score_info = ""
+                    if result.get("rerank_score") is not None:
+                        score_info = f" (관련도: {result['rerank_score']:.3f})"
+                    context_parts.append(f"[참고 평면도 {i}]{score_info}\n{result['document']}\n")
+
+                logger.info(
+                    f"[V2 RAG] 검색 k={initial_k} → Rerank top={final_top_n}, "
+                    f"최종 {len(reranked)}개 사용"
+                )
+
         except Exception as e:
             logger.warning(f"RAG 검색 실패: {e}")
 
@@ -1681,11 +2125,19 @@ class ChatbotService:
         """필지별 분석 결과 컨텍스트 (Case 1, 2)"""
         context_parts = []
 
+        # [V2 버그픽스] 유의미한 필지만 필터링 (빈 필지 제거)
+        valid_index = 0
         for i, analysis in enumerate(analysis_list, 1):
             land = analysis.get("land", {})
             feasibility = analysis.get("feasibility", {})
 
-            # 용도지역 표시 (미지정 처리)
+            # 빈 필지 스킵: 주소/용도지역 없는 항목
+            if not land.get("legal_dong_name") and not land.get("zone1"):
+                continue
+            if land.get("zone1", "-") == "-" and not land.get("lot_number"):
+                continue
+            valid_index += 1
+
             zone1 = land.get('zone1', '-')
             zone2 = land.get('zone2', '')
             if zone2 in ['지정되지않음', '', None]:
@@ -1694,7 +2146,7 @@ class ChatbotService:
                 zone_display = f"{zone1} / {zone2}"
 
             land_text = (
-                f"[필지 {i} 정보]\n"
+                f"[필지 {valid_index} 정보]\n"
                 f"- 주소: {land.get('legal_dong_name', '')} {land.get('lot_number', '')}\n"
                 f"- 용도지역: {zone_display}\n"
                 f"- 지목: {land.get('land_category', '')}\n"
@@ -1702,10 +2154,9 @@ class ChatbotService:
             )
             context_parts.append(land_text)
 
-            # 개발가능성 판정
             if isinstance(feasibility, dict):
                 feasibility_text = (
-                    f"[필지 {i} 개발성적표]\n"
+                    f"[필지 {valid_index} 개발성적표]\n"
                     f"- 판정: {feasibility.get('status', '?')}\n"
                     f"- 요약: {feasibility.get('summary', '')}\n"
                 )
@@ -1719,7 +2170,6 @@ class ChatbotService:
                     feasibility_text += f"- 금지 행위: {', '.join(prohib_list)}\n"
                 context_parts.append(feasibility_text)
 
-            # 관련 법규
             laws = analysis.get("laws", [])
             if laws:
                 law_texts = []
@@ -1730,7 +2180,7 @@ class ChatbotService:
                         f"{law.get('permission_category', '')} | "
                         f"{law.get('condition_exception', '')[:50] if law.get('condition_exception') else ''}"
                     )
-                context_parts.append(f"[필지 {i} 관련 법규]\n" + "\n".join(law_texts) + "\n")
+                context_parts.append(f"[필지 {valid_index} 관련 법규]\n" + "\n".join(law_texts) + "\n")
 
         return context_parts
 
@@ -1746,14 +2196,12 @@ class ChatbotService:
             feasibility = analysis.get("feasibility", {})
             laws = analysis.get("laws", [])
 
-            # 검색 조건
             context_parts.append(
                 f"[검색 {i} 조건]\n"
                 f"- 용도지역: {zone}\n"
                 f"- 토지이용행위: {', '.join(act) if act else '-'}\n"
             )
 
-            # 개발가능성 판정
             if isinstance(feasibility, dict):
                 feasibility_text = (
                     f"[검색 {i} 판정 결과]\n"
@@ -1770,7 +2218,6 @@ class ChatbotService:
                     feasibility_text += f"- 금지 행위: {', '.join(prohib_list)}\n"
                 context_parts.append(feasibility_text)
 
-            # 관련 법규
             if laws:
                 law_texts = []
                 for law in laws[:8]:
@@ -1807,7 +2254,6 @@ class ChatbotService:
                 reg_text += f"- 높이제한: {reg['height_limit']}\n"
             reg_text += f"  └ 출처: {source}\n"
 
-            # DB에서 조회된 추가 규제
             has_extra = any([
                 reg.get("floor_limit"), reg.get("total_floor_area_limit"),
                 reg.get("front_length_limit"), reg.get("setback_distance")
@@ -1823,7 +2269,6 @@ class ChatbotService:
                 if reg.get("setback_distance"):
                     reg_text += f"- 건축선 후퇴: {reg['setback_distance']}\n"
 
-            # DB 원본 데이터 (조건/예외)
             if reg.get("raw_data"):
                 reg_text += "\n[관련 조문]\n"
                 for item in reg["raw_data"][:3]:
@@ -1834,10 +2279,8 @@ class ChatbotService:
             context_parts.append(reg_text)
 
         # 법률/조례 비교
-        logger.debug(f"[디버그] special_data keys: {special_data.keys() if special_data else 'empty'}")
         if special_data.get("law_comparison"):
             lc = special_data["law_comparison"]
-            logger.debug(f"[디버그] law_comparison 있음: 건축법 {lc.get('building_law_count', 0)}건, 조례 {lc.get('ordinance_count', 0)}건")
 
             lc_text = f"[건축법 vs 조례 비교 - {lc.get('zone_name', '')}]\n"
             lc_text += f"※ 건축법(전국 공통)과 각 지자체 조례의 차이를 구체적으로 비교합니다.\n\n"
@@ -1854,7 +2297,6 @@ class ChatbotService:
                 lc_text += "\n"
             lc_text += "\n"
 
-            # 건축법 vs 조례 직접 비교
             comparisons = lc.get("comparisons", [])
             if comparisons:
                 lc_text += "[건축법 ↔ 조례 구체적 비교]\n"
@@ -1890,7 +2332,6 @@ class ChatbotService:
 
                     lc_text += "\n"
 
-            # 조례 샘플 데이터
             sample_ordinances = lc.get("sample_ordinances", [])
             if sample_ordinances:
                 lc_text += "[주요 조례 상세 내용]\n"
@@ -1911,7 +2352,6 @@ class ChatbotService:
                     lc_text += "\n"
 
             context_parts.append(lc_text)
-            logger.debug(f"[디버그] lc_text 추가됨, 길이: {len(lc_text)}자")
 
         return context_parts
 
@@ -1920,33 +2360,33 @@ class ChatbotService:
         if self.db_conn is None:
             logger.warning("PostgreSQL 연결 안됨")
             return []
-        
+
         if not region_codes:
             return []
-        
+
         try:
             query = """
-            SELECT 
-                region_code, region_name, zone_district_name, law_name,
+            SELECT
+                region_name, region_code, zone_district_name, law_name,
                 land_use_activity, permission_category, condition_exception
             FROM law
             WHERE region_code = ANY(%s)
             """
-            
+
             with self._get_cursor() as cursor:
                 cursor.execute(query, (region_codes,))
                 results = cursor.fetchall()
-                
+
                 law_infos = [dict(row) for row in results]
                 logger.info(f"법률 정보 {len(law_infos)}개 조회 완료")
                 return law_infos
-                
+
         except Exception as e:
             logger.error(f"법률 정보 조회 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
-    
+
     def ask(self, email: str, question: str) -> Dict[str, str]:
         """사용자 질문에 RAG 기반으로 답변 (케이스 분기 적용)"""
         self.load_components()
@@ -1980,13 +2420,10 @@ class ChatbotService:
             case_result = None
 
             if intent["case"] == "CASE3":
-                # Case 3: 주소 없이 용도지역/토지이용행위만
                 case_result = self.process_case3(zone_names, activities)
             elif intent["case"] == "CASE2":
-                # Case 2: 주소 + 용도지역
                 case_result = self.process_case2(address_info, zone_names, activities)
             else:
-                # Case 1: 주소만
                 case_result = self.process_case1(address_info, activities)
 
             logger.info(f"[3-4단계] {case_result['case']}-{case_result['sub_case']}: {case_result['message']}")
@@ -1996,7 +2433,6 @@ class ChatbotService:
             # ========================================
             special_data = {}
             if special_queries:
-                # 필지 정보에서 용도지역 추출 또는 질문에서 추출한 용도지역 사용
                 target_zone = None
                 if case_result.get("lands") and len(case_result["lands"]) > 0:
                     target_zone = case_result["lands"][0].get("zone1")
@@ -2004,48 +2440,41 @@ class ChatbotService:
                     target_zone = zone_names[0]
 
                 if target_zone:
-                    # 건폐율/용적률 쿼리
                     if "coverage_ratio" in special_queries or "floor_area_ratio" in special_queries:
                         regulations = self.get_zone_regulations(target_zone)
                         if regulations:
                             special_data["regulations"] = regulations
                             logger.info(f"[특수쿼리] 규제 정보 조회: {target_zone}")
 
-                    # 법률/조례 비교 쿼리
                     if "law_comparison" in special_queries:
                         comparison = self.compare_laws(target_zone)
                         if comparison:
                             special_data["law_comparison"] = comparison
-                            logger.info(f"[특수쿼리] 법률 비교 조회: {target_zone}, 결과: {comparison.get('total_items', 0)}건, 비교항목: {len(comparison.get('comparisons', []))}개")
+                            logger.info(f"[특수쿼리] 법률 비교 조회: {target_zone}")
 
             # ========================================
             # 컨텍스트 구성 (분리된 메서드 호출)
             # ========================================
             context = self._build_context(case_result, special_data, email, question_normalized)
 
-            # 디버깅: 컨텍스트 내용 로그 출력
             logger.info(f"[컨텍스트 길이] {len(context)} 글자")
-            logger.info(f"[컨텍스트 미리보기]\n{context[:500]}...")
+
+            # [V2 변경] 임베딩 캐시 통계 로깅
+            cache_stats = self._embedding_cache.stats
+            logger.info(f"[V2 캐시] {cache_stats}")
 
             # ========================================
             # 5단계: LLM 리포트 생성
             # ========================================
 
-            # ----------------------------------------
-            # System Prompt (English for better reasoning)
-            # 시스템 프롬프트 (추론 성능 향상을 위해 영어로 작성)
-            # ----------------------------------------
             system_prompt = (
-                # Role Definition (역할 정의)
                 "You are a Korean land/building regulation expert. "
                 "You help users understand if specific business activities are permitted on their land.\n\n"
 
-                # Task Description (작업 설명)
                 "## TASK\n"
                 "Analyze the user's question about land development and provide a clear, actionable answer "
                 "based ONLY on the [ANALYSIS DATA] provided below.\n\n"
 
-                # Chain of Thought (단계별 사고 유도)
                 "## THINKING PROCESS (Follow these steps internally)\n"
                 "1. Identify: What land/address is the user asking about?\n"
                 "2. Extract: What activity/business does the user want to do?\n"
@@ -2054,20 +2483,19 @@ class ChatbotService:
                 "5. Judge: Is it 가능/조건부 가능/불가?\n"
                 "6. Explain: Why? What are the conditions?\n\n"
 
-                # Strict Rules (엄격한 규칙 - 할루시네이션 방지)
                 "## STRICT RULES\n"
                 "1. Use ONLY information from [ANALYSIS DATA]. NEVER make up laws or conditions.\n"
                 "2. IMPORTANT: If ANY relevant data exists in [ANALYSIS DATA], you MUST use it to answer.\n"
                 "   - '건축법' includes: 건축법, 건축법시행령, 건축법시행규칙\n"
                 "   - '조례' includes: 도시계획조례, 건축조례, 지구단위계획\n"
                 "   - Match partial law names (e.g., '건축법시행령 별표1' is part of 건축법)\n"
-                "3. Say '해당 정보가 제공되지 않았습니다' ONLY when [ANALYSIS DATA] is completely empty.\n"
-                "4. If zone mismatch, start with: '⚠️ 용도지역 불일치'\n"
+                "3. Say '해당 정보가 제공되지 않았습니다' ONLY when [ANALYSIS DATA] has zero law/parcel data.\n"
+                "4. If zone mismatch: start with '⚠️ 용도지역 불일치' BUT still answer using the corrected zone data below. "
+                "The data after the mismatch note is based on the ACTUAL zone and is accurate - you MUST use it.\n"
                 "5. Always cite the exact law name when mentioning regulations.\n"
                 "6. Keep answer concise (800-1200 characters in Korean, 약 800~1200자).\n"
                 "7. For law comparison questions: Look for [법률/조례 비교] section and explain the differences.\n\n"
 
-                # Output Format (출력 형식)
                 "## OUTPUT FORMAT (Must respond in Korean)\n\n"
                 "IMPORTANT: Write in a friendly, conversational tone like a helpful expert consultant.\n"
                 "- Avoid overly formal markdown headers (##, ###)\n"
@@ -2084,7 +2512,6 @@ class ChatbotService:
                 "2. **상세 설명** - 근거 법률, 조건, 제한사항 등\n"
                 "3. **참고/주의사항** - 추가 확인 필요사항 (선택)\n\n"
 
-                # Example (Few-shot 예시)
                 "## EXAMPLE ANSWERS\n\n"
                 "### Example 1 (건축 가능 여부)\n"
                 "```\n"
@@ -2106,7 +2533,6 @@ class ChatbotService:
                 "예를 들어, 건축법에서 '가능'이어도 조례에서 면적이나 층수 제한을 둘 수 있어요.\n"
                 "```\n\n"
 
-                # Analysis Data (분석 데이터)
                 f"## [ANALYSIS DATA]\n{context}"
             )
 
@@ -2125,11 +2551,11 @@ class ChatbotService:
             summary_title = question[:30] + "..." if len(question) > 30 else question
 
             logger.info(f"[5단계] 답변 생성 완료: {summary_title}")
-            logger.info(f"[답변 미리보기] {answer[:200]}...")
 
             return {
                 "summaryTitle": summary_title,
-                "answer": answer
+                "answer": answer,
+                "_debug_context": context
             }
 
         except Exception as e:
@@ -2140,7 +2566,7 @@ class ChatbotService:
                 "summaryTitle": "오류 발생",
                 "answer": f"답변 생성 중 오류가 발생했습니다: {str(e)}"
             }
-    
+
     def is_loaded(self) -> bool:
         """컴포넌트 로드 여부 확인"""
         return self.openai_client is not None
@@ -2148,3 +2574,10 @@ class ChatbotService:
 
 # 싱글톤 인스턴스
 chatbot_service = ChatbotService()
+
+
+# ==========================================
+# 필요한 의존성 설치
+# ==========================================
+# pip install sentence-transformers
+# (이미 설치된 패키지: psycopg2-binary, openai, pgvector, pydantic-settings)

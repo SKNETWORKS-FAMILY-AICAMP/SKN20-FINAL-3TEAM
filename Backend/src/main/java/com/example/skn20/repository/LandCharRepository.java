@@ -9,7 +9,7 @@ import java.util.Optional;
 
 /**
  * 토지 특성 정보 Repository
- * 법정동 코드, 지역 코드, 조회 키 등으로 토지 특성 정보를 조회
+ * 법정동 코드, 지역 코드, 주소 텍스트 등으로 토지 특성 정보를 조회
  */
 @Repository
 public interface LandCharRepository extends JpaRepository<LandChar, Long> {
@@ -25,9 +25,14 @@ public interface LandCharRepository extends JpaRepository<LandChar, Long> {
     List<LandChar> findByRegionCode(String regionCode);
     
     /**
-     * 조회 키로 토지 특성 조회 (유니크)
+     * 주소 텍스트로 토지 특성 조회
      */
-    Optional<LandChar> findByQueryKey(String queryKey);
+    Optional<LandChar> findByAddressText(String addressText);
+    
+    /**
+     * 주소 텍스트 포함 검색
+     */
+    List<LandChar> findByAddressTextContaining(String addressText);
     
     /**
      * 법정동 코드와 지번으로 토지 특성 조회

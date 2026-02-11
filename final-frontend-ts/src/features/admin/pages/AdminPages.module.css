@@ -67,9 +67,27 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+@media (max-width: 1400px) {
+  .statsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .statCard {
@@ -474,10 +492,17 @@
   cursor: not-allowed;
 }
 
-.pageBtn.active {
+.pageBtn.active,
+.activePage {
   background-color: #FF8C42;
   color: white;
   border-color: #FF8C42;
+}
+
+.pageEllipsis {
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 /* ============================================
@@ -644,6 +669,22 @@
   background-color: var(--border-color);
 }
 
+.viewBtn {
+  padding: 6px 12px;
+  background-color: #FF8C42;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.viewBtn:hover {
+  background-color: #FF7A2E;
+}
+
 /* ============================================
    Advanced Search Panel
    ============================================ */
@@ -726,12 +767,35 @@
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
+.imageModal {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.imageModalBody {
+  flex: 1;
+  overflow: hidden;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+}
+
 .modalHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px;
   border-bottom: 1px solid var(--border-color);
+  gap: 16px;
 }
 
 .modalHeader h3 {
@@ -739,6 +803,40 @@
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
+  flex: 1;
+}
+
+.imageControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoomBtn {
+  background: none;
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zoomBtn:hover {
+  background-color: var(--hover-bg);
+  border-color: #FF8C42;
+  color: #FF8C42;
+}
+
+.zoomLevel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: center;
 }
 
 .closeBtn {
@@ -919,4 +1017,103 @@
     margin: 16px;
     max-width: calc(100% - 32px);
   }
+}
+
+/* ============================================
+   Dashboard Bottom Sections
+   ============================================ */
+
+.dashboardBottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+@media (max-width: 1024px) {
+  .dashboardBottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Recent Activity Section
+   ============================================ */
+
+.recentActivity {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.activityIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activityContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.activityMessage {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   System Status Section
+   ============================================ */
+
+.systemStatus {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.statusList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.statusIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusInfo {
+  flex: 1;
+}
+
+.statusLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.statusValue {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
 }
