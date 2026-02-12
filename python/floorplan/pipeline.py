@@ -82,7 +82,7 @@ class ArchitecturalHybridRAG:
     }
     DOCUMENT_ID_LINE_RE = re.compile(r"(?m)^1\.\s*검색된 도면 id:\s*(.+)\s*$")
     GENERAL_ID_TOKEN_RE = re.compile(r"검색된\s*도면\s*id", re.IGNORECASE)
-    METADATA_SECTION_TOKEN = "2. 도면 기본 정보 요약"
+    METADATA_SECTION_TOKEN = "2. 도면 기본 정보"
     LAYOUT_SECTION_TOKEN = "3. 도면 공간 구성 설명"
     NO_MATCH_COUNT_LINE_RE = re.compile(
         r"조건을\s*만족하는\s*도면\s*총\s*개수\s*:\s*0",
@@ -214,7 +214,7 @@ class ArchitecturalHybridRAG:
             bay = match.group("bay").strip()
             structure = re.sub(r"\s+", " ", match.group("structure")).strip()
             rest = re.sub(r"\s+", " ", match.group("rest")).strip()
-            return f"{prefix}{bay}Bay {structure} 구조이다.\n{prefix}{rest}"
+            return f"{prefix}{bay}Bay {structure} 구조입니다.\n{prefix}{rest}"
 
         return re.sub(
             r"(?m)^(?P<prefix>\s*)도면은\s*(?P<bay>\d+)\s*Bay\s+(?P<structure>[^,\n]+?)\s*구조(?:이며|로),\s*(?P<rest>채광\s*:\s*[^\n]+?으로\s*정리됩니다\.)\s*$",
@@ -222,9 +222,35 @@ class ArchitecturalHybridRAG:
             text,
         )
 
+    def _normalize_meta_expressions(self, answer: str) -> str:
+        text = str(answer or "")
+        if not text:
+            return text
+
+        # Example: "외기창이 필요하다고 기재되어 있습니다." -> "외기창이 필요합니다."
+        text = re.sub(
+            r"([^\n.,:;]+?)하다고\s*(?:기재|언급|서술|표기|표시)되어 있습니다",
+            r"\1합니다",
+            text,
+        )
+        # Example: "창문이 없다고 기재되어 있습니다." -> "창문이 없습니다."
+        text = re.sub(
+            r"([^\n.,:;]+?)다고\s*(?:기재|언급|서술|표기|표시)되어 있습니다",
+            r"\1입니다",
+            text,
+        )
+        text = re.sub(
+            r"(?:라고|다고)\s*(?:기재|언급|서술|표기|표시)되어 있습니다",
+            "",
+            text,
+        )
+        return re.sub(r"[ \t]{2,}", " ", text)
+
     def _normalize_generated_answer(self, answer: str) -> str:
-        return self._normalize_summary_signal_sentence(
-            self._normalize_space_section_labels(answer)
+        return self._normalize_meta_expressions(
+            self._normalize_summary_signal_sentence(
+                self._normalize_space_section_labels(answer)
+            )
         )
 
     def _validate_answer_format(
@@ -312,7 +338,7 @@ class ArchitecturalHybridRAG:
             document_id = (expected_document_id or "정보 생성 불가").strip() or "정보 생성 불가"
             return (
                 f"1. 검색된 도면 id: {document_id}\n\n"
-                "2. 도면 기본 정보 요약 📊\n"
+                "2. 도면 기본 정보 📊\n"
                 "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
                 "3. 도면 공간 구성 설명 🧩\n"
                 "- 응답 형식 검증 실패로 설명 생성 불가"
@@ -320,7 +346,7 @@ class ArchitecturalHybridRAG:
         if normalized_mode == "general":
             return (
                 "1. 검색된 도면 id: 정보 생성 불가\n\n"
-                "2. 도면 기본 정보 요약 📊\n"
+                "2. 도면 기본 정보 📊\n"
                 "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
                 "3. 도면 공간 구성 설명 🧩\n"
                 "- 응답 형식 검증 실패로 설명 생성 불가"
@@ -976,32 +1002,31 @@ Output Format (Must Be Preserved, Repeated for Each Floor Plan)
 - All content must be written in Korean.
 ========================
 
-
 1. 검색된 도면 id: {document_id}
 
-2. 도면 기본 정보 요약 📊
-2-4. 공간 구성 여부의 값은 다음 표현으로 고정한다.
+2. 도면 기본 정보 📊
+■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
 - true → 존재
 - false → 없음
 
 출력 형식(고정):
-2-1. 공간 개수
+■ 공간 개수
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
-2-2. 전체 면적 대비 공간 비율 (%)
+■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
     - 창문이 없는 공간: {windowless_ratio}
-2-3. 구조 및 성능
+■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
-2-4. 공간 구성 여부
+■ 공간 구성 여부
     - 특화 공간: {has_special_space}
     - 기타 공간: {has_etc_space}
-2-5. 종합 평가
+■ 종합 평가
     - 평가 결과: {compliance_grade}
 
 3. 도면 공간 구성 설명 🧩
@@ -1011,6 +1036,7 @@ it must be restructured into a form that is easy for users to read according to 
 **Organization Rules:**
 * Use **only factual information** contained in the original text.
 * Remove document-meta expressions such as *“is stated,” “is mentioned,”* or *“is described.”*
+* Do not use Korean meta expressions like "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다".
 * Remove **only** result-oriented judgment expressions such as internal criteria, suitability determinations, or pass/fail statements.
 * Sentences that describe a **state or condition**, such as *“insufficient”* or *“improvement is needed,”* are considered factual descriptions and are **allowed**.
 * Merge sentences with the same meaning into one.
@@ -1024,7 +1050,7 @@ it must be restructured into a form that is easy for users to read according to 
 * Do not drop value polarity. Keep positive/negative wording from `document_signals` (e.g., 우수, 적정, 부족, 미흡, 부적합, 불합격).
 * Prefer `display_value` for user-facing wording (e.g., 채광: 좋음, 수납공간: 넉넉함).
 * The overall summary must start with these two fixed lines:
-  {bay_count}Bay {structure_type} 구조이다.
+  {bay_count}Bay {structure_type} 구조입니다.
   채광: {display_value}{(근거)}, 환기: {display_value}{(근거)}, 가족 융화: {display_value}, 수납공간: {display_value}{(근거)}으로 정리됩니다.
 * Add evidence parentheses only when explicit evidence exists in the original document. If no explicit evidence exists, omit parentheses.
 * Never output placeholder evidence text such as "근거 없음" or "확인 필요".
@@ -1042,7 +1068,7 @@ it must be restructured into a form that is easy for users to read according to 
   Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
-3Bay 판상형 구조이다.
+3Bay 판상형 구조입니다.
 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합, 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
 안방 외기창이 없고, 욕실 환기창이 없습니다.
 ■ 거실: 중앙에 위치하여 가족이 모일 수 있는 공간으로 적합합니다.
@@ -1057,7 +1083,7 @@ it must be restructured into a form that is easy for users to read according to 
             f"도면 데이터(JSON):\n{candidate_json}\n\n"
             "JSON의 `document_signals` 항목은 3번의 전체 요약 문장에 반드시 모두 반영하세요.\n"
             "신호 값은 `display_value`를 우선 사용해 사용자 친화적으로 표현하세요.\n"
-            "요약 시작은 `NBay 구조이다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n"
+            "요약 시작은 `NBay 구조입니다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n"
             "`근거 없음`, `확인 필요` 같은 자리표시자 표현은 절대 사용하지 마세요.\n"
             "요약 2번째 줄에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n"
             "출력은 반드시 1, 2, 3번 섹션만 포함하고 추가 문장을 절대 출력하지 마세요.\n"
@@ -1226,7 +1252,6 @@ it must be restructured into a form that is easy for users to read according to 
                     return int(cur.fetchone()[0])
             return matched_count
         except Exception as exc:
-            # If tsquery parsing fails for malformed text, fall back to filter-only count.
             if normalized_documents:
                 self._log_event(
                     event="count_matches_text_query_fallback",
@@ -1284,7 +1309,6 @@ Output Format (Must Be Preserved, Repeated for Each Floor Plan)
 - All content must be written in Korean.
 ========================
 
-
 조건을 만족하는 도면 총 개수: {total_count}
 검색된 도면 id: {id_list}
 
@@ -1319,29 +1343,29 @@ This section outputs **only the correspondence between the user’s search condi
 - 찾는 조건: {사용자 조건을 한국어 표현으로 나열}
 - 일치 조건: {도면 메타데이터 및 document에서 확인된 일치 항목을 한국어 항목명=값 형태로 나열}
 
-2. 도면 기본 정보 요약 📊
-2-4. 공간 구성 여부의 값은 다음 표현으로 고정한다.
+2. 도면 기본 정보 📊
+■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
 - true → 존재
 - false → 없음
 
 출력 형식(고정):
-2-1. 공간 개수
+■ 공간 개수
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
-2-2. 전체 면적 대비 공간 비율 (%)
+■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
     - 창문이 없는 공간: {windowless_ratio}
-2.3. 구조 및 성능
+■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
-2-4. 공간 구성 여부
+■ 공간 구성 여부
     - 특화 공간: {has_special_space}
     - 기타 공간: {has_etc_space}
-2-5. 종합 평가
+■ 종합 평가
     - 평가 결과: {compliance_grade}
 
 3. 도면 공간 구성 설명 🧩
@@ -1351,6 +1375,7 @@ it must be restructured into a form that is easy for users to read according to 
 **Organization Rules:**
 * Use **only factual information** contained in the original text.
 * Remove document-meta expressions such as *“is stated,” “is mentioned,”* or *“is described.”*
+* Do not use Korean meta expressions like "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다".
 * Remove **only** result-oriented judgment expressions such as internal criteria, suitability determinations, or pass/fail statements.
 * Sentences that describe a **state or condition**, such as *“insufficient”* or *“improvement is needed,”* are considered factual descriptions and are **allowed**.
 * Merge sentences with the same meaning into one.
@@ -1364,7 +1389,7 @@ it must be restructured into a form that is easy for users to read according to 
 * Do not drop value polarity. Keep positive/negative wording from `document_signals` (e.g., 우수, 적정, 부족, 미흡, 부적합, 불합격).
 * Prefer `display_value` for user-facing wording (e.g., 채광: 좋음, 수납공간: 넉넉함).
 * The overall summary must start with these two fixed lines:
-  {bay_count}Bay {structure_type} 구조이다.
+  {bay_count}Bay {structure_type} 구조입니다.
   채광: {display_value}{(근거)}, 환기: {display_value}{(근거)}, 가족 융화: {display_value}, 수납공간: {display_value}{(근거)}으로 정리됩니다.
 * Add evidence parentheses only when explicit evidence exists in the original document. If no explicit evidence exists, omit parentheses.
 * Never output placeholder evidence text such as "근거 없음" or "확인 필요".
@@ -1382,7 +1407,7 @@ it must be restructured into a form that is easy for users to read according to 
   Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
-3Bay 판상형 구조이다.
+3Bay 판상형 구조입니다.
 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합, 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
 안방 외기창이 없고, 욕실 환기창이 없습니다.
 ■ 거실: 중앙에 위치하여 가족이 모일 수 있는 공간으로 적합합니다.
@@ -1400,7 +1425,7 @@ it must be restructured into a form that is easy for users to read according to 
             f"대표 도면 데이터(순위/메타데이터/document/similarity):\n{candidates_json}\n\n"
             "각 도면의 `document_signals`는 3번의 전체 요약 문장에 반드시 모두 반영하세요.\n\n"
             "신호 값은 `display_value`를 우선 사용해 사용자 친화적으로 표현하세요.\n\n"
-            "요약 시작은 `NBay 구조이다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n\n"
+            "요약 시작은 `NBay 구조입니다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n\n"
             "`근거 없음`, `확인 필요` 같은 자리표시자 표현은 절대 사용하지 마세요.\n\n"
             "요약 2번째 줄에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n\n"
             f"사용자 질의 원문:\n{query}"
