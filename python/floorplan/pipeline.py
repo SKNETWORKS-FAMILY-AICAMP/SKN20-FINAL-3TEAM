@@ -117,7 +117,7 @@ class ArchitecturalHybridRAG:
         self.logger = logging.getLogger(self.__class__.__name__)
         if not self.logger.handlers:
             logging.basicConfig(
-                level=logging.INFO,
+                level=logging.WARNING,
                 format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
             )
 
@@ -143,6 +143,8 @@ class ArchitecturalHybridRAG:
             self.logger.warning("Failed to load word dictionary (%s): %s", word_path, exc)
 
     def _log_event(self, event: str, level: int = logging.INFO, **fields: Any) -> None:
+        if not self.logger.isEnabledFor(level):
+            return
         try:
             payload = json.dumps(fields, ensure_ascii=False, sort_keys=True, default=str)
         except Exception:
