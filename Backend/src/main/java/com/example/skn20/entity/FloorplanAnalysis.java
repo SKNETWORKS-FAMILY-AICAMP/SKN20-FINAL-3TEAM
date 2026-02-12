@@ -66,8 +66,6 @@ public class FloorplanAnalysis {
     private String analysisDescription;
     
     // 임베딩 값 (VECTOR 자료형) - PostgreSQL pgvector 사용
-    // Admin 기능에서는 사용하지 않으므로 Transient로 설정
-    // RAG 시스템에서만 직접 SQL로 처리
-    @Transient
-    private double[] embedding;
+    @Column(name = "embedding", columnDefinition = "vector(512)")
+    private float[] embedding;
 }

@@ -3,11 +3,15 @@ package com.example.skn20.component;
 import com.example.skn20.entity.InternalEval;
 import com.example.skn20.entity.LandChar;
 import com.example.skn20.entity.Law;
+import com.example.skn20.entity.Usebuilding;
 import com.example.skn20.repository.InternalEvalRepository;
 import com.example.skn20.repository.LandCharRepository;
 import com.example.skn20.repository.LawRepository;
+import com.example.skn20.repository.UsebuildingRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -36,6 +40,7 @@ public class DataInitializer implements CommandLineRunner {
     private final LandCharRepository landCharRepository;
     private final LawRepository lawRepository;
     private final InternalEvalRepository internalEvalRepository;
+    private final UsebuildingRepository usebuildingRepository;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -43,6 +48,12 @@ public class DataInitializer implements CommandLineRunner {
         log.info("=".repeat(60));
         log.info("데이터 초기화 시작");
         log.info("=".repeat(60));
+        
+        // 사내 평가 문서 로드
+        loadInternalEvalData();
+        
+        // 건축물용도 정의 로드
+        loadUsebuildingData();
 
         // 법규조례 로드
         loadLawData();
@@ -50,8 +61,6 @@ public class DataInitializer implements CommandLineRunner {
         // 토지특성정보 로드
         loadLandCharData();
         
-        // 사내 평가 문서 로드
-        loadInternalEvalData();
 
         log.info("=".repeat(60));
         log.info("데이터 초기화 완료");
@@ -277,7 +286,7 @@ public class DataInitializer implements CommandLineRunner {
      * 안전하게 값 가져오기
      */
     private String getValueOrNull(String[] columns, int index) {
-        if (index >= columns.length) {
+        if (index < 0 || index >= columns.length) {
             return null;
         }
         String value = columns[index].trim();
@@ -420,6 +429,110 @@ public class DataInitializer implements CommandLineRunner {
 
         } catch (Exception e) {
             log.error("사내 평가 문서 로드 실패", e);
+        }
+    }
+    
+    /**
+     * 건축물용도 정의 CSV 로드 (OpenCSV 사용 - 줄바꿈 처리)
+     */
+    @Transactional
+    public void loadUsebuildingData() {
+        try {
+            // 이미 데이터가 있으면 스킵
+            long count = usebuildingRepository.count();
+            if (count > 0) {
+                log.info("건축물용도 정의 데이터가 이미 존재합니다. ({}건) - 스킵", count);
+                return;
+            }
+
+            log.info("건축물용도 정의 데이터 로드 중...");
+            ClassPathResource resource = new ClassPathResource("data/건축물용도_정의.csv");
+
+            int loadedCount = 0;
+            int skippedCount = 0;
+            List<Usebuilding> batch = new ArrayList<>(BATCH_SIZE);
+
+            try (CSVReader csvReader = new CSVReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+
+                // 모든 줄 읽기 (OpenCSV가 줄바꿈 포함 필드를 올바르게 처리)
+                List<String[]> allRows = csvReader.readAll();
+                
+                if (allRows.isEmpty()) {
+                    log.warn("CSV 파일이 비어있습니다.");
+                    return;
+                }
+
+                // 헤더 파싱
+                String[] headers = allRows.get(0);
+                log.info("CSV 헤더: {}", String.join(", ", headers));
+                
+                int categoryNameIdx = findColumnIndex(headers, "category_name", "카테고리명");
+                int facilityNameIdx = findColumnIndex(headers, "facility_name", "시설명");
+                int descriptionIdx = findColumnIndex(headers, "description", "설명");
+                int urlIdx = findColumnIndex(headers, "url", "URL");
+                
+                log.info("컬럼 매핑: category_name={}, facility_name={}, description={}, url={}", 
+                    categoryNameIdx, facilityNameIdx, descriptionIdx, urlIdx);
+                
+                // 필수 컬럼 체크
+                if (categoryNameIdx < 0 || facilityNameIdx < 0) {
+                    log.error("필수 컬럼 매핑 실패! category_name={}, facility_name={}", 
+                        categoryNameIdx, facilityNameIdx);
+                    return;
+                }
+
+                // 데이터 행 처리 (헤더 제외)
+                for (int i = 1; i < allRows.size(); i++) {
+                    try {
+                        String[] columns = allRows.get(i);
+                        
+                        // CSV는 6개 컬럼 (category_code, category_name, facility_code, facility_name, description, url)
+                        if (columns.length < 6) {
+                            log.warn("[라인 {}] 컬럼 수 부족: {} (예상: 6개)", i + 1, columns.length);
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // Usebuilding 엔티티 생성
+                        Usebuilding usebuilding = Usebuilding.builder()
+                                .category_name(getValueOrNull(columns, categoryNameIdx))
+                                .facility_name(getValueOrNull(columns, facilityNameIdx))
+                                .description(getValueOrNull(columns, descriptionIdx))
+                                .url(getValueOrNull(columns, urlIdx))
+                                .build();
+
+                        batch.add(usebuilding);
+                        loadedCount++;
+
+                        // 배치 단위로 저장
+                        if (batch.size() >= BATCH_SIZE) {
+                            usebuildingRepository.saveAll(batch);
+                            batch.clear();
+                            log.info("건축물용도 정의 로드 중... {}건 완료 (현재 라인: {})", loadedCount, i + 1);
+                        }
+
+                    } catch (Exception e) {
+                        if (skippedCount < 10) { // 처음 10개만 상세 로그
+                            log.error("[라인 {}] 건축물용도 정의 처리 중 오류", i + 1, e);
+                        }
+                        skippedCount++;
+                    }
+                }
+
+                // 남은 데이터 저장
+                if (!batch.isEmpty()) {
+                    usebuildingRepository.saveAll(batch);
+                    batch.clear();
+                }
+            } catch (CsvException e) {
+                log.error("CSV 파싱 오류", e);
+            }
+
+            log.info("건축물용도 정의 로드 완료: {}건 저장, {}건 스킵", loadedCount, skippedCount);
+
+        } catch (Exception e) {
+            log.error("건축물용도 정의 로드 실패", e);
         }
     }
 }

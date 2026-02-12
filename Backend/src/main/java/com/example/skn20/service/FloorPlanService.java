@@ -149,6 +149,13 @@ public class FloorPlanService {
 		// Step 3: 4번 메타데이터를 파싱하여 FloorplanAnalysis 저장
 		var metadata = metadataResponse.getMetadata();
 		
+		// double[] -> float[] 변환
+		double[] embeddingDouble = metadataResponse.getEmbedding();
+		float[] embeddingFloat = new float[embeddingDouble.length];
+		for (int i = 0; i < embeddingDouble.length; i++) {
+			embeddingFloat[i] = (float) embeddingDouble[i];
+		}
+		
 		FloorplanAnalysis analysis = FloorplanAnalysis.builder()
 				.floorPlan(savedPlan)
 				.windowlessRatio(((Number) metadata.get("windowless_ratio")).doubleValue())
@@ -165,7 +172,7 @@ public class FloorPlanService {
 				.structureType((String) metadata.get("structure_type"))
 				.bathroomCount(((Number) metadata.get("bathroom_count")).intValue())
 				.analysisDescription(metadataResponse.getDocument())
-				.embedding(metadataResponse.getEmbedding())
+				.embedding(embeddingFloat)
 				.build();
 
 		FloorplanAnalysis savedAnalysis = summaryRepository.save(analysis);
