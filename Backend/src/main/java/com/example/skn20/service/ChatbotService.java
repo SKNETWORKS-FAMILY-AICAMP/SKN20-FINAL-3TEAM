@@ -56,10 +56,10 @@ public class ChatbotService {
             result.put("summaryTitle", node.path("summaryTitle").asText("제목 없음"));
             result.put("answer", node.path("answer").asText("답변을 생성할 수 없습니다."));
             
-            log.info("FastAPI 응답 완료: {}", result.get("summaryTitle"));
+//            log.info("FastAPI 응답 완료: {}", result.get("summaryTitle"));
 
         } catch (Exception e) {
-            log.error("FastAPI 통신 중 에러 발생: {}", e.getMessage());
+//            log.error("FastAPI 통신 중 에러 발생: {}", e.getMessage());
             result.put("summaryTitle", "에러 발생");
             result.put("answer", "서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
         }
