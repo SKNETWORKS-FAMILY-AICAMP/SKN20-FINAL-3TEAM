@@ -199,7 +199,6 @@ class ArchitecturalHybridRAG:
         if not text:
             return text
 
-        # Remove low-value placeholder evidence instead of exposing "근거 없음".
         text = re.sub(
             r"\(\s*(?:근거\s*없음|근거\s*미확인|근거\s*불명|확인\s*필요)\s*\)",
             "",
@@ -227,13 +226,13 @@ class ArchitecturalHybridRAG:
         if not text:
             return text
 
-        # Example: "외기창이 필요하다고 기재되어 있습니다." -> "외기창이 필요합니다."
+        # "외기창이 필요하다고 기재되어 있습니다." -> "외기창이 필요합니다."
         text = re.sub(
             r"([^\n.,:;]+?)하다고\s*(?:기재|언급|서술|표기|표시)되어 있습니다",
             r"\1합니다",
             text,
         )
-        # Example: "창문이 없다고 기재되어 있습니다." -> "창문이 없습니다."
+        # "창문이 없다고 기재되어 있습니다." -> "창문이 없습니다."
         text = re.sub(
             r"([^\n.,:;]+?)다고\s*(?:기재|언급|서술|표기|표시)되어 있습니다",
             r"\1입니다",
@@ -515,12 +514,11 @@ class ArchitecturalHybridRAG:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-5.2-2025-12-11",
+                model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query},
                 ],
-                temperature=0.0,
                 response_format={"type": "json_object"},
             )
             raw_text = (response.choices[0].message.content or "").strip()
