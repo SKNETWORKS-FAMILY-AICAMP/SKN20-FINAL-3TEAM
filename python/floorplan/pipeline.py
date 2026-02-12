@@ -92,7 +92,7 @@ class ArchitecturalHybridRAG:
         r"검색된\s*도면\s*id\s*:\s*없음",
         re.IGNORECASE,
     )
-    NO_MATCH_MESSAGE_TOKEN = "요청 조건과 일치하는 도면을 찾지 못했습니다."
+    NO_MATCH_MESSAGE_TOKEN = "요청 조건과 일치하는 도면이 존재하지 않습니다."
     BALCONY_POSITIVE_HINT_RE = re.compile(
         r"(활용도\s*높|활용\s*가능|외부\s*공간.*활용|연결.*원활|채광.*좋|넓)",
         re.IGNORECASE,
@@ -192,6 +192,39 @@ class ArchitecturalHybridRAG:
             r"(?m)^(?P<prefix>\s*■\s*)(?P<label>[^:\n]+?)(?P<sep>\s*:\s*)(?P<body>.*)$",
             _replace,
             text,
+        )
+
+    def _normalize_summary_signal_sentence(self, answer: str) -> str:
+        text = str(answer or "")
+        if not text:
+            return text
+
+        # Remove low-value placeholder evidence instead of exposing "근거 없음".
+        text = re.sub(
+            r"\(\s*(?:근거\s*없음|근거\s*미확인|근거\s*불명|확인\s*필요)\s*\)",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"[ \t]+,", ",", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+
+        def _rewrite(match: re.Match[str]) -> str:
+            prefix = match.group("prefix") or ""
+            bay = match.group("bay").strip()
+            structure = re.sub(r"\s+", " ", match.group("structure")).strip()
+            rest = re.sub(r"\s+", " ", match.group("rest")).strip()
+            return f"{prefix}{bay}Bay {structure} 구조이다.\n{prefix}{rest}"
+
+        return re.sub(
+            r"(?m)^(?P<prefix>\s*)도면은\s*(?P<bay>\d+)\s*Bay\s+(?P<structure>[^,\n]+?)\s*구조(?:이며|로),\s*(?P<rest>채광\s*:\s*[^\n]+?으로\s*정리됩니다\.)\s*$",
+            _rewrite,
+            text,
+        )
+
+    def _normalize_generated_answer(self, answer: str) -> str:
+        return self._normalize_summary_signal_sentence(
+            self._normalize_space_section_labels(answer)
         )
 
     def _validate_answer_format(
@@ -307,7 +340,7 @@ class ArchitecturalHybridRAG:
         expected_document_id: Optional[str] = None,
     ) -> str:
         try:
-            answer = self._normalize_space_section_labels(generate_fn())
+            answer = self._normalize_generated_answer(generate_fn())
         except Exception:
             self.logger.exception("answer_generation_exception mode=%s attempt=0", mode)
             if self.answer_validation_safe_fallback:
@@ -356,7 +389,7 @@ class ArchitecturalHybridRAG:
         for attempt in range(1, self.answer_validation_retry_max + 1):
             self.logger.warning("answer_validation_retry mode=%s attempt=%d", mode, attempt)
             try:
-                last_answer = self._normalize_space_section_labels(generate_fn())
+                last_answer = self._normalize_generated_answer(generate_fn())
             except Exception:
                 self.logger.exception("answer_generation_exception mode=%s attempt=%d", mode, attempt)
                 continue
@@ -990,9 +1023,12 @@ it must be restructured into a form that is easy for users to read according to 
 * If `document_signals` are provided, all of them must be included in the first overall summary sentence using Korean labels and values.
 * Do not drop value polarity. Keep positive/negative wording from `document_signals` (e.g., 우수, 적정, 부족, 미흡, 부적합, 불합격).
 * Prefer `display_value` for user-facing wording (e.g., 채광: 좋음, 수납공간: 넉넉함).
-* The first summary sentence must follow this fixed style:
-  도면은 {bay_count}Bay {structure_type} 구조이며, 채광: {display_value}({근거}), 환기: {display_value}({근거}), 가족 융화: {display_value}({근거}), 수납공간: {display_value}({근거})으로 정리됩니다.
-* In each parentheses, write only concise evidence text (e.g., 안방 외기창 미확보). Do not include prefixes like "적합:" or "부적합:".
+* The overall summary must start with these two fixed lines:
+  {bay_count}Bay {structure_type} 구조이다.
+  채광: {display_value}{(근거)}, 환기: {display_value}{(근거)}, 가족 융화: {display_value}, 수납공간: {display_value}{(근거)}으로 정리됩니다.
+* Add evidence parentheses only when explicit evidence exists in the original document. If no explicit evidence exists, omit parentheses.
+* Never output placeholder evidence text such as "근거 없음" or "확인 필요".
+* In each evidence parentheses, write only concise evidence text (e.g., 안방 외기창 미확보). Do not include prefixes like "적합:" or "부적합:".
 * Do not repeat the same fact twice. If the same evidence appears in the summary sentence, do not repeat it in later sentences.
 * The second summary sentence should include only additional non-duplicate facts that are not already stated in the first summary sentence.
 
@@ -1006,7 +1042,8 @@ it must be restructured into a form that is easy for users to read according to 
   Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
-도면은 3Bay 판상형 구조이며, 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합(거실 중심 배치), 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
+3Bay 판상형 구조이다.
+채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합, 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
 안방 외기창이 없고, 욕실 환기창이 없습니다.
 ■ 거실: 중앙에 위치하여 가족이 모일 수 있는 공간으로 적합합니다.
 ■ 침실: 개인적인 공간으로 분리되어 적절하게 배치되어 있습니다.
@@ -1020,8 +1057,9 @@ it must be restructured into a form that is easy for users to read according to 
             f"도면 데이터(JSON):\n{candidate_json}\n\n"
             "JSON의 `document_signals` 항목은 3번의 전체 요약 문장에 반드시 모두 반영하세요.\n"
             "신호 값은 `display_value`를 우선 사용해 사용자 친화적으로 표현하세요.\n"
-            "첫 문장은 `채광: 값(근거)` 형식을 포함한 고정 템플릿을 따르세요.\n"
-            "첫 문장에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n"
+            "요약 시작은 `NBay 구조이다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n"
+            "`근거 없음`, `확인 필요` 같은 자리표시자 표현은 절대 사용하지 마세요.\n"
+            "요약 2번째 줄에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n"
             "출력은 반드시 1, 2, 3번 섹션만 포함하고 추가 문장을 절대 출력하지 마세요.\n"
             "반드시 단일 도면 기준으로만 출력하고, "
             f"첫 줄은 정확히 `1. 검색된 도면 id: {document_id.strip()}` 형식을 사용하세요."
@@ -1325,9 +1363,12 @@ it must be restructured into a form that is easy for users to read according to 
 * If `document_signals` exist for each floor plan, include all of them in the first overall summary sentence for that floor plan.
 * Do not drop value polarity. Keep positive/negative wording from `document_signals` (e.g., 우수, 적정, 부족, 미흡, 부적합, 불합격).
 * Prefer `display_value` for user-facing wording (e.g., 채광: 좋음, 수납공간: 넉넉함).
-* The first summary sentence must follow this fixed style:
-  도면은 {bay_count}Bay {structure_type} 구조이며, 채광: {display_value}({근거}), 환기: {display_value}({근거}), 가족 융화: {display_value}({근거}), 수납공간: {display_value}({근거})으로 정리됩니다.
-* In each parentheses, write only concise evidence text (e.g., 안방 외기창 미확보). Do not include prefixes like "적합:" or "부적합:".
+* The overall summary must start with these two fixed lines:
+  {bay_count}Bay {structure_type} 구조이다.
+  채광: {display_value}{(근거)}, 환기: {display_value}{(근거)}, 가족 융화: {display_value}, 수납공간: {display_value}{(근거)}으로 정리됩니다.
+* Add evidence parentheses only when explicit evidence exists in the original document. If no explicit evidence exists, omit parentheses.
+* Never output placeholder evidence text such as "근거 없음" or "확인 필요".
+* In each evidence parentheses, write only concise evidence text (e.g., 안방 외기창 미확보). Do not include prefixes like "적합:" or "부적합:".
 * Do not repeat the same fact twice. If the same evidence appears in the summary sentence, do not repeat it in later sentences.
 * The second summary sentence should include only additional non-duplicate facts that are not already stated in the first summary sentence.
 
@@ -1341,7 +1382,8 @@ it must be restructured into a form that is easy for users to read according to 
   Example: `기타1/2/3/4/5/6: 기타 공간은 기능이 명확하지 않으며, 창문이 없어 채광이 부족합니다.`
 
 출력 예시 형식:
-도면은 3Bay 판상형 구조이며, 채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합(거실 중심 배치), 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
+3Bay 판상형 구조이다.
+채광: 부족함(안방 외기창 미확보), 환기: 좋음(주방 환기창 확보), 가족 융화: 적합, 수납공간: 부족함(수납공간 비율 10% 미만)으로 정리됩니다.
 안방 외기창이 없고, 욕실 환기창이 없습니다.
 ■ 거실: 중앙에 위치하여 가족이 모일 수 있는 공간으로 적합합니다.
 ■ 침실: 개인적인 공간으로 분리되어 적절하게 배치되어 있습니다.
@@ -1358,8 +1400,9 @@ it must be restructured into a form that is easy for users to read according to 
             f"대표 도면 데이터(순위/메타데이터/document/similarity):\n{candidates_json}\n\n"
             "각 도면의 `document_signals`는 3번의 전체 요약 문장에 반드시 모두 반영하세요.\n\n"
             "신호 값은 `display_value`를 우선 사용해 사용자 친화적으로 표현하세요.\n\n"
-            "첫 문장은 `채광: 값(근거)` 형식을 포함한 고정 템플릿을 따르세요.\n\n"
-            "첫 문장에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n\n"
+            "요약 시작은 `NBay 구조이다.` 다음 줄 `채광/환기/가족 융화/수납공간` 고정 템플릿을 따르세요.\n\n"
+            "`근거 없음`, `확인 필요` 같은 자리표시자 표현은 절대 사용하지 마세요.\n\n"
+            "요약 2번째 줄에서 언급한 근거는 다음 문장에서 중복해서 반복하지 마세요.\n\n"
             f"사용자 질의 원문:\n{query}"
         )
 
@@ -1380,7 +1423,7 @@ it must be restructured into a form that is easy for users to read according to 
         return (
             f"조건을 만족하는 도면 총 개수: {int(total_match_count)}\n"
             "검색된 도면 id: 없음\n"
-            "요청 조건과 일치하는 도면을 찾지 못했습니다."
+            "요청 조건과 일치하는 도면이 존재하지 않습니다."
         )
 
     def _generate_validated_no_match_answer(self, total_match_count: int = 0) -> str:
