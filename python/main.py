@@ -13,11 +13,16 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # 로컬 모듈 import
-from api_models.schemas import AnalyzeResponse, SaveRequest, SaveResponse, ChatRequest, ChatResponse
+from api_models.schemas import (
+    AnalyzeResponse, SaveRequest, SaveResponse,
+    ChatRequest, ChatResponse,
+    OrchestrateRequest, OrchestrateResponse,
+)
 from services.cv_service import cv_service
 from services.rag_service import rag_service
 from services.embedding_service import embedding_service
 from services.chatbot_service_v2 import chatbot_service
+from services.intent_classifier_service import intent_classifier_service
 from services.law_verification import ArchitectureLawValidator, QuestionContext, VerificationStatus
 from api_utils.image_utils import image_to_base64
 
@@ -361,6 +366,41 @@ async def ask_chatbot(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"챗봇 오류: {str(e)}")
 
 
+@app.post("/orchestrate", response_model=OrchestrateResponse)
+async def orchestrate_query(request: OrchestrateRequest):
+    """
+    의도 분류 오케스트레이터 엔드포인트
+
+    질문을 분석하여 도면 검색 또는 법/조례 검색 에이전트로 자동 라우팅
+    """
+    logger.info("=" * 80)
+    logger.info("=== /orchestrate 엔드포인트 호출됨 ===")
+    logger.info(f"Email: {request.email}")
+    logger.info(f"Question: {request.question}")
+    logger.info("=" * 80)
+
+    try:
+        result = intent_classifier_service.route_query(
+            email=request.email,
+            question=request.question,
+        )
+
+        logger.info(
+            f"오케스트레이션 완료: intent={result['intent_type']}, "
+            f"agent={result['agent_used']}"
+        )
+
+        return OrchestrateResponse(**result)
+
+    except ValueError as ve:
+        logger.warning(f"[Orchestrator] 입력 검증 실패: {ve}")
+        raise HTTPException(status_code=400, detail="잘못된 요청 파라미터입니다.")
+
+    except Exception as e:
+        logger.error(f"[Orchestrator] 오류 발생: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="오케스트레이션 처리 중 내부 오류가 발생했습니다.")
+
+
 @app.get("/health")
 def health_check():
     """헬스 체크 엔드포인트"""
@@ -369,7 +409,8 @@ def health_check():
         "cv_pipeline_loaded": cv_service.is_loaded(),
         "rag_loaded": rag_service.is_loaded(),
         "embedding_loaded": embedding_service.is_loaded(),
-        "chatbot_loaded": chatbot_service.is_loaded()
+        "chatbot_loaded": chatbot_service.is_loaded(),
+        "intent_classifier_loaded": intent_classifier_service.is_loaded(),
     }
 
 

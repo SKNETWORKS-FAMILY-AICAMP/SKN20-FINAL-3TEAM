@@ -67,3 +67,20 @@ class IntentClassification(BaseModel):
     confidence: float  # 0.0 - 1.0
     extracted_metadata: Dict[str, Any]
     reasoning: str
+
+
+# 오케스트레이터 관련 스키마
+
+class OrchestrateRequest(BaseModel):
+    """오케스트레이터 요청 모델"""
+    email: str
+    question: str
+
+
+class OrchestrateResponse(BaseModel):
+    """오케스트레이터 응답 모델"""
+    intent_type: str      # "FLOORPLAN_SEARCH" | "REGULATION_SEARCH"
+    confidence: float     # 0.0 - 1.0
+    agent_used: str       # "floorplan" | "chatbot"
+    response: Dict[str, Any]  # {summaryTitle, answer, ?floorplan_ids}
+    metadata: Dict[str, Any]
