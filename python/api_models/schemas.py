@@ -3,7 +3,7 @@ Pydantic 모델 정의
 FastAPI 요청/응답 스키마
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
 
@@ -44,22 +44,22 @@ class SaveResponse(BaseModel):
     document_id: str
     metadata: Dict[str, Any]  # 13개 지표
     document: str  # 분석 설명
-    embedding: list[float]  # 전체 임베딩 벡터 (1536차원)
+    embedding: list[float]  # 전체 임베딩 벡터
 
 
-class ChatRequest(BaseModel):
-    """챗봇 요청 모델"""
-    email: str
-    question: str
+# ===== CV 분석 에이전트 반환 타입 =====
+
+class CVAnalysisResult(BaseModel):
+    """CV 도면 분석 에이전트 반환 타입"""
+    topology_data: dict
+    topology_image_base64: str
+    llm_analysis: dict
+    metrics: Dict[str, Any]
+    document: str
+    embedding: list[float]  # 1024차원 (Qwen3-Embedding-0.6B)
 
 
-class ChatResponse(BaseModel):
-    """챗봇 응답 모델"""
-    summaryTitle: str
-    answer: str
-
-
-# 의도 분류 관련 스키마
+# ===== 의도 분류 관련 스키마 =====
 
 class IntentClassification(BaseModel):
     """의도 분류 결과 (FLOORPLAN_SEARCH 또는 REGULATION_SEARCH)"""
@@ -69,18 +69,12 @@ class IntentClassification(BaseModel):
     reasoning: str
 
 
-# 오케스트레이터 관련 스키마
-
-class OrchestrateRequest(BaseModel):
-    """오케스트레이터 요청 모델"""
-    email: str
-    question: str
-
+# ===== 오케스트레이터 관련 스키마 =====
 
 class OrchestrateResponse(BaseModel):
     """오케스트레이터 응답 모델"""
-    intent_type: str      # "FLOORPLAN_SEARCH" | "REGULATION_SEARCH"
+    intent_type: str      # "FLOORPLAN_SEARCH" | "REGULATION_SEARCH" | "FLOORPLAN_IMAGE"
     confidence: float     # 0.0 - 1.0
-    agent_used: str       # "floorplan" | "chatbot"
+    agent_used: str       # "floorplan_search" | "regulation_search" | "cv_analysis + floorplan_search"
     response: Dict[str, Any]  # {summaryTitle, answer, ?floorplan_ids}
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any] = {}
