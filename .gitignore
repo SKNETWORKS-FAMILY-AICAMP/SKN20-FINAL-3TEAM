@@ -118,5 +118,5 @@ final-frontend-ts/public/result/
 
 # Claude Code
 .claude/
-
+nul
 */node_modules*/**
