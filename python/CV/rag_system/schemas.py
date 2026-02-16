@@ -63,24 +63,40 @@ class FloorPlanAnalysis(BaseModel):
         """
         nl_parts = []
 
-        # 1. 전체 요약 (의미적)
-        nl_parts.append(self.summary)
+        # 1. 전체 요약 (섹션 헤더로 검색 컨텍스트 명확화)
+        nl_parts.append(f"[전체 평가] {self.summary}")
 
-        # 2. 설계 평가 (의미적)
+        # 2. 설계 평가 (자연스러운 문장 연결)
         if self.design_evaluation:
-            eval_sentences = [f"{k}은(는) {v}" for k, v in self.design_evaluation.items()]
-            nl_parts.append(". ".join(eval_sentences) + ".")
+            eval_items = list(self.design_evaluation.items())
+            if len(eval_items) == 1:
+                k, v = eval_items[0]
+                nl_parts.append(f"[설계 평가] {k}은(는) {v}.")
+            else:
+                eval_sentences = [f"{k}은(는) {v}" for k, v in eval_items[:-1]]
+                last_k, last_v = eval_items[-1]
+                eval_text = ", ".join(eval_sentences) + f", {last_k}은(는) {last_v}."
+                nl_parts.append(f"[설계 평가] {eval_text}")
 
-        # 3. 공간별 평가 코멘트 (의미적)
-        for space in self.spaces:
-            nl_parts.append(f"{space.space_name}: {space.evaluation_comment}")
+        # 3. 공간별 평가 (섹션 헤더 + 문장 연결)
+        if self.spaces:
+            space_comments = [f"{space.space_name}은(는) {space.evaluation_comment}"
+                            for space in self.spaces]
+            nl_parts.append(f"[공간 분석] {' '.join(space_comments)}")
 
-        # 4. 적합성 평가 (의미적)
+        # 4. 적합성 평가 (중복 최소화)
         if self.compliance:
-            nl_parts.append(f"사내 기준 적합성: {self.compliance.overall_grade}. {self.compliance.summary}")
+            compliance_text = f"[적합성 평가] 사내 기준 {self.compliance.overall_grade} 등급."
+
+            # 부적합 항목이 있으면 구체적으로, 없으면 요약만
             if self.compliance.non_compliant_items:
+                compliance_text += " " + self.compliance.summary
                 for item in self.compliance.non_compliant_items:
-                    nl_parts.append(f"부적합({item.category}): {item.item} - {item.recommendation}")
+                    compliance_text += f" {item.category} 측면에서 {item.item}에 대해 {item.recommendation}"
+            else:
+                compliance_text += " " + self.compliance.summary
+
+            nl_parts.append(compliance_text)
 
         return " ".join(nl_parts)
 
