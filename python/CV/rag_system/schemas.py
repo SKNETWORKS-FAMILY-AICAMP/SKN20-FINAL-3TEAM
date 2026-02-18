@@ -59,7 +59,7 @@ class FloorPlanAnalysis(BaseModel):
         의미적 평가 내용만 임베딩하여 유사도 검색에 활용
 
         Returns:
-            의미적 내용 (summary + 평가 + 공간별 코멘트 + 적합성 평가)
+            의미적 내용 (summary + 평가 + 공간별 코멘트)
         """
         nl_parts = []
 
@@ -83,20 +83,6 @@ class FloorPlanAnalysis(BaseModel):
             space_comments = [f"{space.space_name}은(는) {space.evaluation_comment}"
                             for space in self.spaces]
             nl_parts.append(f"[공간 분석] {' '.join(space_comments)}")
-
-        # 4. 적합성 평가 (중복 최소화)
-        if self.compliance:
-            compliance_text = f"[적합성 평가] 사내 기준 {self.compliance.overall_grade} 등급."
-
-            # 부적합 항목이 있으면 구체적으로, 없으면 요약만
-            if self.compliance.non_compliant_items:
-                compliance_text += " " + self.compliance.summary
-                for item in self.compliance.non_compliant_items:
-                    compliance_text += f" {item.category} 측면에서 {item.item}에 대해 {item.recommendation}"
-            else:
-                compliance_text += " " + self.compliance.summary
-
-            nl_parts.append(compliance_text)
 
         return " ".join(nl_parts)
 
