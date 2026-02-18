@@ -21,7 +21,7 @@ class AnswerValidationResult:
 
 class ArchitecturalHybridRAG:
     ALLOWED_FILTER_COLUMNS = [
-        "windowless_ratio",
+        "windowless_count",
         "balcony_ratio",
         "living_room_ratio",
         "bathroom_ratio",
@@ -45,9 +45,8 @@ class ArchitecturalHybridRAG:
         "ventilation_grade": "ventilation_quality",
     }
 
-    INT_FILTERS = {"bay_count", "room_count", "bathroom_count"}
+    INT_FILTERS = {"bay_count", "room_count", "bathroom_count", "windowless_count"}
     FLOAT_FILTERS = {
-        "windowless_ratio",
         "balcony_ratio",
         "living_room_ratio",
         "bathroom_ratio",
@@ -496,7 +495,7 @@ class ArchitecturalHybridRAG:
             "Return ONLY valid JSON in this exact schema:\n"
             "{\n"
             '  "filters": {\n'
-            '    "windowless_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "windowless_count": {"op": "이상|이하|초과|미만|동일", "val": "integer"} (optional),\n'
             '    "balcony_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
             '    "living_room_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
             '    "bathroom_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
@@ -938,7 +937,7 @@ class ArchitecturalHybridRAG:
         sql = """
             SELECT f.id AS floorplan_id, f.name AS document_id,
             fa.analysis_description AS document,
-            fa.windowless_ratio, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+            fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
             fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
             fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
             fa.has_special_space, fa.has_etc_space,
@@ -957,7 +956,7 @@ class ArchitecturalHybridRAG:
             floorplan_id,
             document_id,
             document,
-            windowless_ratio,
+            windowless_count,
             balcony_ratio,
             living_room_ratio,
             bathroom_ratio,
@@ -984,7 +983,7 @@ class ArchitecturalHybridRAG:
                 "kitchen_ratio": kitchen_ratio,
                 "bathroom_ratio": bathroom_ratio,
                 "balcony_ratio": balcony_ratio,
-                "windowless_ratio": windowless_ratio,
+                "windowless_count": windowless_count,
                 "structure_type": structure_type,
                 "ventilation_quality": ventilation_grade,
                 "has_special_space": has_special_space,
@@ -1032,12 +1031,12 @@ Output Format (Must Be Preserved, Repeated for Each Floor Plan)
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
+    - 무창 공간 개수: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
-    - 창문이 없는 공간: {windowless_ratio}
 ■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
@@ -1179,7 +1178,7 @@ it must be restructured into a form that is easy for users to read according to 
             WITH scored AS (
                 SELECT f.id AS floorplan_id, f.name AS document_id,
                 fa.analysis_description AS document,
-                fa.windowless_ratio, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
                 fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
                 fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
                 fa.has_special_space, fa.has_etc_space,
@@ -1193,7 +1192,7 @@ it must be restructured into a form that is easy for users to read according to 
                 WHERE {where_sql}
             )
             SELECT floorplan_id, document_id, document,
-            windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+            windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
             structure_type, bay_count, room_count, bathroom_count,
             compliance_grade, ventilation_grade, has_special_space, has_etc_space,
             (%s * vector_similarity + %s * text_score) AS similarity
@@ -1228,7 +1227,7 @@ it must be restructured into a form that is easy for users to read according to 
                     WITH scored AS (
                         SELECT f.id AS floorplan_id, f.name AS document_id,
                         fa.analysis_description AS document,
-                        fa.windowless_ratio, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                        fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
                         fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
                         fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
                         fa.has_special_space, fa.has_etc_space,
@@ -1239,7 +1238,7 @@ it must be restructured into a form that is easy for users to read according to 
                         WHERE {where_sql}
                     )
                     SELECT floorplan_id, document_id, document,
-                    windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+                    windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
                     structure_type, bay_count, room_count, bathroom_count,
                     compliance_grade, ventilation_grade, has_special_space, has_etc_space,
                     (%s * vector_similarity + %s * text_score) AS similarity
@@ -1384,12 +1383,12 @@ This section outputs **only the correspondence between the user’s search condi
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
+    - 무창 공간 개수: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
-    - 창문이 없는 공간: {windowless_ratio}
 ■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}

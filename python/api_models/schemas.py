@@ -10,7 +10,7 @@ from pydantic import BaseModel
 class AnalysisResult(BaseModel):
     """분석 결과 (13개 지표 + LLM 분석 document)"""
     # 13개 지표
-    windowless_ratio: float
+    windowless_count: int
     has_special_space: bool
     bay_count: int
     balcony_ratio: float

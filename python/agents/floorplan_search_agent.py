@@ -135,12 +135,12 @@ Output Format (Korean)
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
+    - 무창 공간 개수: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
-    - 창문이 없는 공간: {windowless_ratio}
 ■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
