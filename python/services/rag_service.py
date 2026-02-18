@@ -119,10 +119,10 @@ class RAGService:
         compliance_grade = analysis.compliance.overall_grade if analysis.compliance else "미평가"
         
         return {
-            "windowless_ratio": round(analysis.windowless_ratio / 100.0, 4) if analysis.windowless_ratio > 1 else round(analysis.windowless_ratio, 4),
+            "windowless_count": sum(1 for s in analysis.spaces if not s.has_window),
             "has_special_space": has_special_space,
             "bay_count": analysis.bay_count,
-            "balcony_ratio": round(analysis.balcony_ratio / 100.0, 4) if analysis.balcony_ratio > 1 else round(analysis.balcony_ratio, 4),
+            "balcony_ratio": round(analysis.balcony_ratio, 4),
             "living_room_ratio": round(living_room_ratio, 4),
             "bathroom_ratio": round(bathroom_ratio, 4),
             "kitchen_ratio": round(kitchen_ratio, 4),
