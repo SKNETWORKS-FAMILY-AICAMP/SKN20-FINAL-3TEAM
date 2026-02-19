@@ -3,12 +3,16 @@ package com.example.skn20.service;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.skn20.entity.User;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,49 +25,72 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class ChatbotService {
-    
-    // RestTemplate은 보통 Config 클래스에서 Bean으로 등록 후 주입받는 것이 정석입니다.
-    private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
-    private final String FASTAPI_URL = "http://localhost:8000/ask";
 
-    public Map<String, String> question2answer(User user, String question) {
-        return fastapiCommunicate(user, question);
-    }
+	private final RestTemplate restTemplate;
+	private final ObjectMapper objectMapper;
 
-    private Map<String, String> fastapiCommunicate(User user, String question) {
-        Map<String, String> result = new HashMap<>();
-        
-        try {
-            // 1. 요청 데이터 구성
-            Map<String, Object> requestMap = new HashMap<>();
-            // user가 null이면 "anonymous" 사용
-            requestMap.put("email", user != null ? user.getEmail() : "anonymous");
-            requestMap.put("question", question);
+	// 변경: /ask → /orchestrate
+	private final String FASTAPI_ORCHESTRATE_URL = "http://localhost:8000/orchestrate";
 
-            // 2. 헤더 설정
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestMap, headers);
+//텍스트 전용 (기존 호환)
 
-            // 3. FastAPI 호출
-            log.info("FastAPI 호출 중... URL: {}, Question: {}", FASTAPI_URL, question);
-            ResponseEntity<String> response = restTemplate.postForEntity(FASTAPI_URL, entity, String.class);
-            
-            // 4. 응답 파싱
-            JsonNode node = objectMapper.readTree(response.getBody());
-            
-            result.put("summaryTitle", node.path("summaryTitle").asText("제목 없음"));
-            result.put("answer", node.path("answer").asText("답변을 생성할 수 없습니다."));
-            
-            log.info("FastAPI 응답 완료: {}", result.get("summaryTitle"));
+	public Map<String, String> question2answer(User user, String question) {
+		return orchestrate(user, question, null);
+	}
 
-        } catch (Exception e) {
-            log.error("FastAPI 통신 중 에러 발생: {}", e.getMessage());
-            result.put("summaryTitle", "에러 발생");
-            result.put("answer", "서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-        }
-        
-        return result;
-    }
+//텍스트 + 이미지
+	public Map<String, String> question2answerWithImage(User user, String question, MultipartFile image) {
+		return orchestrate(user, question, image);
+	}
+
+	private Map<String, String> orchestrate(User user, String question, MultipartFile image) {
+
+		Map<String, String> result = new HashMap<>();
+
+		try {
+			// 1. 헤더 설정 (multipart/form-data)
+			HttpHeaders headers = new HttpHeaders();
+			headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+			// 2. Form 데이터 구성
+			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+			body.add("email", user != null ? user.getEmail() : "anonymous");
+			body.add("question", question != null ? question : "");
+
+			// 3. 이미지가 있으면 file 필드 추가
+			if (image != null && !image.isEmpty()) {
+				body.add("file", new ByteArrayResource(image.getBytes()) {
+					@Override
+					public String getFilename() {
+						return image.getOriginalFilename();
+					}
+				});
+			}
+
+			// 4. Python /orchestrate 호출
+			HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+			log.info("Python /orchestrate 호출 - question: {}, hasImage: {}", question, image != null);
+
+			ResponseEntity<String> response = restTemplate.postForEntity(FASTAPI_ORCHESTRATE_URL, requestEntity,
+					String.class);
+
+			// 5. 응답 파싱 (중첩 JSON에서 response.answer, response.summaryTitle 추출)
+			JsonNode root = objectMapper.readTree(response.getBody());
+			JsonNode responseNode = root.path("response");
+
+			result.put("summaryTitle", responseNode.path("summaryTitle").asText("도면 분석 결과"));
+			result.put("answer", responseNode.path("answer").asText("답변을 생성할 수 없습니다."));
+
+			log.info("Python /orchestrate 응답 완료 - intent: {}, agent: {}", root.path("intent_type").asText(),
+					root.path("agent_used").asText());
+
+		} catch (Exception e) {
+			log.error("Python /orchestrate 통신 오류: {}", e.getMessage());
+			result.put("summaryTitle", "에러 발생");
+			result.put("answer", "서버 통신 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+		}
+
+		return result;
+	}
 }
