@@ -22,14 +22,27 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose }) => {
         &times;
       </button>
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-        <img
-          src={image.url}
-          alt={image.name}
-          className={styles.image}
-        />
+        {/* 왼쪽: 도면 이미지 */}
+        <div className={styles.imageSection}>
+          <img
+            src={image.url}
+            alt={image.name}
+            className={styles.image}
+          />
+        </div>
+
+        {/* 오른쪽: 설명 카드 */}
         <div className={styles.descriptionPanel}>
-          <h3 className={styles.imageTitle}>{image.name}</h3>
-          <p className={styles.imageDescription}>{image.description}</p>
+          <div className={styles.descriptionHeader}>
+            <h3 className={styles.imageTitle}>{image.name}</h3>
+          </div>
+          <div className={styles.descriptionBody}>
+            {image.description ? (
+              <p className={styles.imageDescription}>{image.description}</p>
+            ) : (
+              <p className={styles.noDescription}>상세 설명이 없습니다.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>
