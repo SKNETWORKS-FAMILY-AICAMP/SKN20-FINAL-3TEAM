@@ -28,20 +28,12 @@ export interface ChatRequest {
   image?: File;  // 도면 이미지 (PNG/JPG)
 }
 
-// 도면 상세 정보 (백엔드 응답)
-export interface FloorplanDetail {
-  id: number;
-  name: string;
-  imageUrl: string | null;
-  description: string;
-}
-
 // 채팅 응답
 export interface ChatResponse {
   answer: string;
   chatRoomId: number;
-  floorplanIds?: number[];
-  floorplanDetails?: FloorplanDetail[];
+  summaryTitle?: string;
+  image_urls?: string[];  // 도면 이미지 상대경로 (예: "/api/admin/floorplan/123/image")
 }
 
 // 채팅방 이름 수정 요청

@@ -313,14 +313,10 @@ const ChatPage: React.FC = () => {
 
       const isNewRoom = currentRoomId === null;
 
-      // AI 응답 즉시 표시 (floorplanDetails가 있으면 이미지 포함)
-      const floorplanImages = response.floorplanDetails?.map((detail) => ({
-        url: `${BASE_URL}/api/admin/floorplan/${detail.id}/image`,
-        name: detail.name || `도면 #${detail.id}`,
-        description: detail.description || '',
-      })) ?? response.floorplanIds?.map((id) => ({
-        url: `${BASE_URL}/api/admin/floorplan/${id}/image`,
-        name: `도면 #${id}`,
+      // AI 응답 즉시 표시 (image_urls가 있으면 도면 이미지 포함)
+      const floorplanImages = response.image_urls?.map((url, idx) => ({
+        url: `${BASE_URL}${url}`,
+        name: `도면 #${idx + 1}`,
         description: '',
       }));
 
