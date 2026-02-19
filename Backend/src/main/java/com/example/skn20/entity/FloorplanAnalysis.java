@@ -1,5 +1,8 @@
 package com.example.skn20.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -66,6 +69,7 @@ public class FloorplanAnalysis {
     private String analysisDescription;
     
     // 임베딩 값 (VECTOR 자료형) - PostgreSQL pgvector 사용
+    @JdbcTypeCode(SqlTypes.VECTOR) // 이 줄을 추가!
     @Column(name = "embedding", columnDefinition = "vector(1024)")
     private float[] embedding;
 }

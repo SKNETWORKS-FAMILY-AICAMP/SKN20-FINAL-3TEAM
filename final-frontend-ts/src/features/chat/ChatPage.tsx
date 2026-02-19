@@ -22,6 +22,21 @@ import type {
 import styles from './ChatPage.module.css';
 
 // ============================================
+// 도면 답변 파싱: 요약 + 개별 설명 분리
+// ============================================
+const parseFloorplanAnswer = (answer: string) => {
+  // [도면 #N] 기준으로 분리
+  const firstMarker = answer.search(/\[도면 #\d+\]/);
+  const summary = firstMarker > 0 ? answer.substring(0, firstMarker).trim() : '';
+  const parts = answer.split(/\[도면 #\d+\]/);
+  // parts[0] = 요약, parts[1~] = 각 도면 설명
+  const descriptions = parts.slice(1).map((part) =>
+    part.replace(/^---\s*/gm, '').replace(/\s*---\s*$/gm, '').trim()
+  );
+  return { summary, descriptions };
+};
+
+// ============================================
 // API 타입 → UI 타입 변환 함수
 // ============================================
 const convertRoomToSession = (room: ChatRoom): ChatSession => ({
@@ -42,12 +57,33 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
       content: item.question,
       timestamp: new Date(item.createdAt),
     });
+
+    // imageUrls JSON 파싱 → 이미지 복원
+    let images = undefined;
+    let displayContent = item.answer;
+
+    if (item.imageUrls) {
+      try {
+        const urls: string[] = JSON.parse(item.imageUrls);
+        const { summary, descriptions } = parseFloorplanAnswer(item.answer);
+        images = urls.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${urls.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      } catch (e) {
+        console.error('imageUrls 파싱 실패:', e);
+      }
+    }
+
     // 답변 (assistant)
     messages.push({
       id: `${item.id}-a`,
       role: 'assistant',
-      content: item.answer,
+      content: displayContent,
       timestamp: new Date(item.createdAt),
+      images,
     });
   });
 
@@ -314,17 +350,19 @@ const ChatPage: React.FC = () => {
       const isNewRoom = currentRoomId === null;
 
       // AI 응답 즉시 표시 (image_urls가 있으면 도면 이미지 포함)
-      const floorplanImages = response.image_urls?.map((url, idx) => ({
-        url: `${BASE_URL}${url}`,
-        name: `도면 #${idx + 1}`,
-        description: '',
-      }));
+      const hasFloorplans = response.image_urls && response.image_urls.length > 0;
+      let floorplanImages = undefined;
+      let displayContent = response.answer;
 
-      // 도면 결과가 있으면 간단한 안내 메시지만 표시, 상세 설명은 모달에서
-      const hasFloorplans = floorplanImages && floorplanImages.length > 0;
-      const displayContent = hasFloorplans
-        ? `검색된 도면 ${floorplanImages.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`
-        : response.answer;
+      if (hasFloorplans) {
+        const { summary, descriptions } = parseFloorplanAnswer(response.answer);
+        floorplanImages = response.image_urls!.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${response.image_urls!.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      }
 
       const aiMessage: ChatMessageType = {
         id: `temp-ai-${Date.now()}`,
