@@ -72,13 +72,13 @@ public class ChatbotController {
 
 	    // 인증되지 않은 사용자
 	    if (user == null) {
-	        Map<String, String> result;
+	        Map<String, Object> result;
 	        if (image != null && !image.isEmpty()) {
 	            result = chatbotService.question2answerWithImage(null, question, image);
 	        } else {
 	            result = chatbotService.question2answer(null, question);
 	        }
-	        String answer = result.get("answer");
+	        String answer = (String) result.get("answer");
 	        Map<String, Object> response = new HashMap<>();
 	        response.put("answer", answer);
 	        return ResponseEntity.ok(response);
@@ -87,14 +87,14 @@ public class ChatbotController {
 	    User userinfo = userservice.findByEmail(user.getEmail());
 
 	    // 이미지 유무에 따라 분기
-	    Map<String, String> result;
+	    Map<String, Object> result;
 	    if (image != null && !image.isEmpty()) {
 	        result = chatbotService.question2answerWithImage(userinfo, question, image);
 	    } else {
 	        result = chatbotService.question2answer(userinfo, question);
 	    }
 
-	    String answer = result.get("answer");
+	    String answer = (String) result.get("answer");
 	    System.out.println(answer);
 
 	    Long responseChatRoomId = chatRoomId;
@@ -102,7 +102,7 @@ public class ChatbotController {
 	    if (chatRoomId == null) {
 	        // 새 채팅방 생성
 	        ChatRoom chatRoom = new ChatRoom();
-	        chatRoom.setName(result.get("summaryTitle"));
+	        chatRoom.setName((String) result.get("summaryTitle"));
 	        chatRoom.setUser(userinfo);
 	        chatRoomRep.save(chatRoom);
 	        responseChatRoomId = chatRoom.getId();
