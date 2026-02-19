@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-dimensions",
         type=int,
-        default=int(_env("EMBEDDING_DIMENSIONS", "512")),
+        default=int(_env("EMBEDDING_DIMENSIONS", "1024")),
     )
     parser.add_argument("--vector-weight", type=float, default=0.8)
     parser.add_argument("--text-weight", type=float, default=0.2)
