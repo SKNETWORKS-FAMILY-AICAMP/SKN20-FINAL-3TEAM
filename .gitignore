@@ -69,6 +69,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.json
 
 # Virtual Environment
 venv/
@@ -117,5 +118,5 @@ final-frontend-ts/public/result/
 
 # Claude Code
 .claude/
-
+nul
 */node_modules*/**
