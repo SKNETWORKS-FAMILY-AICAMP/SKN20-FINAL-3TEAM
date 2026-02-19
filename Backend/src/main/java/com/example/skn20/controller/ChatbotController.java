@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.skn20.classes.UD;
 import com.example.skn20.entity.ChatHistory;
@@ -63,58 +64,69 @@ public class ChatbotController {
 	@PostMapping("/chat")
 	@Transactional
 	public ResponseEntity<Map<String, Object>> question2answer(
-			@AuthenticationPrincipal UD user, 
-			@RequestParam(required = false) Long chatRoomId, 
-			@RequestParam String question) {
-		
-		// 인증되지 않은 사용자의 경우 임시 처리
-		if (user == null) {
-			// 인증 없이 챗봇만 사용 (저장은 하지 않음)
-			Map<String, String> result = chatbotService.question2answer(null, question);
-			String answer = result.get("answer");
-			Map<String, Object> response = new HashMap<>();
-			response.put("answer", answer);
-			return ResponseEntity.ok(response);
-		}
-		
-		User userinfo = userservice.findByEmail(user.getEmail());
-        Map<String, String> result = chatbotService.question2answer(userinfo, question);
-        String answer =  result.get("answer");
-        System.out.println(answer);
-        
-        Long responseChatRoomId = chatRoomId;
-        
-        if (chatRoomId == null) {
-        	// 새 채팅방 생성
-        	ChatRoom chatRoom = new ChatRoom();
-        	chatRoom.setName(result.get("summaryTitle"));
-        	chatRoom.setUser(userinfo);
-        	// ChatRoom을 먼저 저장
-        	chatRoomRep.save(chatRoom);
-        	responseChatRoomId = chatRoom.getId();
-        	
-        	// 그 다음 ChatHistory 저장
-        	ChatHistory chatHistory = new ChatHistory();
-        	chatHistory.setAnswer(answer);
-        	chatHistory.setQuestion(question);
-        	chatHistory.setChatRoom(chatRoom);
-        	chatHistoryRep.save(chatHistory);
-		}
-		else {
-			// 기존 채팅방에 히스토리 추가
-			ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
-        	ChatHistory chatHistory = new ChatHistory();
-        	chatHistory.setAnswer(answer);
-        	chatHistory.setQuestion(question);
-        	chatHistory.setChatRoom(chatRoom);
-        	chatHistoryRep.save(chatHistory);
-		}
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("answer", answer);
-        response.put("chatRoomId", responseChatRoomId);
-        
-        return ResponseEntity.ok(response);
+	        @AuthenticationPrincipal UD user,
+	        @RequestParam(required = false) Long chatRoomId,
+	        @RequestParam String question,
+	        @RequestParam(required = false) MultipartFile image  // 추가
+	) {
+
+	    // 인증되지 않은 사용자
+	    if (user == null) {
+	        Map<String, String> result;
+	        if (image != null && !image.isEmpty()) {
+	            result = chatbotService.question2answerWithImage(null, question, image);
+	        } else {
+	            result = chatbotService.question2answer(null, question);
+	        }
+	        String answer = result.get("answer");
+	        Map<String, Object> response = new HashMap<>();
+	        response.put("answer", answer);
+	        return ResponseEntity.ok(response);
+	    }
+
+	    User userinfo = userservice.findByEmail(user.getEmail());
+
+	    // 이미지 유무에 따라 분기
+	    Map<String, String> result;
+	    if (image != null && !image.isEmpty()) {
+	        result = chatbotService.question2answerWithImage(userinfo, question, image);
+	    } else {
+	        result = chatbotService.question2answer(userinfo, question);
+	    }
+
+	    String answer = result.get("answer");
+	    System.out.println(answer);
+
+	    Long responseChatRoomId = chatRoomId;
+
+	    if (chatRoomId == null) {
+	        // 새 채팅방 생성
+	        ChatRoom chatRoom = new ChatRoom();
+	        chatRoom.setName(result.get("summaryTitle"));
+	        chatRoom.setUser(userinfo);
+	        chatRoomRep.save(chatRoom);
+	        responseChatRoomId = chatRoom.getId();
+
+	        ChatHistory chatHistory = new ChatHistory();
+	        chatHistory.setAnswer(answer);
+	        chatHistory.setQuestion(question);
+	        chatHistory.setChatRoom(chatRoom);
+	        chatHistoryRep.save(chatHistory);
+	    } else {
+	        // 기존 채팅방에 히스토리 추가
+	        ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
+	        ChatHistory chatHistory = new ChatHistory();
+	        chatHistory.setAnswer(answer);
+	        chatHistory.setQuestion(question);
+	        chatHistory.setChatRoom(chatRoom);
+	        chatHistoryRep.save(chatHistory);
+	    }
+
+	    Map<String, Object> response = new HashMap<>();
+	    response.put("answer", answer);
+	    response.put("chatRoomId", responseChatRoomId);
+
+	    return ResponseEntity.ok(response);
 	}
 	
 //  방 이름 수정
