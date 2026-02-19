@@ -22,8 +22,8 @@ public class FloorplanAnalysis {
     private FloorPlan floorPlan;
     
     // 분석 항목들
-    @Column(name = "windowless_ratio")
-    private Double windowlessRatio;
+    @Column(name = "windowless_count")
+    private Integer windowlessCount;
     
     @Column(name = "has_special_space")
     private Boolean hasSpecialSpace;
