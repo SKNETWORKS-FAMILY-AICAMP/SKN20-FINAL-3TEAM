@@ -326,12 +326,10 @@ const ChatPage: React.FC = () => {
       return [...prev, userMessage];
     });
 
-    // 이미지 상태 먼저 초기화 (UI 반응성)
+    // 이미지 상태 초기화 (blob URL은 유지 - 메시지에서 사용 중)
     const imageToSend = selectedImage;
+    const imagePreviewToRevoke = imagePreview;
     setSelectedImage(null);
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview);
-    }
     setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -408,6 +406,9 @@ const ChatPage: React.FC = () => {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsSending(false);
+      if (imagePreviewToRevoke) {
+        URL.revokeObjectURL(imagePreviewToRevoke);
+      }
     }
   };
 
