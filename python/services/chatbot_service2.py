@@ -404,8 +404,7 @@ class ChatbotService:
         try:
             self.config = RAGConfig()
             self.embedding_manager = EmbeddingManager(
-                api_key=self.config.OPENAI_API_KEY,
-                model="text-embedding-3-small"
+                model_name=self.config.EMBEDDING_MODEL
             )
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
 

@@ -170,8 +170,8 @@ public class InternalEval {
     private Long id;
     private String keywords;           // 키워드
     private String document;           // 문서 내용
-    @Column(columnDefinition = "vector(512)")
-    private float[] embedding;         // 벡터 임베딩 (512차원)
+    @Column(columnDefinition = "vector(1024)")
+    private float[] embedding;         // 벡터 임베딩 (1024차원, Qwen3-Embedding-0.6B)
 }
 ```
 - **용도**: RAG 기반 도면 평가 시 사내 기준 문서 검색

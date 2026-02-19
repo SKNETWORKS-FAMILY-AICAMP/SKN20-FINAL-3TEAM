@@ -9,6 +9,8 @@ from typing import Any, Callable, Optional
 import psycopg2
 from openai import OpenAI
 
+from CV.rag_system.embeddings import EmbeddingManager
+
 
 @dataclass
 class AnswerValidationResult:
@@ -110,7 +112,7 @@ class ArchitecturalHybridRAG:
         self,
         db_config,
         openai_api_key,
-        embedding_model: str = "text-embedding-3-small",
+        embedding_model: str = "Qwen/Qwen3-Embedding-0.6B",
         embedding_dimensions: int = 1024,
         vector_weight: float = 0.8,
         text_weight: float = 0.2,
@@ -130,6 +132,7 @@ class ArchitecturalHybridRAG:
         self.client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
+        self.embedding_manager = EmbeddingManager(model_name=embedding_model)
         self.vector_weight, self.text_weight = self._normalize_hybrid_weights(
             vector_weight, text_weight
         )
@@ -1156,12 +1159,7 @@ it must be restructured into a form that is easy for users to read according to 
         semantic_query = f"{documents} {raw_query}".strip() or raw_query or documents
         text_query = str(documents).strip() or str(raw_query).strip()
 
-        embedding_resp = self.client.embeddings.create(
-            model=self.embedding_model,
-            input=semantic_query,
-            dimensions=self.embedding_dimensions,
-        )
-        embedding = embedding_resp.data[0].embedding
+        embedding = self.embedding_manager.embed_text(semantic_query)
         embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
 
         where_sql, filter_params = self._build_filter_where_parts(filters)

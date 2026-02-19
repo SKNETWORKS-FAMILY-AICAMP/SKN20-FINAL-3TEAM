@@ -3,9 +3,9 @@ from pydantic_settings import BaseSettings
 from pathlib import Path
 
 class RAGConfig(BaseSettings):
-    # Embedding 모델 (OpenAI)
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
-    EMBEDDING_DIM: int = 512
+    # Embedding 모델 (Qwen3-Embedding-0.6B)
+    EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
+    EMBEDDING_DIM: int = 1024
 
     # PostgreSQL pgvector 설정
     POSTGRES_HOST: str = "localhost"

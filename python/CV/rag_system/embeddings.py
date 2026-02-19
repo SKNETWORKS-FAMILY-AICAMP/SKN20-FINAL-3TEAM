@@ -1,30 +1,37 @@
-"""임베딩 생성 (OpenAI text-embedding-3-small)"""
-from openai import OpenAI
+"""임베딩 생성 (Qwen3-Embedding-0.6B, 1024차원)"""
+import logging
 from typing import List
 
+from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger("EmbeddingManager")
+
+
 class EmbeddingManager:
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
-        self.dimensions = 1024  # text-embedding-3-small 차원
+    """Qwen3-Embedding-0.6B 기반 임베딩 매니저 (싱글톤 모델 로딩)"""
+
+    _model: SentenceTransformer = None
+
+    def __init__(self, model_name: str = "Qwen/Qwen3-Embedding-0.6B"):
+        self.model_name = model_name
+        self.dimensions = 1024
+
+        if EmbeddingManager._model is None:
+            logger.info(f"Qwen3 임베딩 모델 로딩: {model_name}")
+            EmbeddingManager._model = SentenceTransformer(model_name)
+            logger.info("Qwen3 임베딩 모델 로딩 완료")
+
+        self.model = EmbeddingManager._model
 
     def embed_text(self, text: str) -> List[float]:
         """단일 텍스트 임베딩"""
-        response = self.client.embeddings.create(
-            input=text,
-            model=self.model,
-            dimensions=self.dimensions
-        )
-        return response.data[0].embedding
+        embedding = self.model.encode(text, normalize_embeddings=True)
+        return embedding.tolist()
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """배치 임베딩 (최대 2048개)"""
-        response = self.client.embeddings.create(
-            input=texts,
-            model=self.model,
-            dimensions=self.dimensions
-        )
-        return [data.embedding for data in response.data]
+        """배치 임베딩"""
+        embeddings = self.model.encode(texts, normalize_embeddings=True)
+        return [e.tolist() for e in embeddings]
 
     def embed_space_document(self, space_data: dict) -> List[float]:
         """
@@ -36,18 +43,15 @@ class EmbeddingManager:
         Returns:
             1024-dim 임베딩 벡터
         """
-        # 공간 정보를 자연어로 변환
         text_parts = [
             f"공간명: {space_data['label']}",
             f"타입: {space_data['space_type']}",
         ]
 
-        # 포함된 객체 추가
         if space_data.get('contains', {}).get('objects'):
             objects = [obj['category_name'] for obj in space_data['contains']['objects']]
             text_parts.append(f"포함 객체: {', '.join(objects)}")
 
-        # OCR 라벨 추가
         if space_data.get('contains', {}).get('ocr_labels'):
             text_parts.append(f"라벨: {', '.join(space_data['contains']['ocr_labels'])}")
 

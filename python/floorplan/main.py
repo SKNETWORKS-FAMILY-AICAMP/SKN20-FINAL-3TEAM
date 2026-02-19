@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--embedding-model",
-        default=_env("EMBEDDING_MODEL", "text-embedding-3-small"),
+        default=_env("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
     )
     parser.add_argument(
         "--embedding-dimensions",

@@ -1052,7 +1052,7 @@ CREATE TABLE floorplan_analysis (
   structure_type VARCHAR(50),
   bathroom_count INTEGER,
   analysis_description TEXT,
-  embedding vector(512)  -- pgvector 확장 필요
+  embedding vector(1024)  -- pgvector 확장 필요 (Qwen3-Embedding-0.6B)
 );
 ```
 
@@ -1164,7 +1164,7 @@ CREATE TABLE chat_history (
 | **도면 이미지 URL** | PostgreSQL `floorplan.image_url` | String | 상대 경로 저장 |
 | **AI 분석 JSON** | PostgreSQL `floorplan.assessment_json` | TEXT | llmAnalysisJson 전체 |
 | **13개 분석 지표** | PostgreSQL `floorplan_analysis` 테이블 | 각 컬럼 | 개별 필드로 저장 |
-| **임베딩 벡터** | PostgreSQL `floorplan_analysis.embedding` | vector(512) | pgvector 타입 |
+| **임베딩 벡터** | PostgreSQL `floorplan_analysis.embedding` | vector(1024) | pgvector 타입 (Qwen3-Embedding-0.6B) |
 | **채팅 기록** | PostgreSQL `chat_history` 테이블 | TEXT | question, answer 컬럼 |
 
 ### 10.2 프론트엔드 저장소
