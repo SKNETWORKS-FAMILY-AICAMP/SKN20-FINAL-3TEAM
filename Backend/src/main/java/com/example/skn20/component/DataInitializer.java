@@ -1,12 +1,18 @@
 package com.example.skn20.component;
 
+import com.example.skn20.entity.FloorPlan;
+import com.example.skn20.entity.FloorplanAnalysis;
 import com.example.skn20.entity.InternalEval;
 import com.example.skn20.entity.LandChar;
 import com.example.skn20.entity.Law;
+import com.example.skn20.entity.User;
 import com.example.skn20.entity.Usebuilding;
+import com.example.skn20.repository.FloorPlanRepository;
+import com.example.skn20.repository.FloorplanAnalysisRepository;
 import com.example.skn20.repository.InternalEvalRepository;
 import com.example.skn20.repository.LandCharRepository;
 import com.example.skn20.repository.LawRepository;
+import com.example.skn20.repository.UserRepository;
 import com.example.skn20.repository.UsebuildingRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,6 +48,9 @@ public class DataInitializer implements CommandLineRunner {
     private final LawRepository lawRepository;
     private final InternalEvalRepository internalEvalRepository;
     private final UsebuildingRepository usebuildingRepository;
+    private final FloorPlanRepository floorPlanRepository;
+    private final FloorplanAnalysisRepository floorplanAnalysisRepository;
+    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -61,6 +71,8 @@ public class DataInitializer implements CommandLineRunner {
         // 토지특성정보 로드
         loadLandCharData();
         
+        // 도면 분석 데이터 로드
+        loadFloorplanData();
 
         log.info("=".repeat(60));
         log.info("데이터 초기화 완료");
@@ -533,6 +545,171 @@ public class DataInitializer implements CommandLineRunner {
 
         } catch (Exception e) {
             log.error("건축물용도 정의 로드 실패", e);
+        }
+    }
+    
+    /**
+     * 도면 분석 데이터 JSON 로드 (FloorPlan + FloorplanAnalysis)
+     */
+    @Transactional
+    public void loadFloorplanData() {
+        try {
+            // 이미 데이터가 있으면 스킵
+            long count = floorPlanRepository.count();
+            if (count > 0) {
+                log.info("도면 분석 데이터가 이미 존재합니다. ({}건) - 스킵", count);
+                return;
+            }
+
+            log.info("도면 분석 데이터 로드 중...");
+            ClassPathResource resource = new ClassPathResource("data/chromadb_phase4c_content.json");
+
+            int loadedCount = 0;
+            int skippedCount = 0;
+            List<FloorPlan> floorplanBatch = new ArrayList<>(BATCH_SIZE);
+
+            // 기본 사용자 찾기 (없으면 생성)
+            User defaultUser = userRepository.findAll().stream()
+                    .findFirst()
+                    .orElseGet(() -> {
+                        User newUser = User.builder()
+                                .email("system@floorplan.com")
+                                .pw("system")
+                                .name("시스템")
+                                .role("USER")
+                                .build();
+                        return userRepository.save(newUser);
+                    });
+            
+            log.info("도면 데이터 기본 사용자: {} ({})", defaultUser.getName(), defaultUser.getEmail());
+
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+
+                // JSON 배열 파싱
+                JsonNode rootNode = objectMapper.readTree(br);
+                
+                if (!rootNode.isArray()) {
+                    log.error("JSON 파일이 배열 형식이 아닙니다.");
+                    return;
+                }
+
+                for (JsonNode node : rootNode) {
+                    try {
+                        // document_id 추출 (FloorPlan의 name으로 사용)
+                        String documentId = node.has("document_id") ? node.get("document_id").asText() : null;
+                        if (documentId == null || documentId.isEmpty()) {
+                            skippedCount++;
+                            continue;
+                        }
+
+                        // document 추출 (FloorplanAnalysis의 analysisDescription)
+                        String document = node.has("document") ? node.get("document").asText() : null;
+
+                        // metadata 추출
+                        JsonNode metadataNode = node.has("metadata") ? node.get("metadata") : null;
+                        
+                        // embedding 추출
+                        float[] embedding = null;
+                        if (node.has("embedding") && node.get("embedding").isArray()) {
+                            JsonNode embeddingNode = node.get("embedding");
+                            embedding = new float[embeddingNode.size()];
+                            for (int i = 0; i < embeddingNode.size(); i++) {
+                                embedding[i] = (float) embeddingNode.get(i).asDouble();
+                            }
+                        }
+
+                        // FloorPlan 엔티티 생성
+                        FloorPlan floorPlan = FloorPlan.builder()
+                                .user(defaultUser)
+                                .createdAt(LocalDate.now())
+                                .name(documentId)
+                                .imageUrl("/image/floorplan/" + documentId + ".png")
+                                .assessmentJson(null) // 필요시 추가
+                                .build();
+
+                        // FloorplanAnalysis 엔티티 생성
+                        FloorplanAnalysis analysis = FloorplanAnalysis.builder()
+                                .floorPlan(floorPlan)
+                                .analysisDescription(document)
+                                .embedding(embedding)
+                                .build();
+
+                        // metadata 필드 매핑
+                        if (metadataNode != null) {
+                            if (metadataNode.has("windowless_count")) {
+                                analysis.setWindowlessCount(metadataNode.get("windowless_count").asInt());
+                            }
+                            if (metadataNode.has("has_special_space")) {
+                                analysis.setHasSpecialSpace(metadataNode.get("has_special_space").asBoolean());
+                            }
+                            if (metadataNode.has("bay_count")) {
+                                analysis.setBayCount(metadataNode.get("bay_count").asInt());
+                            }
+                            if (metadataNode.has("balcony_ratio")) {
+                                analysis.setBalconyRatio(metadataNode.get("balcony_ratio").asDouble());
+                            }
+                            if (metadataNode.has("living_room_ratio")) {
+                                analysis.setLivingRoomRatio(metadataNode.get("living_room_ratio").asDouble());
+                            }
+                            if (metadataNode.has("bathroom_ratio")) {
+                                analysis.setBathroomRatio(metadataNode.get("bathroom_ratio").asDouble());
+                            }
+                            if (metadataNode.has("kitchen_ratio")) {
+                                analysis.setKitchenRatio(metadataNode.get("kitchen_ratio").asDouble());
+                            }
+                            if (metadataNode.has("room_count")) {
+                                analysis.setRoomCount(metadataNode.get("room_count").asInt());
+                            }
+                            if (metadataNode.has("compliance_grade")) {
+                                analysis.setComplianceGrade(metadataNode.get("compliance_grade").asText());
+                            }
+                            if (metadataNode.has("ventilation_quality")) {
+                                analysis.setVentilationQuality(metadataNode.get("ventilation_quality").asText());
+                            }
+                            if (metadataNode.has("has_etc_space")) {
+                                analysis.setHasEtcSpace(metadataNode.get("has_etc_space").asBoolean());
+                            }
+                            if (metadataNode.has("structure_type")) {
+                                analysis.setStructureType(metadataNode.get("structure_type").asText());
+                            }
+                            if (metadataNode.has("bathroom_count")) {
+                                analysis.setBathroomCount(metadataNode.get("bathroom_count").asInt());
+                            }
+                        }
+
+                        // FloorPlan에 analysis 설정 (양방향 연관관계)
+                        floorPlan.setAnalysis(analysis);
+
+                        floorplanBatch.add(floorPlan);
+                        loadedCount++;
+
+                        // 배치 단위로 저장
+                        if (floorplanBatch.size() >= BATCH_SIZE) {
+                            floorPlanRepository.saveAll(floorplanBatch);
+                            floorplanBatch.clear();
+                            log.info("도면 분석 데이터 로드 중... {}건 완료", loadedCount);
+                        }
+
+                    } catch (Exception e) {
+                        if (skippedCount < 10) {
+                            log.error("도면 데이터 처리 중 오류", e);
+                        }
+                        skippedCount++;
+                    }
+                }
+
+                // 남은 데이터 저장
+                if (!floorplanBatch.isEmpty()) {
+                    floorPlanRepository.saveAll(floorplanBatch);
+                    floorplanBatch.clear();
+                }
+            }
+
+            log.info("도면 분석 데이터 로드 완료: {}건 저장, {}건 스킵", loadedCount, skippedCount);
+
+        } catch (Exception e) {
+            log.error("도면 분석 데이터 로드 실패", e);
         }
     }
 }

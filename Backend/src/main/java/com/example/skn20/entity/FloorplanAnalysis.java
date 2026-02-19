@@ -66,6 +66,6 @@ public class FloorplanAnalysis {
     private String analysisDescription;
     
     // 임베딩 값 (VECTOR 자료형) - PostgreSQL pgvector 사용
-    @Column(name = "embedding", columnDefinition = "vector(512)")
+    @Column(name = "embedding", columnDefinition = "vector(1024)")
     private float[] embedding;
 }
