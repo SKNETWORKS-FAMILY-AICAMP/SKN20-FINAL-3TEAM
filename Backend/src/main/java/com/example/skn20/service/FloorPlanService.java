@@ -158,7 +158,7 @@ public class FloorPlanService {
 		
 		FloorplanAnalysis analysis = FloorplanAnalysis.builder()
 				.floorPlan(savedPlan)
-				.windowlessRatio(((Number) metadata.get("windowless_ratio")).doubleValue())
+				.windowlessCount(((Number) metadata.get("windowless_count")).intValue())
 				.hasSpecialSpace((Boolean) metadata.get("has_special_space"))
 				.bayCount(((Number) metadata.get("bay_count")).intValue())
 				.balconyRatio(((Number) metadata.get("balcony_ratio")).doubleValue())
