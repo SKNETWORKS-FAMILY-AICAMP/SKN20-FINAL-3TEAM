@@ -715,7 +715,7 @@ class ChatbotService:
             text: 임베딩할 텍스트 (normalize_query 적용 후)
 
         Returns:
-            임베딩 벡터 (List[float], 512차원)
+            임베딩 벡터 (List[float], 1024차원)
         """
         # 캐시 키: 정규화된 텍스트 (공백 제거)
         cache_key = text.strip()

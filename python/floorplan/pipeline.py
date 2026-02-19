@@ -111,7 +111,7 @@ class ArchitecturalHybridRAG:
         db_config,
         openai_api_key,
         embedding_model: str = "text-embedding-3-small",
-        embedding_dimensions: int = 512,
+        embedding_dimensions: int = 1024,
         vector_weight: float = 0.8,
         text_weight: float = 0.2,
         answer_validation_enabled: bool = True,
