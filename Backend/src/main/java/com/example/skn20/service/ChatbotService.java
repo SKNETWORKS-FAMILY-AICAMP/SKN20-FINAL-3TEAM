@@ -1,7 +1,9 @@
 package com.example.skn20.service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
@@ -34,18 +36,18 @@ public class ChatbotService {
 
 //텍스트 전용 (기존 호환)
 
-	public Map<String, String> question2answer(User user, String question) {
+	public Map<String, Object> question2answer(User user, String question) {
 		return orchestrate(user, question, null);
 	}
 
 //텍스트 + 이미지
-	public Map<String, String> question2answerWithImage(User user, String question, MultipartFile image) {
+	public Map<String, Object> question2answerWithImage(User user, String question, MultipartFile image) {
 		return orchestrate(user, question, image);
 	}
 
-	private Map<String, String> orchestrate(User user, String question, MultipartFile image) {
+	private Map<String, Object> orchestrate(User user, String question, MultipartFile image) {
 
-		Map<String, String> result = new HashMap<>();
+		Map<String, Object> result = new HashMap<>();
 
 		try {
 			// 1. 헤더 설정 (multipart/form-data)
@@ -81,7 +83,23 @@ public class ChatbotService {
 
 			result.put("summaryTitle", responseNode.path("summaryTitle").asText("도면 분석 결과"));
 			result.put("answer", responseNode.path("answer").asText("답변을 생성할 수 없습니다."));
-
+			
+			// 6. floorplan_ids가 있으면 이미지 API URL 생성
+			JsonNode floorplanIdsNode = responseNode.path("floorplan_ids");
+			if (!floorplanIdsNode.isMissingNode() && floorplanIdsNode.isArray()) {
+				List<Long> floorplanIds = new java.util.ArrayList<>();
+				floorplanIdsNode.forEach(node -> floorplanIds.add(node.asLong()));
+				
+				if (!floorplanIds.isEmpty()) {
+					List<String> imageApiUrls = floorplanIds.stream()
+							.map(id -> "/api/admin/floorplan/" + id + "/image")
+							.collect(Collectors.toList());
+					
+					result.put("image_urls", imageApiUrls);
+					log.info("생성된 도면 이미지 API URL 개수: {}", imageApiUrls.size());
+				}
+			}
+			
 			log.info("Python /orchestrate 응답 완료 - intent: {}, agent: {}", root.path("intent_type").asText(),
 					root.path("agent_used").asText());
 
