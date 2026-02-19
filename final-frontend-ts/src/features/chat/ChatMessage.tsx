@@ -32,14 +32,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           {message.images && message.images.length > 0 && (
             <div className={styles.imageGrid}>
               {message.images.map((img, idx) => (
-                <div key={idx} className={styles.thumbnailWrapper}>
+                <div
+                  key={idx}
+                  className={styles.thumbnailCard}
+                  onClick={() => setSelectedImage(img)}
+                >
                   <img
                     src={img.url}
                     alt={img.name}
                     className={styles.thumbnail}
-                    onClick={() => setSelectedImage(img)}
                   />
-                  <span className={styles.thumbnailName}>{img.name}</span>
+                  <span className={styles.thumbnailLabel}>{img.name}</span>
                 </div>
               ))}
             </div>
