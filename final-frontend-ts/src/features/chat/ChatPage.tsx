@@ -3,7 +3,7 @@ import { IoSend, IoImageOutline, IoCloseCircle } from 'react-icons/io5';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { BASE_URL } from '@/shared/api/axios';
 import Logo from '@/shared/components/Logo/Logo';
-import ChatSidebar from './ChatSidebar';
+import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import ChatMessage from './ChatMessage';
 import {
   getChatRooms,
@@ -20,6 +20,44 @@ import type {
   ChatHistory,
 } from './types/chat.types';
 import styles from './ChatPage.module.css';
+
+// ============================================
+// 로딩 메시지 (시간 구간별 랜덤)
+// ============================================
+const LOADING_MESSAGES: { maxSeconds: number; messages: string[] }[] = [
+  {
+    maxSeconds: 10,
+    messages: [
+      '요청하신 내용을 분석하고 있어요. 잠시만 기다려 주세요!',
+      '관련 자료를 꼼꼼하게 살펴보고 있습니다.',
+      '최적의 답변을 드리기 위해 데이터를 확인 중이에요.',
+      'AI가 열심히 일하고 있어요. 곧 결과를 보여드릴게요!',
+    ],
+  },
+  {
+    maxSeconds: 30,
+    messages: [
+      '더 정확한 결과를 위해 심층 분석 중이에요.',
+      '자료를 하나하나 대조하며 확인하고 있습니다.',
+      '꼼꼼하게 확인하고 있어요. 조금만 기다려 주세요!',
+      '답변을 정리하고 있습니다. 거의 다 됐어요!',
+    ],
+  },
+  {
+    maxSeconds: Infinity,
+    messages: [
+      '내용이 많아 시간이 조금 걸리고 있어요. 곧 완료됩니다!',
+      '최상의 결과를 위해 마지막 검증을 진행하고 있어요.',
+      '거의 완료되었습니다. 잠시만요!',
+      '마무리 중이에요. 조금만 더 기다려 주세요!',
+    ],
+  },
+];
+
+const getLoadingMessage = (elapsedSeconds: number): string => {
+  const bracket = LOADING_MESSAGES.find((b) => elapsedSeconds < b.maxSeconds)!;
+  return bracket.messages[Math.floor(Math.random() * bracket.messages.length)];
+};
 
 // ============================================
 // 도면 답변 파싱: 요약 + 개별 설명 분리
@@ -104,6 +142,7 @@ const ChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -183,6 +222,26 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // ============================================
+  // 로딩 메시지 타이머
+  // ============================================
+  useEffect(() => {
+    if (!isSending) {
+      setLoadingMessage('');
+      return;
+    }
+
+    const startTime = Date.now();
+    setLoadingMessage(getLoadingMessage(0));
+
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      setLoadingMessage(getLoadingMessage(elapsed));
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isSending]);
 
   // ============================================
   // 새 채팅
@@ -419,13 +478,12 @@ const ChatPage: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <ChatSidebar
+      <AppSidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
         onSessionClick={handleSessionClick}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
-        onRenameSession={handleRenameSession}
         onClearAll={handleClearAll}
       />
 
@@ -456,7 +514,7 @@ const ChatPage: React.FC = () => {
                     <span className={styles.thinkingDots}>
                       <span>.</span><span>.</span><span>.</span>
                     </span>
-                    <span>답변 작성 중</span>
+                    <span>{loadingMessage}</span>
                   </div>
                 </div>
               )}
