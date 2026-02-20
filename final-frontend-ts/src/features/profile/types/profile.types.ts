@@ -13,6 +13,22 @@ export interface User {
   update_at?: string;
 }
 
+// 도면 분석 내역
+export interface MyFloorPlan {
+  id: number;
+  name: string;
+  createdAt: string;
+}
+
+// 도면 상세 정보
+export interface FloorPlanDetail {
+  id: number;
+  name: string;
+  createdAt: string;
+  imageUrl: string;
+  assessmentJson: string | null;
+}
+
 // 프로필 편집 상태
 export interface ProfileEditState {
   isEditing: boolean;

@@ -3,6 +3,7 @@ package com.example.skn20.service;
 import com.example.skn20.dto.FloorplanPreviewResponse;
 import com.example.skn20.dto.FloorplanSaveRequest;
 import com.example.skn20.dto.FloorplanSaveResponse;
+import com.example.skn20.dto.MyFloorPlanResponse;
 import com.example.skn20.dto.PythonAnalysisResponse;
 import com.example.skn20.dto.PythonMetadataResponse;
 import com.example.skn20.entity.FloorPlan;
@@ -22,6 +23,8 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -215,5 +218,49 @@ public class FloorPlanService {
 
 		// DB에 저장할 경로 반환 (상대 경로)
 		return "/image/floorplan/" + savedFilename;
+	}
+
+	/**
+	 * 사용자의 도면 분석 내역 조회 (최대 10개)
+	 */
+	public List<MyFloorPlanResponse> getMyFloorPlans(Long userId) {
+		return floorPlanRepository.findTop10ByUserIdOrderByCreatedAtDesc(userId)
+				.stream()
+				.map(fp -> MyFloorPlanResponse.builder()
+						.id(fp.getId())
+						.name(fp.getName())
+						.createdAt(fp.getCreatedAt())
+						.build())
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * 도면 상세 조회 (본인 도면만)
+	 */
+	public FloorPlan getFloorPlanDetail(Long floorPlanId, Long userId) {
+		FloorPlan fp = floorPlanRepository.findById(floorPlanId)
+				.orElseThrow(() -> new RuntimeException("도면을 찾을 수 없습니다."));
+		if (!fp.getUser().getId().equals(userId)) {
+			throw new RuntimeException("접근 권한이 없습니다.");
+		}
+		return fp;
+	}
+
+	/**
+	 * 도면 이미지 로드 (본인 도면만)
+	 */
+	public byte[] getFloorPlanImage(Long floorPlanId, Long userId) throws java.io.IOException {
+		FloorPlan fp = getFloorPlanDetail(floorPlanId, userId);
+		String imageUrl = fp.getImageUrl();
+		if (imageUrl == null || imageUrl.isEmpty()) {
+			throw new RuntimeException("이미지 URL이 없습니다.");
+		}
+		String resourcePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
+		String absolutePath = System.getProperty("user.dir") + "/src/main/resources/" + resourcePath;
+		java.io.File file = new java.io.File(absolutePath);
+		if (!file.exists()) {
+			throw new RuntimeException("이미지 파일을 찾을 수 없습니다.");
+		}
+		return java.nio.file.Files.readAllBytes(file.toPath());
 	}
 }

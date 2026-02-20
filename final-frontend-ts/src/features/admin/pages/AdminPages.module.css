@@ -789,6 +789,107 @@
   background-color: #f5f5f5;
 }
 
+/* 도면 상세 모달 (이미지 + 정보) */
+.detailModal {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.detailModalBody {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.detailImageSection {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+}
+
+.detailInfoSection {
+  width: 340px;
+  flex-shrink: 0;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid var(--border-color);
+}
+
+.detailInfoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detailLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detailValue {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.detailAssessment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.detailJsonContent {
+  background-color: var(--hover-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  flex: 1;
+  max-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .detailModalBody {
+    flex-direction: column;
+  }
+
+  .detailImageSection {
+    max-height: 50vh;
+  }
+
+  .detailInfoSection {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+    max-height: 40vh;
+  }
+}
+
 .modalHeader {
   display: flex;
   justify-content: space-between;

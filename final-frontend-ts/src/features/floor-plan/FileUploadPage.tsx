@@ -29,6 +29,7 @@ const FileUploadPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [saveName, setSaveName] = useState('');
 
   // 이미지 확대 모달 상태
   const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
@@ -203,7 +204,7 @@ const FileUploadPage: React.FC = () => {
         }
 
         // LLM 분석 데이터 파싱 (llmAnalysisJson 필드에서)
-        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llm_analysis_json;
+        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llmAnalysisJson;
         if (llmAnalysisJson) {
           try {
             // 원본 JSON 문자열 저장 (저장 API용)
@@ -283,6 +284,9 @@ const FileUploadPage: React.FC = () => {
       setToastMessage('저장에 필요한 데이터가 없습니다.');
       return;
     }
+    // 기본 이름: 분석 결과 이름 또는 파일명 (확장자 제거)
+    const defaultName = analysisResult.name || selectedFile.name.replace(/\.[^/.]+$/, '');
+    setSaveName(defaultName);
     setShowSaveConfirm(true);
   };
 
@@ -293,7 +297,7 @@ const FileUploadPage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile!);
-      formData.append('name', analysisResult!.name || selectedFile!.name);
+      formData.append('name', saveName.trim() || selectedFile!.name);
       formData.append('assessmentJson', llmAnalysisJsonRaw);
 
       await saveFloorPlan(formData);
@@ -762,11 +766,11 @@ const FileUploadPage: React.FC = () => {
                     )}
 
                     {/* 개선 제안 */}
-                    {llmAnalysis.recommendations?.length > 0 && (
+                    {(llmAnalysis.recommendations ?? []).length > 0 && (
                       <div className={styles.recommendationsSection}>
                         <span className={styles.complianceItemsLabel}>개선 제안</span>
                         <ul className={styles.recommendationsList}>
-                          {llmAnalysis.recommendations.map((rec, idx) => (
+                          {(llmAnalysis.recommendations ?? []).map((rec, idx) => (
                             <li key={idx}>{rec}</li>
                           ))}
                         </ul>
@@ -813,7 +817,17 @@ const FileUploadPage: React.FC = () => {
               <FiSave size={32} color="#10B981" />
             </div>
             <h3 className={styles.confirmTitle}>저장하시겠습니까?</h3>
-            <p className={styles.confirmText}>분석 결과가 데이터베이스에 저장됩니다.</p>
+            <div className={styles.saveNameGroup}>
+              <label className={styles.saveNameLabel} style={{ color: colors.textSecondary }}>도면 이름</label>
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                className={styles.saveNameInput}
+                placeholder="도면 이름을 입력하세요"
+                autoFocus
+              />
+            </div>
             <div className={styles.confirmButtons}>
               <button
                 className={styles.confirmCancelBtn}

@@ -106,7 +106,7 @@ CV/cv_inference/model/**/*.pth
 
 # claude
 *.claude*/
-CLAUDE.md
+**/CLAUDE.md
 # 문서 및 프론트엔드 리소스
 docs/
 final-frontend-ts/public/annotations/

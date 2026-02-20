@@ -18,6 +18,7 @@ public class AdminFloorPlanResponse {
     private UserSimpleDto user;
     private LocalDateTime createdAt;
     private Integer roomCount;  // FloorplanAnalysis에서 가져옴
+    private String assessmentJson;  // 분석 결과 JSON
     
     @Data
     @NoArgsConstructor
