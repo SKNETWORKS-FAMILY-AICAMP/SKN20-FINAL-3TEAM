@@ -51,22 +51,23 @@ export const signup = async (params: SignupRequest): Promise<SignupResponse> => 
 // 3. 로그인
 // ============================================
 export const login = async (params: LoginRequest): Promise<LoginResponse> => {
+  const rememberMe = params.rememberMe ?? false;
   const response = await apiClient.post<LoginResponse>(
     `${AUTH_BASE}/login`,
     null,
-    { params }
+    { params: { email: params.email, password: params.password, rememberMe } }
   );
 
   const data = response.data;
 
-  // 로그인 성공 시 토큰 저장
+  // 로그인 성공 시 토큰 저장 (rememberMe → localStorage 48h, 아니면 → sessionStorage)
   if (data.token) {
-    setToken(data.token);
+    setToken(data.token, rememberMe);
     setUserInfo({
       email: data.email,
       username: data.username,
       role: data.role,
-    });
+    }, rememberMe);
   }
 
   return data;
