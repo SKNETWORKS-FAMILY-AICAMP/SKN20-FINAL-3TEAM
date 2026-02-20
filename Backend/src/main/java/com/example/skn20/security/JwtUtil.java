@@ -52,17 +52,38 @@ public class JwtUtil {
         return extractExpiration(token).before(new Date());
     }
 
-    public String generateToken(UserDetails userDetails) {
+    public String generateToken(UserDetails userDetails, boolean rememberMe) {
         Map<String, Object> claims = new HashMap<>();
-        return createToken(claims, userDetails.getUsername());
+        claims.put("rememberMe", rememberMe);
+        // rememberMe: 48시간, 아니면: 1시간
+        long tokenExpiration = rememberMe ? 48 * 60 * 60 * 1000L : 60 * 60 * 1000L;
+        return createToken(claims, userDetails.getUsername(), tokenExpiration);
     }
 
-    private String createToken(Map<String, Object> claims, String subject) {
+    /**
+     * 토큰 갱신: 기존 토큰의 rememberMe 설정을 유지하며 새 토큰 발급
+     */
+    public String refreshToken(String token, UserDetails userDetails) {
+        Claims claims = extractAllClaims(token);
+        Boolean rememberMe = claims.get("rememberMe", Boolean.class);
+        if (rememberMe == null) rememberMe = false;
+        return generateToken(userDetails, rememberMe);
+    }
+
+    /**
+     * 토큰 만료까지 남은 시간(ms) 반환
+     */
+    public long getTimeUntilExpiration(String token) {
+        Date expiration = extractExpiration(token);
+        return expiration.getTime() - System.currentTimeMillis();
+    }
+
+    private String createToken(Map<String, Object> claims, String subject, long tokenExpiration) {
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(new Date(System.currentTimeMillis() + tokenExpiration))
                 .signWith(getSigningKey(), Jwts.SIG.HS256)
                 .compact();
     }

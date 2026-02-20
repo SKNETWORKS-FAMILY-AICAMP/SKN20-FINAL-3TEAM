@@ -31,6 +31,7 @@ const Login: React.FC<LoginProps> = ({ onViewChange }) => {
       const response = await loginApi({
         email: formData.email,
         password: formData.password,
+        rememberMe,
       });
 
       // AuthContext에 로그인 정보 저장 (rememberMe 전달)
