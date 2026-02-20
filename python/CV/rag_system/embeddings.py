@@ -6,7 +6,7 @@ class EmbeddingManager:
     def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
         self.client = OpenAI(api_key=api_key)
         self.model = model
-        self.dimensions = 512  # text-embedding-3-small 기본 차원
+        self.dimensions = 1024  # text-embedding-3-small 차원
 
     def embed_text(self, text: str) -> List[float]:
         """단일 텍스트 임베딩"""
@@ -34,7 +34,7 @@ class EmbeddingManager:
             space_data: nodes[i] 형식의 공간 데이터
 
         Returns:
-            512-dim 임베딩 벡터
+            1024-dim 임베딩 벡터
         """
         # 공간 정보를 자연어로 변환
         text_parts = [

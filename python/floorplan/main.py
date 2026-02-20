@@ -87,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-dimensions",
         type=int,
-        default=int(_env("EMBEDDING_DIMENSIONS", "512")),
+        default=int(_env("EMBEDDING_DIMENSIONS", "1024")),
     )
     parser.add_argument("--vector-weight", type=float, default=0.8)
     parser.add_argument("--text-weight", type=float, default=0.2)
@@ -146,11 +146,13 @@ def build_rag(args: argparse.Namespace):
 
 
 def run_once(rag, query: str) -> None:
-    answer = rag.run(query.strip())
+    result = rag.run(query.strip())
     print("\n=== QUERY ===")
     print(query.strip())
     print("\n=== ANSWER ===")
-    print(answer)
+    print(result["answer"])
+    if result.get("floorplan_ids"):
+        print(f"\n=== FLOORPLAN IDs: {result['floorplan_ids']} ===")
 
 
 def run_interactive(rag) -> None:

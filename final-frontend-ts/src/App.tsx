@@ -14,10 +14,8 @@ import ChatPage from '@/features/chat/ChatPage';
 import ProfilePage from '@/features/profile/ProfilePage';
 import FileUploadPage from '@/features/floor-plan/FileUploadPage';
 import { DashboardPage } from '@/features/admin/pages/DashboardPage';
-import { UsersPage } from '@/features/admin/pages/UsersPage';
 import { FloorPlansPage } from '@/features/admin/pages/FloorPlansPage';
 import { LogsPage } from '@/features/admin/pages/LogsPage';
-import { SettingsPage } from '@/features/admin/pages/SettingsPage';
 
 function App() {
   return (
@@ -46,10 +44,8 @@ function App() {
 
             {/* Admin pages - Protected */}
             <Route path="/admin" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
             <Route path="/admin/floor-plans" element={<ProtectedRoute><FloorPlansPage /></ProtectedRoute>} />
             <Route path="/admin/logs" element={<ProtectedRoute><LogsPage /></ProtectedRoute>} />
-            <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           </Routes>
         </Router>
       </ThemeProvider>

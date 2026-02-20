@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { IoSend } from 'react-icons/io5';
+import { IoSend, IoImageOutline, IoCloseCircle } from 'react-icons/io5';
 import { useTheme } from '@/shared/contexts/ThemeContext';
+import { BASE_URL } from '@/shared/api/axios';
 import Logo from '@/shared/components/Logo/Logo';
 import ChatSidebar from './ChatSidebar';
 import ChatMessage from './ChatMessage';
@@ -19,6 +20,21 @@ import type {
   ChatHistory,
 } from './types/chat.types';
 import styles from './ChatPage.module.css';
+
+// ============================================
+// 도면 답변 파싱: 요약 + 개별 설명 분리
+// ============================================
+const parseFloorplanAnswer = (answer: string) => {
+  // [도면 #N] 기준으로 분리
+  const firstMarker = answer.search(/\[도면 #\d+\]/);
+  const summary = firstMarker > 0 ? answer.substring(0, firstMarker).trim() : '';
+  const parts = answer.split(/\[도면 #\d+\]/);
+  // parts[0] = 요약, parts[1~] = 각 도면 설명
+  const descriptions = parts.slice(1).map((part) =>
+    part.replace(/^---\s*/gm, '').replace(/\s*---\s*$/gm, '').trim()
+  );
+  return { summary, descriptions };
+};
 
 // ============================================
 // API 타입 → UI 타입 변환 함수
@@ -41,12 +57,33 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
       content: item.question,
       timestamp: new Date(item.createdAt),
     });
+
+    // imageUrls JSON 파싱 → 이미지 복원
+    let images = undefined;
+    let displayContent = item.answer;
+
+    if (item.imageUrls) {
+      try {
+        const urls: string[] = JSON.parse(item.imageUrls);
+        const { summary, descriptions } = parseFloorplanAnswer(item.answer);
+        images = urls.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${urls.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      } catch (e) {
+        console.error('imageUrls 파싱 실패:', e);
+      }
+    }
+
     // 답변 (assistant)
     messages.push({
       id: `${item.id}-a`,
       role: 'assistant',
-      content: item.answer,
+      content: displayContent,
       timestamp: new Date(item.createdAt),
+      images,
     });
   });
 
@@ -67,7 +104,11 @@ const ChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const skipLoadHistoryRef = useRef(false); // 새 채팅방 생성 시 히스토리 로드 스킵용
 
   // ============================================
@@ -220,13 +261,49 @@ const ChatPage: React.FC = () => {
   };
 
   // ============================================
+  // 이미지 핸들러
+  // ============================================
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      alert('PNG 또는 JPG 이미지만 업로드할 수 있습니다.');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('이미지 크기는 50MB 이하여야 합니다.');
+      return;
+    }
+
+    setSelectedImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleImageButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // ============================================
   // 메시지 전송
   // ============================================
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim() || isSending) return;
+    if ((!inputMessage.trim() && !selectedImage) || isSending) return;
 
-    const question = inputMessage.trim();
+    const question = inputMessage.trim() || (selectedImage ? '이 도면을 분석해주세요' : '');
     setInputMessage('');
     setIsSending(true);
 
@@ -238,29 +315,59 @@ const ChatPage: React.FC = () => {
       role: 'user',
       content: question,
       timestamp: new Date(),
+      images: selectedImage ? [{
+        url: imagePreview || '',
+        name: selectedImage.name,
+        description: '업로드한 도면 이미지',
+      }] : undefined,
     };
     setMessages((prev) => {
       console.log('[ChatPage] 사용자 메시지 추가, 이전 메시지 수:', prev.length);
       return [...prev, userMessage];
     });
 
+    // 이미지 상태 초기화 (blob URL은 유지 - 메시지에서 사용 중)
+    const imageToSend = selectedImage;
+    const imagePreviewToRevoke = imagePreview;
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
     try {
       // API 호출
       const response = await sendChat({
         chatRoomId: currentRoomId,
         question,
+        image: imageToSend || undefined,
       });
 
       console.log('[ChatPage] API 응답 받음, chatRoomId:', response.chatRoomId);
 
       const isNewRoom = currentRoomId === null;
-      
-      // AI 응답 즉시 표시 (roomId 변경 전에 먼저 추가)
+
+      // AI 응답 즉시 표시 (image_urls가 있으면 도면 이미지 포함)
+      const hasFloorplans = response.image_urls && response.image_urls.length > 0;
+      let floorplanImages = undefined;
+      let displayContent = response.answer;
+
+      if (hasFloorplans) {
+        const { summary, descriptions } = parseFloorplanAnswer(response.answer);
+        floorplanImages = response.image_urls!.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${response.image_urls!.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      }
+
       const aiMessage: ChatMessageType = {
         id: `temp-ai-${Date.now()}`,
         role: 'assistant',
-        content: response.answer,
+        content: displayContent,
         timestamp: new Date(),
+        images: hasFloorplans ? floorplanImages : undefined,
       };
       setMessages((prev) => {
         console.log('[ChatPage] AI 응답 추가, 이전 메시지 수:', prev.length);
@@ -284,10 +391,6 @@ const ChatPage: React.FC = () => {
         setCurrentRoomId(response.chatRoomId);
       } else {
         console.log('[ChatPage] 기존 채팅방에 메시지 추가');
-        // 기존 채팅방: 백엔드와 동기화를 위해 채팅 기록 다시 로드
-        setTimeout(() => {
-          loadChatHistory(currentRoomId!);
-        }, 300);
       }
 
     } catch (error) {
@@ -303,6 +406,9 @@ const ChatPage: React.FC = () => {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsSending(false);
+      if (imagePreviewToRevoke) {
+        URL.revokeObjectURL(imagePreviewToRevoke);
+      }
     }
   };
 
@@ -366,10 +472,53 @@ const ChatPage: React.FC = () => {
             borderTop: `1px solid ${colors.border}`,
           }}
         >
+          {/* 이미지 미리보기 */}
+          {imagePreview && (
+            <div className={styles.imagePreviewContainer}>
+              <div className={styles.imagePreviewWrapper}>
+                <img
+                  src={imagePreview}
+                  alt="선택된 도면"
+                  className={styles.imagePreviewThumb}
+                />
+                <button
+                  type="button"
+                  className={styles.imageRemoveButton}
+                  onClick={handleRemoveImage}
+                >
+                  <IoCloseCircle size={20} />
+                </button>
+                <span className={styles.imageFileName}>
+                  {selectedImage?.name}
+                </span>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSendMessage} className={styles.inputForm}>
+            {/* 숨겨진 파일 input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/png,image/jpeg"
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+            />
+
+            {/* 이미지 첨부 버튼 */}
+            <button
+              type="button"
+              className={styles.imageUploadButton}
+              onClick={handleImageButtonClick}
+              disabled={isSending}
+              style={{ color: selectedImage ? colors.primary : colors.textSecondary }}
+            >
+              <IoImageOutline size={22} />
+            </button>
+
             <input
               type="text"
-              placeholder="메시지를 입력하세요..."
+              placeholder={selectedImage ? "도면에 대한 질문을 입력하세요..." : "메시지를 입력하세요..."}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               disabled={isSending}
@@ -382,10 +531,12 @@ const ChatPage: React.FC = () => {
             />
             <button
               type="submit"
-              disabled={isSending}
+              disabled={isSending || (!inputMessage.trim() && !selectedImage)}
               className={styles.sendButton}
               style={{
-                backgroundColor: isSending ? colors.textSecondary : colors.primary
+                backgroundColor: (isSending || (!inputMessage.trim() && !selectedImage))
+                  ? colors.textSecondary
+                  : colors.primary,
               }}
             >
               <IoSend size={18} color="#fff" />

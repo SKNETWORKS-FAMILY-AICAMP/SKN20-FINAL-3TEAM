@@ -41,6 +41,27 @@ export const getRoomHistory = async (
 // 3. 질문 → 답변 (QnA) 및 저장
 // ============================================
 export const sendChat = async (params: ChatRequest): Promise<ChatResponse> => {
+  if (params.image) {
+    // 이미지 포함: FormData 방식
+    const formData = new FormData();
+    if (params.chatRoomId !== null) {
+      formData.append('chatRoomId', String(params.chatRoomId));
+    }
+    formData.append('question', params.question);
+    formData.append('image', params.image);
+
+    const response = await apiClient.post<ChatResponse>(
+      `${CHATBOT_BASE}/chat`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000,
+      }
+    );
+    return response.data;
+  }
+
+  // 텍스트만: 기존 params 방식 유지
   const response = await apiClient.post<ChatResponse>(
     `${CHATBOT_BASE}/chat`,
     null,

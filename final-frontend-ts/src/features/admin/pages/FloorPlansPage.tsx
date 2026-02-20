@@ -2,11 +2,12 @@
 // FloorPlansPage - Floor Plan Database Management
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react';
-import { FiSearch, FiTrash2, FiX, FiFilter, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { FiSearch, FiTrash2, FiX, FiFilter, FiChevronDown, FiChevronUp, FiZoomIn, FiZoomOut, FiMaximize2 } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
 import { getFloorPlans, searchFloorPlans, getFloorPlanDetail, deleteEntities } from '../api/admin.api';
 import type { AdminFloorPlan, SearchFloorPlanRequest } from '../types/admin.types';
+import { BASE_URL } from '@/shared/api/axios';
 import styles from './AdminPages.module.css';
 
 export function FloorPlansPage() {
@@ -26,13 +27,41 @@ export function FloorPlansPage() {
     endDate: '',
     minRooms: undefined,
     maxRooms: undefined,
-    roomName: '',
-    objName: '',
-    strName: '',
   });
+
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   // 상세 모달 상태
   const [detailPlan, setDetailPlan] = useState<AdminFloorPlan | null>(null);
+
+  // 이미지 확대/축소 상태
+  const [imageScale, setImageScale] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  // 마우스 휠 이벤트 리스너 등록 (passive: false)
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        setImageScale(prev => Math.min(prev + 0.25, 5));
+      } else {
+        setImageScale(prev => Math.max(prev - 0.25, 0.5));
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [detailPlan]);
 
   // 도면 목록 로드
   const loadFloorPlans = useCallback(async () => {
@@ -42,12 +71,6 @@ export function FloorPlansPage() {
       setFloorPlans(data);
     } catch (error) {
       console.error('도면 목록 로드 실패:', error);
-      // 백엔드 연결 안 되면 더미 데이터
-      setFloorPlans([
-        { id: 1, name: '강남역 오피스빌딩 1층', imageUrl: '/images/plan1.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-20' },
-        { id: 2, name: '판교 테크노밸리 3층', imageUrl: '/images/plan2.png', user: { id: 2, email: 'user2@example.com', name: '김철수', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-19' },
-        { id: 3, name: '홍대입구 상가 B1층', imageUrl: '/images/plan3.png', user: { id: 1, email: 'user1@example.com', name: '홍길동', phonenumber: 0, role: 'user', create_at: '', update_at: '' }, createdAt: '2025-01-18' },
-      ]);
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +90,7 @@ export function FloorPlansPage() {
       setIsLoading(true);
       const data = await searchFloorPlans({ name: searchTerm });
       setFloorPlans(data);
+      setCurrentPage(1);
     } catch (error) {
       console.error('검색 실패:', error);
     } finally {
@@ -90,9 +114,6 @@ export function FloorPlansPage() {
     if (advancedFilters.endDate) params.endDate = advancedFilters.endDate;
     if (advancedFilters.minRooms !== undefined && advancedFilters.minRooms > 0) params.minRooms = advancedFilters.minRooms;
     if (advancedFilters.maxRooms !== undefined && advancedFilters.maxRooms > 0) params.maxRooms = advancedFilters.maxRooms;
-    if (advancedFilters.roomName?.trim()) params.roomName = advancedFilters.roomName;
-    if (advancedFilters.objName?.trim()) params.objName = advancedFilters.objName;
-    if (advancedFilters.strName?.trim()) params.strName = advancedFilters.strName;
 
     // 모든 필터가 비어있으면 전체 목록 로드
     if (Object.keys(params).length === 0) {
@@ -104,6 +125,7 @@ export function FloorPlansPage() {
       setIsLoading(true);
       const data = await searchFloorPlans(params);
       setFloorPlans(data);
+      setCurrentPage(1);
     } catch (error) {
       console.error('고급 검색 실패:', error);
     } finally {
@@ -120,25 +142,72 @@ export function FloorPlansPage() {
       endDate: '',
       minRooms: undefined,
       maxRooms: undefined,
-      roomName: '',
-      objName: '',
-      strName: '',
     });
     setSearchTerm('');
+    setCurrentPage(1);
     loadFloorPlans();
   };
+
+  // 현재 페이지의 도면
+  const currentFloorPlans = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return floorPlans.slice(startIndex, endIndex);
+  }, [floorPlans, currentPage, itemsPerPage]);
+
+  // 전체 페이지 수
+  const totalPages = Math.ceil(floorPlans.length / itemsPerPage);
 
   // 상세 보기
   const handleViewDetail = async (floorplanId: number) => {
     try {
       const data = await getFloorPlanDetail({ floorplanid: floorplanId });
       setDetailPlan(data);
+      // 이미지 확대/축소 상태 초기화
+      setImageScale(1);
+      setImagePosition({ x: 0, y: 0 });
     } catch (error) {
       console.error('상세 조회 실패:', error);
-      // 더미 데이터로 대체
-      const plan = floorPlans.find((p) => p.id === floorplanId);
-      if (plan) setDetailPlan(plan);
     }
+  };
+
+  // 이미지 확대
+  const handleZoomIn = () => {
+    setImageScale(prev => Math.min(prev + 0.25, 5));
+  };
+
+  // 이미지 축소
+  const handleZoomOut = () => {
+    setImageScale(prev => Math.max(prev - 0.25, 0.5));
+  };
+
+  // 이미지 원본 크기
+  const handleZoomReset = () => {
+    setImageScale(1);
+    setImagePosition({ x: 0, y: 0 });
+  };
+
+  // 드래그 시작
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (imageScale > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - imagePosition.x, y: e.clientY - imagePosition.y });
+    }
+  };
+
+  // 드래그 중
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && imageScale > 1) {
+      setImagePosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  // 드래그 종료
+  const handleMouseUp = () => {
+    setIsDragging(false);
   };
 
   // 단일 삭제
@@ -181,10 +250,10 @@ export function FloorPlansPage() {
 
   // 전체 선택
   const toggleSelectAll = () => {
-    if (selectedIds.length === floorPlans.length) {
+    if (selectedIds.length === currentFloorPlans.length && currentFloorPlans.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(floorPlans.map((p) => p.id));
+      setSelectedIds(currentFloorPlans.map((p) => p.id));
     }
   };
 
@@ -279,33 +348,6 @@ export function FloorPlansPage() {
                   onChange={(e) => setAdvancedFilters({ ...advancedFilters, maxRooms: e.target.value ? parseInt(e.target.value) : undefined })}
                 />
               </div>
-              <div className={styles.filterGroup}>
-                <label>공간명</label>
-                <input
-                  type="text"
-                  placeholder="거실, 침실 등"
-                  value={advancedFilters.roomName || ''}
-                  onChange={(e) => setAdvancedFilters({ ...advancedFilters, roomName: e.target.value })}
-                />
-              </div>
-              <div className={styles.filterGroup}>
-                <label>객체명</label>
-                <input
-                  type="text"
-                  placeholder="소파, 침대 등"
-                  value={advancedFilters.objName || ''}
-                  onChange={(e) => setAdvancedFilters({ ...advancedFilters, objName: e.target.value })}
-                />
-              </div>
-              <div className={styles.filterGroup}>
-                <label>구조물명</label>
-                <input
-                  type="text"
-                  placeholder="문, 창문 등"
-                  value={advancedFilters.strName || ''}
-                  onChange={(e) => setAdvancedFilters({ ...advancedFilters, strName: e.target.value })}
-                />
-              </div>
             </div>
             <div className={styles.filterActions}>
               <button className={styles.resetBtn} onClick={resetFilters}>초기화</button>
@@ -325,7 +367,7 @@ export function FloorPlansPage() {
                   <th>
                     <input
                       type="checkbox"
-                      checked={selectedIds.length === floorPlans.length && floorPlans.length > 0}
+                      checked={selectedIds.length === currentFloorPlans.length && currentFloorPlans.length > 0}
                       onChange={toggleSelectAll}
                     />
                   </th>
@@ -336,7 +378,7 @@ export function FloorPlansPage() {
                 </tr>
               </thead>
               <tbody>
-                {floorPlans.map((plan) => (
+                {currentFloorPlans.map((plan) => (
                   <tr key={plan.id}>
                     <td>
                       <input
@@ -371,76 +413,122 @@ export function FloorPlansPage() {
         </div>
 
         <div className={styles.pagination}>
-          <span className={styles.pageInfo}>총 {floorPlans.length}개 도면</span>
+          <span className={styles.pageInfo}>총 {floorPlans.length}개 도면 (페이지 {currentPage}/{totalPages})</span>
+          <div className={styles.pageButtons}>
+            <button 
+              className={styles.pageBtn} 
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              이전
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => {
+                // 현재 페이지 주변 5개만 표시
+                return page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2);
+              })
+              .map((page, index, array) => {
+                // ... 표시
+                if (index > 0 && page - array[index - 1] > 1) {
+                  return [
+                    <span key={`ellipsis-${page}`} className={styles.pageEllipsis}>...</span>,
+                    <button
+                      key={page}
+                      className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </button>
+                  ];
+                }
+                return (
+                  <button
+                    key={page}
+                    className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                );
+              })}
+            <button 
+              className={styles.pageBtn} 
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              다음
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 상세 모달 */}
+      {/* 도면 이미지 모달 */}
       {detailPlan && (
         <div className={styles.modalOverlay} onClick={() => setDetailPlan(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.imageModal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h3>도면 상세 정보</h3>
+              <h3>{detailPlan.name}</h3>
+              <div className={styles.imageControls}>
+                <button className={styles.zoomBtn} onClick={handleZoomOut} title="축소">
+                  <FiZoomOut />
+                </button>
+                <span className={styles.zoomLevel}>{Math.round(imageScale * 100)}%</span>
+                <button className={styles.zoomBtn} onClick={handleZoomIn} title="확대">
+                  <FiZoomIn />
+                </button>
+                <button className={styles.zoomBtn} onClick={handleZoomReset} title="원본 크기">
+                  <FiMaximize2 />
+                </button>
+              </div>
               <button className={styles.closeBtn} onClick={() => setDetailPlan(null)}>
                 <FiX />
               </button>
             </div>
-            <div className={styles.modalBody}>
-              <div className={styles.formGroup}>
-                <label>도면명</label>
-                <input type="text" value={detailPlan.name} disabled />
-              </div>
-              <div className={styles.formGroup}>
-                <label>업로더</label>
-                <input type="text" value={detailPlan.user?.email || '-'} disabled />
-              </div>
-              <div className={styles.formGroup}>
-                <label>업로드일</label>
-                <input type="text" value={detailPlan.createdAt?.split('T')[0]} disabled />
-              </div>
-              <div className={styles.formGroup}>
-                <label>이미지 URL</label>
-                <input type="text" value={detailPlan.imageUrl || '-'} disabled />
-              </div>
-              {detailPlan.rooms && detailPlan.rooms.length > 0 && (
-                <div className={styles.formGroup}>
-                  <label>공간 목록 ({detailPlan.rooms.length}개)</label>
-                  <div className={styles.detailList}>
-                    {detailPlan.rooms.map((room) => (
-                      <div key={room.id} className={styles.detailListItem}>
-                        {room.spcname} ({room.ocrname})
-                      </div>
-                    ))}
-                  </div>
+            <div 
+              ref={imageContainerRef}
+              className={styles.imageModalBody}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ cursor: imageScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+            >
+              {detailPlan.imageUrl ? (
+                <img 
+                  src={`${BASE_URL}/api/admin/floorplan/${detailPlan.id}/image`} 
+                  alt={detailPlan.name}
+                  style={{ 
+                    transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                    userSelect: 'none',
+                    pointerEvents: 'none'
+                  }}
+                  onError={(e) => {
+                    console.error('이미지 로드 실패:', detailPlan.imageUrl);
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const container = (e.target as HTMLImageElement).parentElement;
+                    if (container) {
+                      container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #999;">
+                          <p>이미지를 불러올 수 없습니다.</p>
+                          <p style="font-size: 12px; margin-top: 10px;">${detailPlan.imageUrl}</p>
+                        </div>
+                      `;
+                    }
+                  }}
+                  onLoad={() => {
+                    console.log('이미지 로드 성공:', detailPlan.imageUrl);
+                  }}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                  <p>이미지 URL이 없습니다.</p>
                 </div>
               )}
-              {detailPlan.objs && detailPlan.objs.length > 0 && (
-                <div className={styles.formGroup}>
-                  <label>객체 목록 ({detailPlan.objs.length}개)</label>
-                  <div className={styles.detailList}>
-                    {detailPlan.objs.map((obj) => (
-                      <div key={obj.id} className={styles.detailListItem}>
-                        {obj.name}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {detailPlan.strs && detailPlan.strs.length > 0 && (
-                <div className={styles.formGroup}>
-                  <label>구조물 목록 ({detailPlan.strs.length}개)</label>
-                  <div className={styles.detailList}>
-                    {detailPlan.strs.map((str) => (
-                      <div key={str.id} className={styles.detailListItem}>
-                        {str.name}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className={styles.modalFooter}>
-              <button className={styles.cancelBtn} onClick={() => setDetailPlan(null)}>닫기</button>
             </div>
           </div>
         </div>

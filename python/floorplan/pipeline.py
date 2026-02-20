@@ -21,7 +21,7 @@ class AnswerValidationResult:
 
 class ArchitecturalHybridRAG:
     ALLOWED_FILTER_COLUMNS = [
-        "windowless_ratio",
+        "windowless_count",
         "balcony_ratio",
         "living_room_ratio",
         "bathroom_ratio",
@@ -40,9 +40,13 @@ class ArchitecturalHybridRAG:
         "ventilation_quality": "ventilation_grade",
     }
 
-    INT_FILTERS = {"bay_count", "room_count", "bathroom_count"}
+    # floorplan_analysis 실제 DB 컬럼명 매핑 (내부명 → DB 컬럼명)
+    _DB_COLUMN_MAP = {
+        "ventilation_grade": "ventilation_quality",
+    }
+
+    INT_FILTERS = {"bay_count", "room_count", "bathroom_count", "windowless_count"}
     FLOAT_FILTERS = {
-        "windowless_ratio",
         "balcony_ratio",
         "living_room_ratio",
         "bathroom_ratio",
@@ -491,7 +495,7 @@ class ArchitecturalHybridRAG:
             "Return ONLY valid JSON in this exact schema:\n"
             "{\n"
             '  "filters": {\n'
-            '    "windowless_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
+            '    "windowless_count": {"op": "이상|이하|초과|미만|동일", "val": "integer"} (optional),\n'
             '    "balcony_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
             '    "living_room_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
             '    "bathroom_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
@@ -900,8 +904,8 @@ class ArchitecturalHybridRAG:
 
         rescored_docs: list[tuple[float, tuple[Any, ...]]] = []
         for row in docs:
-            base_score = float(row[15] if len(row) > 15 and row[15] is not None else 0.0)
-            document_text = str(row[1] if len(row) > 1 else "")
+            base_score = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
+            document_text = str(row[2] if len(row) > 2 else "")
             signals = self._extract_document_signals(document_text)
             signal_map = {signal["key"]: signal["value"] for signal in signals}
 
@@ -931,12 +935,16 @@ class ArchitecturalHybridRAG:
 
     def _retrieve_by_document_id(self, document_id: str) -> Optional[tuple]:
         sql = """
-            SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-            structure_type, bay_count, room_count, bathroom_count,
-            compliance_grade, ventilation_grade, has_special_space, has_etc_space,
+            SELECT f.id AS floorplan_id, f.name AS document_id,
+            fa.analysis_description AS document,
+            fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+            fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+            fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+            fa.has_special_space, fa.has_etc_space,
             1.0::double precision AS similarity
-            FROM FP_Analysis
-            WHERE LOWER(document_id) = LOWER(%s)
+            FROM floorplan_analysis fa
+            JOIN floorplan f ON fa.floorplan_id = f.id
+            WHERE LOWER(f.name) = LOWER(%s)
             LIMIT 1
         """
         with self.conn.cursor() as cur:
@@ -945,9 +953,10 @@ class ArchitecturalHybridRAG:
 
     def _row_to_candidate(self, row: tuple[Any, ...], rank: int) -> dict[str, Any]:
         (
+            floorplan_id,
             document_id,
             document,
-            windowless_ratio,
+            windowless_count,
             balcony_ratio,
             living_room_ratio,
             bathroom_ratio,
@@ -964,6 +973,7 @@ class ArchitecturalHybridRAG:
         ) = row
         return {
             "rank": rank,
+            "floorplan_id": floorplan_id,
             "document_id": document_id,
             "metadata": {
                 "room_count": room_count,
@@ -973,7 +983,7 @@ class ArchitecturalHybridRAG:
                 "kitchen_ratio": kitchen_ratio,
                 "bathroom_ratio": bathroom_ratio,
                 "balcony_ratio": balcony_ratio,
-                "windowless_ratio": windowless_ratio,
+                "windowless_count": windowless_count,
                 "structure_type": structure_type,
                 "ventilation_quality": ventilation_grade,
                 "has_special_space": has_special_space,
@@ -1021,12 +1031,12 @@ Output Format (Must Be Preserved, Repeated for Each Floor Plan)
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
+    - 무창 공간 개수: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
-    - 창문이 없는 공간: {windowless_ratio}
 ■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
@@ -1123,13 +1133,14 @@ it must be restructured into a form that is easy for users to read according to 
             value = filters.get(column)
             if value is None:
                 continue
+            db_col = f"fa.{self._DB_COLUMN_MAP.get(column, column)}"
             if column in self.FLOAT_FILTERS:
                 op = value.get("op") if isinstance(value, dict) else None
                 val = value.get("val") if isinstance(value, dict) else None
-                where_clauses.append(f"ratio_cmp({column}::double precision, %s, %s)")
+                where_clauses.append(f"ratio_cmp({db_col}::double precision, %s, %s)")
                 params.extend([op, val])
             else:
-                where_clauses.append(f"{column} = %s")
+                where_clauses.append(f"{db_col} = %s")
                 params.append(value)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
@@ -1165,18 +1176,23 @@ it must be restructured into a form that is easy for users to read according to 
 
         sql = f"""
             WITH scored AS (
-                SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-                structure_type, bay_count, room_count, bathroom_count,
-                compliance_grade, ventilation_grade, has_special_space, has_etc_space,
-                (1 - (embedding <=> %s::vector)) AS vector_similarity,
+                SELECT f.id AS floorplan_id, f.name AS document_id,
+                fa.analysis_description AS document,
+                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                fa.has_special_space, fa.has_etc_space,
+                (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
                 ts_rank_cd(
-                    to_tsvector('simple', COALESCE(document, '')),
+                    to_tsvector('simple', COALESCE(fa.analysis_description, '')),
                     websearch_to_tsquery('simple', %s)
                 ) AS text_score
-                FROM FP_Analysis
+                FROM floorplan_analysis fa
+                JOIN floorplan f ON fa.floorplan_id = f.id
                 WHERE {where_sql}
             )
-            SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+            SELECT floorplan_id, document_id, document,
+            windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
             structure_type, bay_count, room_count, bathroom_count,
             compliance_grade, ventilation_grade, has_special_space, has_etc_space,
             (%s * vector_similarity + %s * text_score) AS similarity
@@ -1190,6 +1206,7 @@ it must be restructured into a form that is easy for users to read according to 
                 cur.execute(sql, params)
                 return cur.fetchall()
         except Exception as exc:
+            self.conn.rollback()
             if text_query:
                 self._log_event(
                     event="retrieve_text_query_fallback",
@@ -1208,15 +1225,20 @@ it must be restructured into a form that is easy for users to read according to 
                 ]
                 fallback_sql = f"""
                     WITH scored AS (
-                        SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-                        structure_type, bay_count, room_count, bathroom_count,
-                        compliance_grade, ventilation_grade, has_special_space, has_etc_space,
-                        (1 - (embedding <=> %s::vector)) AS vector_similarity,
+                        SELECT f.id AS floorplan_id, f.name AS document_id,
+                        fa.analysis_description AS document,
+                        fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                        fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                        fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                        fa.has_special_space, fa.has_etc_space,
+                        (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
                         0.0::double precision AS text_score
-                        FROM FP_Analysis
+                        FROM floorplan_analysis fa
+                        JOIN floorplan f ON fa.floorplan_id = f.id
                         WHERE {where_sql}
                     )
-                    SELECT document_id, document, windowless_ratio, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+                    SELECT floorplan_id, document_id, document,
+                    windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
                     structure_type, bay_count, room_count, bathroom_count,
                     compliance_grade, ventilation_grade, has_special_space, has_etc_space,
                     (%s * vector_similarity + %s * text_score) AS similarity
@@ -1236,10 +1258,10 @@ it must be restructured into a form that is easy for users to read according to 
         if normalized_documents:
             where_sql = (
                 f"{where_sql} AND "
-                "to_tsvector('simple', COALESCE(document, '')) @@ websearch_to_tsquery('simple', %s)"
+                "to_tsvector('simple', COALESCE(fa.analysis_description, '')) @@ websearch_to_tsquery('simple', %s)"
             )
             params = [*params, normalized_documents]
-        sql = f"SELECT COUNT(*) FROM FP_Analysis WHERE {where_sql}"
+        sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {where_sql}"
         try:
             with self.conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -1253,12 +1275,13 @@ it must be restructured into a form that is easy for users to read according to 
                     filter_count=len(filters),
                 )
                 fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM FP_Analysis WHERE {fallback_where_sql}"
+                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
                 with self.conn.cursor() as cur:
                     cur.execute(fallback_sql, fallback_params)
                     return int(cur.fetchone()[0])
             return matched_count
         except Exception as exc:
+            self.conn.rollback()
             if normalized_documents:
                 self._log_event(
                     event="count_matches_text_query_fallback",
@@ -1268,7 +1291,7 @@ it must be restructured into a form that is easy for users to read according to 
                     error=str(exc),
                 )
                 fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM FP_Analysis WHERE {fallback_where_sql}"
+                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
                 with self.conn.cursor() as cur:
                     cur.execute(fallback_sql, fallback_params)
                     return int(cur.fetchone()[0])
@@ -1286,11 +1309,11 @@ it must be restructured into a form that is easy for users to read according to 
             )
 
         filters_json = json.dumps(query_json.get("filters", {}), ensure_ascii=False, indent=2)
-        retrieved_ids = [row[0] for row in docs]
-        id_list_text = ", ".join(retrieved_ids)
+        retrieved_ids = [row[1] for row in docs]
+        id_list_text = ", ".join(str(rid) for rid in retrieved_ids)
         top_docs = docs[:3]
 
-        representative_ids = [row[0] for row in top_docs]
+        representative_ids = [row[1] for row in top_docs]
         representative_title = "대표 도면 id(상위 3개)"
         candidates = [self._row_to_candidate(row, rank) for rank, row in enumerate(top_docs, start=1)]
         candidates_json = json.dumps(candidates, ensure_ascii=False, indent=2)
@@ -1360,12 +1383,12 @@ This section outputs **only the correspondence between the user’s search condi
     - 방 개수: {room_count}
     - 화장실 개수: {bathroom_count}
     - Bay 개수: {bay_count}
+    - 무창 공간 개수: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
     - 거실 공간: {living_room_ratio}
     - 주방 공간: {kitchen_ratio}
     - 욕실 공간: {bathroom_ratio}
     - 발코니 공간: {balcony_ratio}
-    - 창문이 없는 공간: {windowless_ratio}
 ■ 구조 및 성능
     - 건물 구조 유형: {structure_type}
     - 환기: {ventilation_quality}
@@ -1482,7 +1505,7 @@ it must be restructured into a form that is easy for users to read according to 
 
 
 # ----------------------------------------------------------------------------------------------
-    def run(self, query: str) -> str:
+    def run(self, query: str, email: str = "") -> dict[str, Any]:
         request_start = time.perf_counter()
         query_id = uuid.uuid4().hex[:12]
         normalized_query = query.strip()
@@ -1499,7 +1522,7 @@ it must be restructured into a form that is easy for users to read according to 
                 result="empty_query",
                 latency_ms=int((time.perf_counter() - request_start) * 1000),
             )
-            return "Try searching again."
+            return {"answer": "Try searching again.", "floorplan_ids": []}
 
         try:
             if self._is_floorplan_image_name(normalized_query):
@@ -1520,7 +1543,7 @@ it must be restructured into a form that is easy for users to read according to 
                         result="not_found",
                         latency_ms=int((time.perf_counter() - request_start) * 1000),
                     )
-                    return answer
+                    return {"answer": answer, "floorplan_ids": []}
                 generate_start = time.perf_counter()
                 answer = self._generate_document_id_answer(normalized_query, doc)
                 self._log_event(
@@ -1536,7 +1559,7 @@ it must be restructured into a form that is easy for users to read according to 
                     result="ok",
                     latency_ms=int((time.perf_counter() - request_start) * 1000),
                 )
-                return answer
+                return {"answer": answer, "floorplan_ids": [doc[0]]}
 
             analyze_start = time.perf_counter()
             query_json = self._analyze_query(normalized_query)
@@ -1568,7 +1591,7 @@ it must be restructured into a form that is easy for users to read according to 
                     result="no_match",
                     latency_ms=int((time.perf_counter() - request_start) * 1000),
                 )
-                return answer
+                return {"answer": answer, "floorplan_ids": []}
             retrieve_k = min(max(total_match_count, 3), 50)
 
             retrieve_start = time.perf_counter()
@@ -1590,6 +1613,8 @@ it must be restructured into a form that is easy for users to read according to 
                 reranked_count=len(docs),
             )
 
+            floorplan_ids = [row[0] for row in docs[:3]]
+
             generate_start = time.perf_counter()
             answer = self._generate_answer(
                 normalized_query, query_json, docs, total_match_count
@@ -1608,7 +1633,7 @@ it must be restructured into a form that is easy for users to read according to 
                 total_match_count=total_match_count,
                 latency_ms=int((time.perf_counter() - request_start) * 1000),
             )
-            return answer
+            return {"answer": answer, "floorplan_ids": floorplan_ids}
         except Exception as exc:
             self._log_event(
                 event="query_failed",

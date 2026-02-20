@@ -58,8 +58,8 @@ public class LandChar {
     @Column(name = "road_access", columnDefinition = "TEXT")
     private String roadAccess; // 도로 접면 (광대, 중로, 세로 등)
     
-    @Column(name = "query_key", columnDefinition = "TEXT")
-    private String queryKey; // 조회 키 (법정동코드 + 지번 조합 등)
+    @Column(name = "address_text", columnDefinition = "TEXT")
+    private String addressText; // 주소 텍스트 (법정동명 + 지번, "지번없음" 포함) - query_key 대체
     
     @Column(name = "region_code", columnDefinition = "TEXT")
     private String regionCode; // 지역 코드 (시군구 코드)
