@@ -3,7 +3,7 @@ import { IoSend, IoImageOutline, IoCloseCircle } from 'react-icons/io5';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { BASE_URL } from '@/shared/api/axios';
 import Logo from '@/shared/components/Logo/Logo';
-import ChatSidebar from './ChatSidebar';
+import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import ChatMessage from './ChatMessage';
 import {
   getChatRooms,
@@ -20,6 +20,59 @@ import type {
   ChatHistory,
 } from './types/chat.types';
 import styles from './ChatPage.module.css';
+
+// ============================================
+// 로딩 메시지 (시간 구간별 랜덤)
+// ============================================
+const LOADING_MESSAGES: { maxSeconds: number; messages: string[] }[] = [
+  {
+    maxSeconds: 10,
+    messages: [
+      '요청하신 내용을 분석하고 있어요. 잠시만 기다려 주세요!',
+      '관련 자료를 꼼꼼하게 살펴보고 있습니다.',
+      '최적의 답변을 드리기 위해 데이터를 확인 중이에요.',
+      'AI가 열심히 일하고 있어요. 곧 결과를 보여드릴게요!',
+    ],
+  },
+  {
+    maxSeconds: 30,
+    messages: [
+      '더 정확한 결과를 위해 심층 분석 중이에요.',
+      '자료를 하나하나 대조하며 확인하고 있습니다.',
+      '꼼꼼하게 확인하고 있어요. 조금만 기다려 주세요!',
+      '답변을 정리하고 있습니다. 거의 다 됐어요!',
+    ],
+  },
+  {
+    maxSeconds: Infinity,
+    messages: [
+      '내용이 많아 시간이 조금 걸리고 있어요. 곧 완료됩니다!',
+      '최상의 결과를 위해 마지막 검증을 진행하고 있어요.',
+      '거의 완료되었습니다. 잠시만요!',
+      '마무리 중이에요. 조금만 더 기다려 주세요!',
+    ],
+  },
+];
+
+const getLoadingMessage = (elapsedSeconds: number): string => {
+  const bracket = LOADING_MESSAGES.find((b) => elapsedSeconds < b.maxSeconds)!;
+  return bracket.messages[Math.floor(Math.random() * bracket.messages.length)];
+};
+
+// ============================================
+// 도면 답변 파싱: 요약 + 개별 설명 분리
+// ============================================
+const parseFloorplanAnswer = (answer: string) => {
+  // [도면 #N] 기준으로 분리
+  const firstMarker = answer.search(/\[도면 #\d+\]/);
+  const summary = firstMarker > 0 ? answer.substring(0, firstMarker).trim() : '';
+  const parts = answer.split(/\[도면 #\d+\]/);
+  // parts[0] = 요약, parts[1~] = 각 도면 설명
+  const descriptions = parts.slice(1).map((part) =>
+    part.replace(/^---\s*/gm, '').replace(/\s*---\s*$/gm, '').trim()
+  );
+  return { summary, descriptions };
+};
 
 // ============================================
 // API 타입 → UI 타입 변환 함수
@@ -42,12 +95,33 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
       content: item.question,
       timestamp: new Date(item.createdAt),
     });
+
+    // imageUrls JSON 파싱 → 이미지 복원
+    let images = undefined;
+    let displayContent = item.answer;
+
+    if (item.imageUrls) {
+      try {
+        const urls: string[] = JSON.parse(item.imageUrls);
+        const { summary, descriptions } = parseFloorplanAnswer(item.answer);
+        images = urls.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${urls.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      } catch (e) {
+        console.error('imageUrls 파싱 실패:', e);
+      }
+    }
+
     // 답변 (assistant)
     messages.push({
       id: `${item.id}-a`,
       role: 'assistant',
-      content: item.answer,
+      content: displayContent,
       timestamp: new Date(item.createdAt),
+      images,
     });
   });
 
@@ -68,6 +142,7 @@ const ChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -140,13 +215,42 @@ const ChatPage: React.FC = () => {
   // ============================================
   // 스크롤
   // ============================================
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const prevMessageCountRef = useRef(0);
+
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: instant ? 'instant' : 'smooth',
+    });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const prevCount = prevMessageCountRef.current;
+    const currCount = messages.length;
+    // 메시지가 1~2개만 늘었으면 smooth, 그 외(채팅방 전환/초기로드)는 instant
+    const isNewMessage = prevCount > 0 && currCount - prevCount <= 2;
+    scrollToBottom(!isNewMessage);
+    prevMessageCountRef.current = currCount;
   }, [messages]);
+
+  // ============================================
+  // 로딩 메시지 타이머
+  // ============================================
+  useEffect(() => {
+    if (!isSending) {
+      setLoadingMessage('');
+      return;
+    }
+
+    const startTime = Date.now();
+    setLoadingMessage(getLoadingMessage(0));
+
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      setLoadingMessage(getLoadingMessage(elapsed));
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isSending]);
 
   // ============================================
   // 새 채팅
@@ -290,12 +394,10 @@ const ChatPage: React.FC = () => {
       return [...prev, userMessage];
     });
 
-    // 이미지 상태 먼저 초기화 (UI 반응성)
+    // 이미지 상태 초기화 (blob URL은 유지 - 메시지에서 사용 중)
     const imageToSend = selectedImage;
+    const imagePreviewToRevoke = imagePreview;
     setSelectedImage(null);
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview);
-    }
     setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -314,17 +416,19 @@ const ChatPage: React.FC = () => {
       const isNewRoom = currentRoomId === null;
 
       // AI 응답 즉시 표시 (image_urls가 있으면 도면 이미지 포함)
-      const floorplanImages = response.image_urls?.map((url, idx) => ({
-        url: `${BASE_URL}${url}`,
-        name: `도면 #${idx + 1}`,
-        description: '',
-      }));
+      const hasFloorplans = response.image_urls && response.image_urls.length > 0;
+      let floorplanImages = undefined;
+      let displayContent = response.answer;
 
-      // 도면 결과가 있으면 간단한 안내 메시지만 표시, 상세 설명은 모달에서
-      const hasFloorplans = floorplanImages && floorplanImages.length > 0;
-      const displayContent = hasFloorplans
-        ? `검색된 도면 ${floorplanImages.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`
-        : response.answer;
+      if (hasFloorplans) {
+        const { summary, descriptions } = parseFloorplanAnswer(response.answer);
+        floorplanImages = response.image_urls!.map((url, idx) => ({
+          url: `${BASE_URL}${url}`,
+          name: `도면 #${idx + 1}`,
+          description: descriptions[idx] || '',
+        }));
+        displayContent = summary || `검색된 도면 ${response.image_urls!.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+      }
 
       const aiMessage: ChatMessageType = {
         id: `temp-ai-${Date.now()}`,
@@ -370,6 +474,9 @@ const ChatPage: React.FC = () => {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsSending(false);
+      if (imagePreviewToRevoke) {
+        URL.revokeObjectURL(imagePreviewToRevoke);
+      }
     }
   };
 
@@ -380,7 +487,7 @@ const ChatPage: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <ChatSidebar
+      <AppSidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
         onSessionClick={handleSessionClick}
@@ -417,7 +524,7 @@ const ChatPage: React.FC = () => {
                     <span className={styles.thinkingDots}>
                       <span>.</span><span>.</span><span>.</span>
                     </span>
-                    <span>답변 작성 중</span>
+                    <span>{loadingMessage}</span>
                   </div>
                 </div>
               )}

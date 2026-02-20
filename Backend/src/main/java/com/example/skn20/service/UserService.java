@@ -11,7 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -40,7 +40,7 @@ public class UserService implements UserDetailsService {
                 .pw(passwordEncoder.encode(password))
                 .name(name)
                 .phonenumber(phonenumber)
-                .create_at(LocalDate.now())
+                .create_at(LocalDateTime.now())
                 .role("USER")
                 .build();
 
@@ -56,7 +56,7 @@ public class UserService implements UserDetailsService {
 
         user.setName(name);
         user.setPhonenumber(phonenumber);
-        user.setUpdate_at(LocalDate.now());
+        user.setUpdate_at(LocalDateTime.now());
 
         return userRepository.save(user);
     }
@@ -72,7 +72,7 @@ public class UserService implements UserDetailsService {
             throw new UsernameNotFoundException("User not found: " + email);
         }
         user.setPw(passwordEncoder.encode(newPassword));
-        user.setUpdate_at(LocalDate.now());
+        user.setUpdate_at(LocalDateTime.now());
         userRepository.save(user);
     }
 }

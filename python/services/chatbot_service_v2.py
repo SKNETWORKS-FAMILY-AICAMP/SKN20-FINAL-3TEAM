@@ -166,12 +166,16 @@ LAND_USE_DICTIONARY = {
     "공부방": "교습소",
     "과외": "교습소",
     "운전학원": "운전학원",
+    "학교": ["초등학교", "중학교", "고등학교", "대학"],
     "유치원": "유치원",
     "어린이집": "아동복지시설",
     "초등학교": "초등학교",
     "중학교": "중학교",
     "고등학교": "고등학교",
     "대학교": "대학",
+    "대학": "대학",
+    "도서관": "도서관",
+    "연구소": "연구소",
 
     # 의료 관련
     "병원": "병원",
@@ -245,11 +249,28 @@ LAND_USE_DICTIONARY = {
     "오피스": "사무소",
     "오피스텔": "오피스텔",
 
+    # 복지/공공시설
+    "복지시설": ["노유자시설", "아동복지시설"],
+    "양로원": "노유자시설",
+    "요양원": "노유자시설",
+    "경로당": "노유자시설",
+    "장애인시설": "장애인복지시설",
+    "공원": "공원",
+    "놀이터": "어린이놀이터",
+    "체육시설": "운동시설",
+    "운동시설": "운동시설",
+    "장례식장": "장례식장",
+    "납골당": "봉안당",
+
     # 기타
     "세탁소": "세탁소",
     "빨래방": "세탁소",
     "공장": "공장",
     "창고": "창고",
+    "물류창고": "창고",
+    "약국": "약국",
+    "은행": "금융업소",
+    "우체국": "우체국",
 
     # 특수 시설
     "건물": "건축물",
@@ -377,22 +398,22 @@ class ChatbotService:
         """
         try:
             if self.db_conn is None or self.db_conn.closed:
-                logger.warning("DB 연결 끊김 감지, 재연결 시도...")
+                logger.warning("[DB] 연결 끊김 → 재연결 시도")
                 self.db_conn = psycopg2.connect(**self.DB_CONFIG)
                 self.db_conn.autocommit = True
-                logger.info("DB 재연결 성공 (autocommit=True)")
+                logger.info("[DB] 재연결 성공")
 
             return self.db_conn.cursor(cursor_factory=RealDictCursor)
 
         except psycopg2.OperationalError:
-            logger.warning("DB 연결 유효하지 않음, 재연결 시도...")
+            logger.warning("[DB] 연결 유효하지 않음 → 재연결 시도")
             self.db_conn = psycopg2.connect(**self.DB_CONFIG)
             self.db_conn.autocommit = True
-            logger.info("DB 재연결 성공 (autocommit=True)")
+            logger.info("[DB] 재연결 성공")
             return self.db_conn.cursor(cursor_factory=RealDictCursor)
 
         except Exception as e:
-            logger.error(f"DB 연결/재연결 실패: {e}")
+            logger.error(f"[DB] 연결 실패: {e}")
             raise
     
     def _get_facility_definitions(self, question: str, extracted_activities: List[str]) -> List[Dict[str, str]]:
@@ -530,7 +551,7 @@ class ChatbotService:
             if not search_keywords:
                 return []
             
-            logger.info(f"[건축물 용도 검색] 키워드: {search_keywords}")
+            logger.info(f"  └ 건축물 용도 검색: {search_keywords}")
             
             # usebuilding 테이블에서 관련 시설 조회
             results = []
@@ -570,12 +591,12 @@ class ChatbotService:
             cursor.close()
             
             if results:
-                logger.info(f"[건축물 용도 검색] {len(results)}건 발견: {[r['facility_name'] for r in results]}")
+                logger.info(f"  └ 건축물 용도: {len(results)}건 ({', '.join(r['facility_name'] for r in results[:3])})")
             
             return results
             
         except Exception as e:
-            logger.error(f"건축물 용도 조회 실패: {e}")
+            logger.error(f"  └ [오류] 건축물 용도 조회 실패: {e}")
             return []
 
     def load_components(self):
@@ -583,7 +604,8 @@ class ChatbotService:
         if self.openai_client is not None:
             return
 
-        logger.info("챗봇 컴포넌트 로딩 중...")
+        logger.info(f"{'='*60}")
+        logger.info("[초기화] 챗봇 컴포넌트 로딩 시작")
 
         try:
             self.config = RAGConfig()
@@ -591,18 +613,20 @@ class ChatbotService:
                 model_name=self.config.EMBEDDING_MODEL
             )
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
+            logger.info("[초기화] OpenAI + Embedding 준비 완료")
 
             # PostgreSQL 연결 (autocommit으로 트랜잭션 꼬임 방지)
             self.db_conn = psycopg2.connect(**self.DB_CONFIG)
             self.db_conn.autocommit = True
-            logger.info("PostgreSQL 연결 완료 (autocommit=True)")
+            logger.info("[초기화] PostgreSQL 연결 완료")
 
             # [V2 변경] Reranker 로드 (실패해도 서비스 계속)
             self._load_reranker()
 
-            logger.info("챗봇 컴포넌트 로딩 완료!")
+            logger.info("[초기화] 모든 컴포넌트 로딩 완료")
+            logger.info(f"{'='*60}")
         except Exception as e:
-            logger.error(f"챗봇 컴포넌트 로딩 실패: {e}")
+            logger.error(f"[초기화] 컴포넌트 로딩 실패: {e}")
             raise
 
     # ==========================================
@@ -616,17 +640,16 @@ class ChatbotService:
         """
         try:
             from sentence_transformers import CrossEncoder
-            logger.info(f"Reranker 로딩 중: {self.RERANKER_MODEL_NAME}")
             start = time.time()
             self._reranker = CrossEncoder(self.RERANKER_MODEL_NAME)
             elapsed = time.time() - start
             self._reranker_available = True
-            logger.info(f"Reranker 로딩 완료 ({elapsed:.1f}초)")
+            logger.info(f"[초기화] Reranker 로딩 완료 ({elapsed:.1f}s)")
         except ImportError:
-            logger.warning("sentence-transformers 미설치. Reranker 비활성화 (pip install sentence-transformers)")
+            logger.warning("[초기화] Reranker 비활성화 (sentence-transformers 미설치)")
             self._reranker_available = False
         except Exception as e:
-            logger.warning(f"Reranker 로딩 실패, fallback 사용: {e}")
+            logger.warning(f"[초기화] Reranker 실패 → fallback 사용: {e}")
             self._reranker_available = False
 
     def _rerank_results(
@@ -666,12 +689,12 @@ class ChatbotService:
 
         results = [r for r in results if _is_meaningful_doc(r.get("document", ""))]
         if not results:
-            logger.warning("[Reranker] 유효한 document가 없음")
+            logger.warning("  └ Reranker: 유효한 document 없음")
             return []
 
         # Reranker 사용 불가 시 기존 순서 그대로 반환 (fallback)
         if not self._reranker_available or self._reranker is None:
-            logger.info(f"[Reranker] fallback - 기존 순서 유지 (top {top_n})")
+            logger.info(f"  └ Reranker 미사용 → 기존 순서 top {top_n}")
             return results[:top_n]
 
         try:
@@ -691,15 +714,12 @@ class ChatbotService:
             reranked = sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
 
             elapsed = time.time() - start
-            logger.info(
-                f"[Reranker] {len(results)}개 → top {top_n} 재정렬 완료 "
-                f"({elapsed:.3f}초, 최고점: {reranked[0]['rerank_score']:.3f})"
-            )
+            logger.info(f"  └ Reranker: {len(results)}개 → top {top_n} ({elapsed:.3f}s, 최고: {reranked[0]['rerank_score']:.3f})")
 
             return reranked[:top_n]
 
         except Exception as e:
-            logger.warning(f"[Reranker] 재정렬 실패, fallback 사용: {e}")
+            logger.warning(f"  └ Reranker 실패 → fallback: {e}")
             return results[:top_n]
 
     # ==========================================
@@ -738,57 +758,6 @@ class ChatbotService:
         )
 
         return embedding
-
-    def get_recent_chat_history(self, email: str, limit: int = 5) -> List[Dict[str, str]]:
-        """
-        PostgreSQL에서 사용자의 최근 대화 내역 조회
-
-        Args:
-            email: 사용자 이메일
-            limit: 가져올 대화 개수
-
-        Returns:
-            [{"question": str, "answer": str, "created_at": str}, ...]
-        """
-        if self.db_conn is None:
-            logger.warning("PostgreSQL 연결 안됨. 이전 대화 내역 없이 진행")
-            return []
-
-        if email == "anonymous":
-            return []
-
-        try:
-            query = """
-            SELECT ch.question, ch.answer, ch.created_at
-            FROM "chat_history" ch
-            JOIN "chatroom" cr ON ch.chatroom_id = cr.id
-            JOIN "users" u ON cr.user_id = u.id
-            WHERE u.email = %s
-            ORDER BY ch.created_at DESC
-            LIMIT %s
-            """
-
-            with self._get_cursor() as cursor:
-                cursor.execute(query, (email, limit))
-                results = cursor.fetchall()
-
-                history = [
-                    {
-                        "question": row["question"],
-                        "answer": row["answer"],
-                        "created_at": str(row["created_at"])
-                    }
-                    for row in reversed(results)
-                ]
-
-                logger.info(f"{email}의 이전 대화 {len(history)}개 조회 완료")
-                return history
-
-        except Exception as e:
-            logger.error(f"대화 내역 조회 실패: {e}")
-            if self.db_conn:
-                self.db_conn.rollback()
-            return []
 
     def normalize_query(self, text: str) -> str:
         """
@@ -1102,7 +1071,8 @@ class ChatbotService:
     "sigungu": "시/군/구 또는 빈 문자열",
     "dong": "읍/면/동/리/가 또는 빈 문자열",
     "lot_number": "지번(예: 1-1040) 또는 빈 문자열",
-    "region_code": "시도코드 2자리 또는 빈 문자열"
+    "region_code": "시도코드 2자리 또는 빈 문자열",
+    "is_road_address": false
   },
   "zones": ["용도지역명 정확히"],
   "activities": ["토지이용행위 DB값"],
@@ -1118,6 +1088,9 @@ class ChatbotService:
 - 주소 구성요소만 추출. 법조문 번호(제2조제1항), 용도지역명, 법률 키워드는 주소가 아님
 - sido 약칭 → 정식명칭: 서울→서울특별시, 부산→부산광역시, 경기→경기도 등
 - region_code: 서울=11, 부산=26, 대구=27, 인천=28, 광주=29, 대전=30, 울산=31, 세종=36, 경기=41, 강원=42, 충북=43, 충남=44, 전북=45, 전남=46, 경북=47, 경남=48, 제주=50
+- ⚠️ 도로명주소 감지: "~로", "~길", "~대로" + 번호 형태(예: 테헤란로 123, 강남대로 456)는 도로명주소임
+  - is_road_address=true로 설정하고, dong은 빈 문자열, lot_number도 빈 문자열로 설정
+  - sido, sigungu, region_code는 가능한 만큼 추출
 
 ### zones (용도지역 21종)
 - 정확한 DB값만 사용: 제1종전용주거지역, 제2종전용주거지역, 제1종일반주거지역, 제2종일반주거지역, 제3종일반주거지역, 준주거지역, 중심상업지역, 일반상업지역, 근린상업지역, 유통상업지역, 전용공업지역, 일반공업지역, 준공업지역, 보전녹지지역, 생산녹지지역, 자연녹지지역, 보전관리지역, 생산관리지역, 계획관리지역, 농림지역, 자연환경보전지역
@@ -1169,11 +1142,11 @@ class ChatbotService:
             raw = response.choices[0].message.content
             parsed = json.loads(raw)
             result = self._transform_llm_extraction(parsed, question)
-            logger.info(f"[LLM추출] 성공: zones={result['zone_names']}, activities={result['activities']}, intent={result['intent']['case']}")
+            logger.info(f"  └ LLM 추출 성공: {result['intent']['case']} | 지역: {result['zone_names']} | 행위: {result['activities']}")
             return result
 
         except Exception as e:
-            logger.warning(f"[LLM추출] 실패 ({e}), regex fallback 사용")
+            logger.warning(f"  └ LLM 추출 실패 → regex fallback ({e})")
             return self._extract_with_regex_fallback(question)
 
     def _is_comparison_query(self, question: str) -> bool:
@@ -1273,6 +1246,7 @@ class ChatbotService:
             "law_reference": law_reference,
             "intent": intent,
             "is_comparison": is_comparison,
+            "is_road_address": bool(addr.get("is_road_address", False)),
         }
 
     def _extract_with_regex_fallback(self, question: str) -> Dict[str, Any]:
@@ -1293,6 +1267,9 @@ class ChatbotService:
         is_comparison = len(zone_names) >= 2 and self._is_comparison_query(question)
         intent = self.classify_intent(address_info, zone_names, activities, law_reference, is_comparison=is_comparison)
 
+        # regex로도 도로명주소 감지
+        is_road_address = bool(re.search(r'(로|길|대로)\s*\d+', question))
+
         return {
             "address_info": address_info,
             "zone_names": zone_names,
@@ -1303,6 +1280,7 @@ class ChatbotService:
             "law_reference": law_reference,
             "intent": intent,
             "is_comparison": is_comparison,
+            "is_road_address": is_road_address,
         }
 
     def get_zone_regulations(self, zone_name: str) -> Dict[str, Any]:
@@ -1423,7 +1401,7 @@ class ChatbotService:
                                 regulations["setback_distance"] = f"{setback_match.group(1)}m 이상 후퇴"
 
             except Exception as e:
-                logger.error(f"DB 규제 정보 조회 실패: {e}")
+                logger.error(f"  └ [오류] 규제 정보 조회 실패: {e}")
                 if self.db_conn:
                     self.db_conn.rollback()
 
@@ -1542,7 +1520,7 @@ class ChatbotService:
                 }
 
         except Exception as e:
-            logger.error(f"법률 비교 조회 실패: {e}")
+            logger.error(f"  └ [오류] 법률 비교 조회 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return {}
@@ -1595,7 +1573,11 @@ class ChatbotService:
             if depth <= 2 and not address_info.get("lot_number"):
                 return self._search_by_dong_sampling(conditions, params, zone_filter, limit)
 
-            # depth 3~4 (동/지번까지): 기존 방식
+            # depth 3 (동 단위, 지번 없음): 용도지역별 샘플링으로 다양한 지역 포함
+            if depth == 3 and not address_info.get("lot_number"):
+                return self._search_by_zone_sampling(conditions, params, limit)
+
+            # depth 4 (지번까지): 기존 방식
             query = f"""
             SELECT DISTINCT
                 legal_dong_name, lot_number, region_code,
@@ -1612,11 +1594,11 @@ class ChatbotService:
                 results = cursor.fetchall()
 
                 land_infos = [dict(row) for row in results]
-                logger.info(f"주소 검색 결과: {len(land_infos)}개")
+                logger.info(f"  └ 주소 검색: {len(land_infos)}개 필지")
                 return land_infos
 
         except Exception as e:
-            logger.error(f"주소 검색 실패: {e}")
+            logger.error(f"  └ [오류] 주소 검색 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -1659,11 +1641,57 @@ class ChatbotService:
                 cursor.execute(query, params)
                 all_results = [dict(row) for row in cursor.fetchall()]
 
-            logger.info(f"[동별 샘플링] 단일 쿼리로 {len(all_results)}개 필지 검색")
+            logger.info(f"  └ 동별 샘플링: {len(all_results)}개 필지")
             return all_results
 
         except Exception as e:
-            logger.error(f"동별 샘플링 검색 실패: {e}")
+            logger.error(f"  └ [오류] 동별 샘플링 실패: {e}")
+            if self.db_conn:
+                self.db_conn.rollback()
+            return []
+
+    def _search_by_zone_sampling(
+        self,
+        conditions: List[str],
+        params: List[Any],
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """
+        동 단위(depth=3) 지번 없이 검색 시 용도지역별 샘플링
+        - ROW_NUMBER() OVER(PARTITION BY zone1)로 용도지역별 2개씩 추출
+        - 녹지지역 편향 방지, 다양한 용도지역 필지를 골고루 반환
+        """
+        try:
+            where_clause = ' AND '.join(conditions)
+            per_zone = 2
+
+            query = f"""
+            SELECT legal_dong_name, lot_number, region_code,
+                   zone1, zone2, land_category, land_use,
+                   land_area, terrain_height, terrain_shape, road_access
+            FROM (
+                SELECT DISTINCT
+                    legal_dong_name, lot_number, region_code,
+                    zone1, zone2, land_category, land_use,
+                    land_area, terrain_height, terrain_shape, road_access,
+                    ROW_NUMBER() OVER(PARTITION BY zone1 ORDER BY lot_number) AS rn
+                FROM land_char
+                WHERE {where_clause}
+            ) sub
+            WHERE rn <= {per_zone}
+            ORDER BY zone1, lot_number
+            LIMIT {limit}
+            """
+
+            with self._get_cursor() as cursor:
+                cursor.execute(query, params)
+                all_results = [dict(row) for row in cursor.fetchall()]
+
+            logger.info(f"  └ 용도지역별 샘플링: {len(all_results)}개 필지")
+            return all_results
+
+        except Exception as e:
+            logger.error(f"  └ [오류] 용도지역별 샘플링 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -1701,11 +1729,11 @@ class ChatbotService:
                 results = cursor.fetchall()
 
                 law_infos = [dict(row) for row in results]
-                logger.info(f"지역지구명 검색 결과: {len(law_infos)}개")
+                logger.info(f"  └ 지역지구명 검색: {len(law_infos)}건")
                 return law_infos
 
         except Exception as e:
-            logger.error(f"지역지구명 검색 실패: {e}")
+            logger.error(f"  └ [오류] 지역지구명 검색 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -1747,11 +1775,11 @@ class ChatbotService:
                 results = cursor.fetchall()
 
                 law_infos = [dict(row) for row in results]
-                logger.info(f"토지이용행위 검색 결과: {len(law_infos)}개")
+                logger.info(f"  └ 토지이용행위 검색: {len(law_infos)}건")
                 return law_infos
 
         except Exception as e:
-            logger.error(f"토지이용행위 검색 실패: {e}")
+            logger.error(f"  └ [오류] 토지이용행위 검색 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -1777,11 +1805,11 @@ class ChatbotService:
                 results = cursor.fetchall()
 
                 zones = [row['zone_district_name'] for row in results]
-                logger.info(f"지역 내 지역지구명 {len(zones)}개 조회")
+                logger.info(f"  └ 지역 내 용도지역: {len(zones)}종")
                 return zones
 
         except Exception as e:
-            logger.error(f"지역지구명 목록 조회 실패: {e}")
+            logger.error(f"  └ [오류] 지역 내 용도지역 조회 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -1894,6 +1922,12 @@ class ChatbotService:
                     params.append(f"%{activity}%")
                 conditions.append(f"({' OR '.join(activity_conditions)})")
 
+            # region_code 필터: 해당 지역 조례만 매칭 (타 지역 조례 혼입 방지)
+            region_code = land_info.get("region_code", "")
+            if region_code and len(region_code) >= 2:
+                conditions.append("region_code LIKE %s")
+                params.append(f"{region_code[:2]}%")
+
             where_clause = " AND ".join(conditions)
 
             query = f"""
@@ -1909,6 +1943,18 @@ class ChatbotService:
                 cursor.execute(query, params)
                 laws = [dict(row) for row in cursor.fetchall()]
 
+                # region_code로 못 찾으면 전국 법규로 폴백
+                if not laws and region_code:
+                    fallback_conditions = [c for c in conditions if "region_code" not in c]
+                    fallback_params = [p for p in params if not p.startswith(region_code[:2])]
+                    fallback_where = " AND ".join(fallback_conditions)
+                    cursor.execute(f"""
+                        SELECT region_code, zone_district_name, law_name,
+                               land_use_activity, permission_category, condition_exception
+                        FROM law WHERE {fallback_where} LIMIT 20
+                    """, fallback_params)
+                    laws = [dict(row) for row in cursor.fetchall()]
+
             feasibility = self.analyze_feasibility(laws)
 
             return {
@@ -1918,7 +1964,7 @@ class ChatbotService:
             }
 
         except Exception as e:
-            logger.error(f"필지-법규 매칭 실패: {e}")
+            logger.error(f"  └ [오류] 필지-법규 매칭 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return {"land": land_info, "laws": [], "feasibility": "판정 오류"}
@@ -2092,11 +2138,11 @@ class ChatbotService:
                 cursor.execute(query, params)
                 zones = [row['zone_district_name'] for row in cursor.fetchall()]
 
-            logger.info(f"[역추적] {activities} → 가능 용도지역 {len(zones)}개: {zones[:5]}")
+            logger.info(f"  └ 역추적: {activities} → {len(zones)}개 용도지역 ({', '.join(zones[:3])}...)")
             return zones
 
         except Exception as e:
-            logger.error(f"용도지역 역추적 실패: {e}")
+            logger.error(f"  └ [오류] 용도지역 역추적 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -2113,14 +2159,18 @@ class ChatbotService:
         if activities and depth <= 2:
             zone_filter = self._get_allowed_zones_for_activity(activities)
 
+        # 동 단위(depth=3)에서 지번 없으면 용도지역이 다양할 수 있으므로 limit 확대
+        no_lot = not address_info.get("lot_number")
+        base_limit = 12 if (depth == 3 and no_lot) else 6
+
         if zone_filter:
             lands = self.search_by_address(address_info, zone_filter=zone_filter, limit=10)
         else:
-            lands = self.search_by_address(address_info, limit=6)
+            lands = self.search_by_address(address_info, limit=base_limit)
 
         # [V2 변경] zone_filter로 못 찾으면 필터 없이 재시도
         if not lands and zone_filter:
-            lands = self.search_by_address(address_info, limit=6)
+            lands = self.search_by_address(address_info, limit=base_limit)
 
         if not lands:
             return {
@@ -2172,12 +2222,19 @@ class ChatbotService:
                 lands = self.search_by_address(address_info, limit=6)
 
         if not lands:
+            zone_laws = self.search_by_zone_district(zone_names)
+            feasibility = self.analyze_feasibility(zone_laws) if zone_laws else None
             return {
-                "case": "CASE2",
-                "sub_case": "2-0",
+                "case": "CASE3",
+                "sub_case": "3-1" if activities else "3-2",
                 "message": "해당 주소의 필지를 찾을 수 없어 용도지역 기준으로만 검색합니다.",
                 "zone_match": None,
-                "analysis": self.search_by_zone_district(zone_names)
+                "analysis": [{
+                    "zone": zone_names,
+                    "activities": activities,
+                    "laws": zone_laws,
+                    "feasibility": feasibility
+                }]
             }
 
         zone_match = self.check_zone_match(lands[0], zone_names)
@@ -2327,11 +2384,11 @@ class ChatbotService:
             with self._get_cursor() as cursor:
                 cursor.execute(query, (f"%{normalized}%", limit))
                 results = [dict(row) for row in cursor.fetchall()]
-                logger.info(f"[CASE3-4] 법률명 검색 '{law_reference}' (normalized: '{normalized}'): {len(results)}건")
+                logger.info(f"  └ 법률명 검색: '{law_reference}' → {len(results)}건")
                 return results
 
         except Exception as e:
-            logger.error(f"법률명 검색 실패: {e}")
+            logger.error(f"  └ [오류] 법률명 검색 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -2522,15 +2579,6 @@ class ChatbotService:
         # 특수 쿼리 결과
         context_parts.extend(self._build_special_query_context(special_data))
 
-        # 이전 대화
-        chat_history = self.get_recent_chat_history(email, limit=3)
-        if chat_history:
-            history_text = "\n".join([
-                f"Q: {h['question']}\nA: {h['answer']}"
-                for h in chat_history[:2]
-            ])
-            context_parts.append(f"[이전 대화]\n{history_text}\n")
-
         # [V2 변경] RAG 검색 (캐싱 + k값 확대 + Reranker)
         try:
             # [V2 변경] 질문 유형별 k값 차등 적용
@@ -2568,13 +2616,10 @@ class ChatbotService:
                         score_info = f" (관련도: {result['rerank_score']:.3f})"
                     context_parts.append(f"[참고 평면도 {i}]{score_info}\n{result['document']}\n")
 
-                logger.info(
-                    f"[V2 RAG] 검색 k={initial_k} → Rerank top={final_top_n}, "
-                    f"최종 {len(reranked)}개 사용"
-                )
+                logger.info(f"  └ RAG: k={initial_k} → Rerank top {final_top_n} → 최종 {len(reranked)}개")
 
         except Exception as e:
-            logger.warning(f"RAG 검색 실패: {e}")
+            logger.warning(f"  └ RAG 검색 실패: {e}")
 
         return "\n".join(context_parts) if context_parts else "참고할 데이터가 없습니다."
 
@@ -2849,7 +2894,7 @@ class ChatbotService:
     def get_law_info(self, region_codes: List[str]) -> List[Dict[str, Any]]:
         """Law 테이블에서 구분코드로 법률 정보 조회"""
         if self.db_conn is None:
-            logger.warning("PostgreSQL 연결 안됨")
+            logger.warning("  └ PostgreSQL 미연결")
             return []
 
         if not region_codes:
@@ -2869,11 +2914,11 @@ class ChatbotService:
                 results = cursor.fetchall()
 
                 law_infos = [dict(row) for row in results]
-                logger.info(f"법률 정보 {len(law_infos)}개 조회 완료")
+                logger.info(f"  └ 법률 정보: {len(law_infos)}건")
                 return law_infos
 
         except Exception as e:
-            logger.error(f"법률 정보 조회 실패: {e}")
+            logger.error(f"  └ [오류] 법률 정보 조회 실패: {e}")
             if self.db_conn:
                 self.db_conn.rollback()
             return []
@@ -2883,7 +2928,8 @@ class ChatbotService:
         self.load_components()
 
         try:
-            logger.info(f"질문 받음: {email} - {question}")
+            logger.info(f"{'='*60}")
+            logger.info(f"[질문] {email} → {question}")
 
             # 질문 정규화 (오타/띄어쓰기 보정) — _build_context 등에서 사용
             question_normalized = self.normalize_query(question)
@@ -2902,8 +2948,34 @@ class ChatbotService:
             intent = extraction["intent"]
             is_comparison = extraction.get("is_comparison", False)
 
-            logger.info(f"[1단계] 분석 - 주소: {address_info}, 지역지구: {zone_names}, 행위: {activities}, 특수쿼리: {special_queries}, query_fields: {query_fields}, law_ref: {law_reference}")
-            logger.info(f"[2단계] 의도 분류: {intent['case']} - {intent['sub_case']}")
+            is_road_address = extraction.get("is_road_address", False)
+
+            dong = address_info.get('legal_dong_name', '-')
+            lot = address_info.get('lot_number', '-')
+            depth = address_info.get('address_depth', 0)
+            logger.info(f"[1단계 추출] 주소: {dong} (지번: {lot}, depth: {depth}){' [도로명주소]' if is_road_address else ''}")
+            logger.info(f"[1단계 추출] 용도지역: {zone_names or '-'} | 행위: {activities or '-'}")
+            if special_queries:
+                logger.info(f"[1단계 추출] 특수쿼리: {special_queries} | 법조문: {law_reference or '-'}")
+            logger.info(f"[2단계 분류] {intent['case']}-{intent['sub_case']}: {intent.get('description', '')}")
+
+            # ========================================
+            # 도로명주소 감지 시 안내 메시지 반환
+            # ========================================
+            if is_road_address:
+                logger.info("[안내] 도로명주소 감지 → 법정동주소 안내")
+                road_msg = (
+                    "입력하신 주소가 **도로명주소**(예: 테헤란로 123)로 확인됩니다.\n\n"
+                    "현재 시스템은 **법정동 + 지번** 기반으로 필지를 검색하기 때문에, "
+                    "도로명주소로는 정확한 필지 정보를 조회할 수 없어요.\n\n"
+                    "**법정동주소로 변환하여 다시 질문해 주세요!**\n"
+                    "- 예시: 서울시 강남구 **역삼동 123-4**\n\n"
+                    "💡 도로명주소 → 법정동주소 변환은 [주소정보누리](https://www.juso.go.kr)에서 확인할 수 있어요."
+                )
+                return {
+                    "summaryTitle": "도로명주소 안내",
+                    "answer": road_msg,
+                }
 
             # ========================================
             # 3단계: 데이터 검색 + 4단계: 법규 검토
@@ -2917,7 +2989,9 @@ class ChatbotService:
             else:
                 case_result = self.process_case1(address_info, activities)
 
-            logger.info(f"[3-4단계] {case_result['case']}-{case_result['sub_case']}: {case_result['message']}")
+            lands_count = len(case_result.get('lands', []))
+            analysis_count = len(case_result.get('analysis', []))
+            logger.info(f"[3단계 검색] {case_result['message']} (필지: {lands_count}개, 분석: {analysis_count}건)")
 
             # ========================================
             # 특수 쿼리 처리 (건폐율/용적률, 법률 비교 등)
@@ -2935,24 +3009,22 @@ class ChatbotService:
                         regulations = self.get_zone_regulations(target_zone)
                         if regulations:
                             special_data["regulations"] = regulations
-                            logger.info(f"[특수쿼리] 규제 정보 조회: {target_zone}")
 
                     if "law_comparison" in special_queries:
                         comparison = self.compare_laws(target_zone)
                         if comparison:
                             special_data["law_comparison"] = comparison
-                            logger.info(f"[특수쿼리] 법률 비교 조회: {target_zone}")
+
+                    if special_data:
+                        logger.info(f"[4단계 특수] {list(special_data.keys())} → {target_zone}")
 
             # ========================================
             # 컨텍스트 구성 (분리된 메서드 호출)
             # ========================================
             context = self._build_context(case_result, special_data, email, question_normalized, query_fields=query_fields)
 
-            logger.info(f"[컨텍스트 길이] {len(context)} 글자")
-
-            # [V2 변경] 임베딩 캐시 통계 로깅
             cache_stats = self._embedding_cache.stats
-            logger.info(f"[V2 캐시] {cache_stats}")
+            logger.info(f"[5단계 컨텍스트] {len(context)}자 | 캐시: {cache_stats}")
 
             # ========================================
             # 5단계: LLM 리포트 생성
@@ -3068,7 +3140,7 @@ class ChatbotService:
             answer = response.choices[0].message.content
             summary_title = question[:30] + "..." if len(question) > 30 else question
 
-            logger.info(f"[5단계] 답변 생성 완료: {summary_title}")
+            logger.info(f"[6단계 완료] {summary_title} ({len(answer)}자)")
             
             # ========================================
             # [추가 기능] 건축물 용도 설명 추가
@@ -3095,7 +3167,7 @@ class ChatbotService:
                     
                     answer += "\n"
                 
-                logger.info(f"[건축물 용도 설명] {len(facility_defs)}개 추가됨")
+                logger.info(f"[6단계 부록] 건축물 용도 설명 {len(facility_defs)}개 추가")
 
             return {
                 "summaryTitle": summary_title,
@@ -3105,7 +3177,7 @@ class ChatbotService:
             }
 
         except Exception as e:
-            logger.error(f"챗봇 답변 생성 실패: {e}")
+            logger.error(f"[오류] 답변 생성 실패: {e}")
             import traceback
             traceback.print_exc()
             return {

@@ -75,3 +75,36 @@
   white-space: nowrap;
   border-top: 1px solid #F3F4F6;
 }
+
+/* Markdown 스타일 */
+.mdP {
+  margin: 0.25rem 0;
+}
+
+.mdP:first-child {
+  margin-top: 0;
+}
+
+.mdP:last-child {
+  margin-bottom: 0;
+}
+
+.mdStrong {
+  font-weight: 700;
+}
+
+.mdUl,
+.mdOl {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.mdLi {
+  margin: 0.15rem 0;
+}
+
+.mdLink {
+  color: #2563EB;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
