@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -630,7 +630,7 @@ public class DataInitializer implements CommandLineRunner {
                         // FloorPlan 엔티티 생성
                         FloorPlan floorPlan = FloorPlan.builder()
                                 .user(defaultUser)
-                                .createdAt(LocalDate.now())
+                                .createdAt(LocalDateTime.now())
                                 .name(documentId)
                                 .imageUrl("/image/floorplan/" + documentId + ".png")
                                 .assessmentJson(null) // 필요시 추가

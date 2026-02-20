@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { FiUser } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 import { useTheme } from '@/shared/contexts/ThemeContext';
@@ -28,7 +29,26 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             color: colors.textPrimary,
           }}
         >
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p className={styles.mdP}>{children}</p>,
+                strong: ({ children }) => <strong className={styles.mdStrong}>{children}</strong>,
+                ul: ({ children }) => <ul className={styles.mdUl}>{children}</ul>,
+                ol: ({ children }) => <ol className={styles.mdOl}>{children}</ol>,
+                li: ({ children }) => <li className={styles.mdLi}>{children}</li>,
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer" className={styles.mdLink}>
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
           {message.images && message.images.length > 0 && (
             <div className={styles.imageGrid}>
               {message.images.map((img, idx) => (

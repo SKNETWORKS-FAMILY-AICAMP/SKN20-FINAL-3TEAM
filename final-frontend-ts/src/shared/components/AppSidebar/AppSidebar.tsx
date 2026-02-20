@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BiChat } from 'react-icons/bi';
-import { FiEdit, FiTrash2, FiChevronLeft, FiChevronRight, FiUser } from 'react-icons/fi';
+import { FiEdit2, FiEdit, FiTrash2, FiChevronLeft, FiChevronRight, FiUser, FiCheck, FiX } from 'react-icons/fi';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import type { ChatSession } from '@/features/chat/types/chat.types';
 import styles from './AppSidebar.module.css';
@@ -13,6 +13,7 @@ interface AppSidebarProps {
   onSessionClick?: (sessionId: string) => void;
   onNewChat?: () => void;
   onDeleteSession?: (sessionId: string) => void;
+  onRenameSession?: (sessionId: string, newName: string) => void;
   onClearAll?: () => void;
 }
 
@@ -22,6 +23,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
   onSessionClick,
   onNewChat,
   onDeleteSession,
+  onRenameSession,
   onClearAll,
 }) => {
   const { colors } = useTheme();
@@ -29,9 +31,37 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const isChat = location.pathname === '/main';
   const isFloorPlan = location.pathname === '/file-upload';
+
+  const startEditing = (session: ChatSession) => {
+    setEditingSessionId(session.id);
+    setEditingName(session.title);
+  };
+
+  const confirmRename = () => {
+    if (editingSessionId && editingName.trim()) {
+      onRenameSession?.(editingSessionId, editingName.trim());
+    }
+    setEditingSessionId(null);
+    setEditingName('');
+  };
+
+  const cancelEditing = () => {
+    setEditingSessionId(null);
+    setEditingName('');
+  };
+
+  useEffect(() => {
+    if (editingSessionId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingSessionId]);
 
   return (
     <div
@@ -119,7 +149,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
             {sessions.map((session) => (
               <div
                 key={session.id}
-                onClick={() => onSessionClick?.(session.id)}
+                onClick={() => {
+                  if (editingSessionId !== session.id) onSessionClick?.(session.id);
+                }}
                 onMouseEnter={() => setHoveredSession(session.id)}
                 onMouseLeave={() => setHoveredSession(null)}
                 className={styles.sessionItem}
@@ -128,28 +160,79 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
                     currentSessionId === session.id ? colors.inputBg : 'transparent',
                 }}
               >
-                <div className={styles.sessionContent}>
-                  <span className={styles.sessionIcon}>
-                    <BiChat size={16} />
-                  </span>
-                  <span
-                    className={styles.sessionTitle}
-                    style={{ color: colors.textPrimary }}
-                  >
-                    {session.title}
-                  </span>
-                </div>
-                {hoveredSession === session.id && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteSession?.(session.id);
-                    }}
-                    className={styles.deleteBtn}
-                    style={{ color: colors.textSecondary }}
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
+                {editingSessionId === session.id ? (
+                  /* 인라인 편집 모드 */
+                  <div className={styles.sessionEditRow}>
+                    <input
+                      ref={editInputRef}
+                      className={styles.sessionEditInput}
+                      style={{ color: colors.textPrimary, borderColor: colors.primary }}
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') confirmRename();
+                        if (e.key === 'Escape') cancelEditing();
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); confirmRename(); }}
+                      className={styles.editActionBtn}
+                      style={{ color: colors.primary }}
+                      title="확인"
+                    >
+                      <FiCheck size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); cancelEditing(); }}
+                      className={styles.editActionBtn}
+                      style={{ color: colors.textSecondary }}
+                      title="취소"
+                    >
+                      <FiX size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  /* 일반 모드 */
+                  <>
+                    <div className={styles.sessionContent}>
+                      <span className={styles.sessionIcon}>
+                        <BiChat size={16} />
+                      </span>
+                      <span
+                        className={styles.sessionTitle}
+                        style={{ color: colors.textPrimary }}
+                      >
+                        {session.title}
+                      </span>
+                    </div>
+                    {hoveredSession === session.id && (
+                      <div className={styles.sessionActions}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEditing(session);
+                          }}
+                          className={styles.deleteBtn}
+                          style={{ color: colors.textSecondary }}
+                          title="이름 수정"
+                        >
+                          <FiEdit2 size={14} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteSession?.(session.id);
+                          }}
+                          className={styles.deleteBtn}
+                          style={{ color: colors.textSecondary }}
+                          title="삭제"
+                        >
+                          <FiTrash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ))}

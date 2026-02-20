@@ -127,6 +127,7 @@ export interface UserInfoResponse {
   name: string;
   phonenumber: number;
   role: string;
+  create_at?: string;
 }
 
 export interface ProfileUpdateResponse {

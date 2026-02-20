@@ -215,12 +215,21 @@ const ChatPage: React.FC = () => {
   // ============================================
   // 스크롤
   // ============================================
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const prevMessageCountRef = useRef(0);
+
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: instant ? 'instant' : 'smooth',
+    });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const prevCount = prevMessageCountRef.current;
+    const currCount = messages.length;
+    // 메시지가 1~2개만 늘었으면 smooth, 그 외(채팅방 전환/초기로드)는 instant
+    const isNewMessage = prevCount > 0 && currCount - prevCount <= 2;
+    scrollToBottom(!isNewMessage);
+    prevMessageCountRef.current = currCount;
   }, [messages]);
 
   // ============================================
@@ -484,6 +493,7 @@ const ChatPage: React.FC = () => {
         onSessionClick={handleSessionClick}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
         onClearAll={handleClearAll}
       />
 
