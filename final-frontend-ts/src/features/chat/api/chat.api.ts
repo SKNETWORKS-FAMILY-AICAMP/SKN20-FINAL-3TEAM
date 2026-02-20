@@ -55,7 +55,7 @@ export const sendChat = async (params: ChatRequest): Promise<ChatResponse> => {
       formData,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
+        timeout: 600000,
       }
     );
     return response.data;

@@ -43,6 +43,10 @@ public class ChatHistory {
     @Column(columnDefinition = "TEXT")
     private String answer;
 
+    // 도면 이미지 URL 목록 (JSON 문자열로 저장, 예: ["/api/admin/floorplan/1/image","/api/admin/floorplan/2/image"])
+    @Column(columnDefinition = "TEXT")
+    private String imageUrls;
+
     // 2. LocalDateTime으로 변경 (정밀한 순서 정렬)
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreationTimestamp

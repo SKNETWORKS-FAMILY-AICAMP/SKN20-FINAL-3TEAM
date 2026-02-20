@@ -223,23 +223,22 @@ public class AdminService {
     public byte[] getFloorPlanImage(Long floorplanid) throws IOException {
         FloorPlan fp = floorPlanRepository.findById(floorplanid)
                 .orElseThrow(() -> new RuntimeException("도면을 찾을 수 없습니다."));
-        
+
         String imageUrl = fp.getImageUrl();
         if (imageUrl == null || imageUrl.isEmpty()) {
             throw new RuntimeException("이미지 URL이 없습니다.");
         }
-        
-        // /image/floorplan/xxx.png 형식에서 image/floorplan/xxx.png로 변환
+
+        // /image/floorplan/xxx.png → src/main/resources/image/floorplan/xxx.png (저장 경로와 동일)
         String resourcePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
-        
-        ClassPathResource resource = new ClassPathResource(resourcePath);
-        if (!resource.exists()) {
-            throw new RuntimeException("이미지 파일을 찾을 수 없습니다: " + resourcePath);
+        String absolutePath = System.getProperty("user.dir") + "/src/main/resources/" + resourcePath;
+
+        java.io.File file = new java.io.File(absolutePath);
+        if (!file.exists()) {
+            throw new RuntimeException("이미지 파일을 찾을 수 없습니다: " + absolutePath);
         }
-        
-        try (InputStream inputStream = resource.getInputStream()) {
-            return StreamUtils.copyToByteArray(inputStream);
-        }
+
+        return java.nio.file.Files.readAllBytes(file.toPath());
     }
 
     /**

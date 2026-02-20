@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,7 +97,17 @@ public class ChatbotController {
 	    }
 
 	    String answer = (String) result.get("answer");
-	    System.out.println(answer);
+
+	    // image_urls를 JSON 문자열로 변환
+	    String imageUrlsJson = null;
+	    List<?> imageUrls = (List<?>) result.get("image_urls");
+	    if (imageUrls != null && !imageUrls.isEmpty()) {
+	        try {
+	            imageUrlsJson = new ObjectMapper().writeValueAsString(imageUrls);
+	        } catch (Exception e) {
+	            e.printStackTrace();
+	        }
+	    }
 
 	    Long responseChatRoomId = chatRoomId;
 
@@ -110,6 +122,7 @@ public class ChatbotController {
 	        ChatHistory chatHistory = new ChatHistory();
 	        chatHistory.setAnswer(answer);
 	        chatHistory.setQuestion(question);
+	        chatHistory.setImageUrls(imageUrlsJson);
 	        chatHistory.setChatRoom(chatRoom);
 	        chatHistoryRep.save(chatHistory);
 	    } else {
@@ -118,14 +131,16 @@ public class ChatbotController {
 	        ChatHistory chatHistory = new ChatHistory();
 	        chatHistory.setAnswer(answer);
 	        chatHistory.setQuestion(question);
+	        chatHistory.setImageUrls(imageUrlsJson);
 	        chatHistory.setChatRoom(chatRoom);
 	        chatHistoryRep.save(chatHistory);
 	    }
-
+	    
 	    Map<String, Object> response = new HashMap<>();
 	    response.put("answer", answer);
 	    response.put("chatRoomId", responseChatRoomId);
-
+	    response.put("image_urls", result.get("image_urls"));
+	    System.out.println(response);
 	    return ResponseEntity.ok(response);
 	}
 	

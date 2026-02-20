@@ -392,14 +392,22 @@ public class DataInitializer implements CommandLineRunner {
                             continue;
                         }
 
-                        // embedding 추출 (embedding.values 배열)
+                        // embedding 추출 (배열 또는 embedding.values 형식 모두 지원)
                         float[] embedding = null;
-                        if (node.has("embedding") && node.get("embedding").has("values")) {
-                            JsonNode valuesNode = node.get("embedding").get("values");
-                            if (valuesNode.isArray()) {
-                                int dimension = valuesNode.size();
-                                embedding = new float[dimension];
-                                for (int i = 0; i < dimension; i++) {
+                        if (node.has("embedding")) {
+                            JsonNode embeddingNode = node.get("embedding");
+                            // embedding이 바로 배열인 경우
+                            if (embeddingNode.isArray()) {
+                                embedding = new float[embeddingNode.size()];
+                                for (int i = 0; i < embeddingNode.size(); i++) {
+                                    embedding[i] = (float) embeddingNode.get(i).asDouble();
+                                }
+                            }
+                            // embedding.values 형식인 경우
+                            else if (embeddingNode.has("values") && embeddingNode.get("values").isArray()) {
+                                JsonNode valuesNode = embeddingNode.get("values");
+                                embedding = new float[valuesNode.size()];
+                                for (int i = 0; i < valuesNode.size(); i++) {
                                     embedding[i] = (float) valuesNode.get(i).asDouble();
                                 }
                             }

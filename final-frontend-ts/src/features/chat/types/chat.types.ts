@@ -18,6 +18,7 @@ export interface ChatHistory {
   id: number;
   question: string;
   answer: string;
+  imageUrls: string | null;  // JSON 문자열 (예: '["/api/admin/floorplan/1/image"]')
   createdAt: string;
 }
 
