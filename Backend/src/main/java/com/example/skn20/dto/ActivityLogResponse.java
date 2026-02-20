@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -18,5 +18,5 @@ public class ActivityLogResponse {
     private String userEmail;   // 사용자 이메일
     private String action;      // "회원가입", "도면 업로드", "챗봇 사용" 등
     private String details;     // 상세 정보
-    private LocalDate createdAt; // 생성 날짜
+    private LocalDateTime createdAt; // 생성 날짜
 }

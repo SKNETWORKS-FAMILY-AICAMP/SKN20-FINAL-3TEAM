@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -34,7 +35,7 @@ public class AdminService {
     public AdminStatsResponse getAdminStats() {
         Long userCount = userRepository.count();
         Long floorPlanCount = floorPlanRepository.count();
-        LocalDate sevenDaysAgo = LocalDate.now().minusDays(7);
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
         Long recentFloorPlan = floorPlanRepository.countRecentFloorPlans(sevenDaysAgo);
         
         // 챗봇 통계
@@ -104,7 +105,7 @@ public class AdminService {
                     .userEmail(ch.getChatRoom().getUser().getEmail())
                     .action("챗봇 질문")
                     .details("[" + ch.getChatRoom().getName() + "] " + preview)
-                    .createdAt(ch.getCreatedAt().toLocalDate())
+                    .createdAt(ch.getCreatedAt())
                     .build());
         }
 
@@ -170,10 +171,10 @@ public class AdminService {
                         }
                     }
                     // 날짜 범위
-                    if (startDate != null && fp.getCreatedAt().isBefore(startDate)) {
+                    if (startDate != null && fp.getCreatedAt().isBefore(startDate.atStartOfDay())) {
                         return false;
                     }
-                    if (endDate != null && fp.getCreatedAt().isAfter(endDate)) {
+                    if (endDate != null && fp.getCreatedAt().isAfter(endDate.atTime(LocalTime.MAX))) {
                         return false;
                     }
                     // 방 개수 필터

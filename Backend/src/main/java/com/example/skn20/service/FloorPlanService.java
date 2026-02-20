@@ -21,7 +21,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -141,7 +141,7 @@ public class FloorPlanService {
 				.imageUrl(savedImagePath)  // 저장된 이미지 경로
 				.assessmentJson(request.getAssessmentJson())  // 3번 저장
 				.user(user)
-				.createdAt(LocalDate.now())
+				.createdAt(LocalDateTime.now())
 				.build();
 
 		FloorPlan savedPlan = floorPlanRepository.save(floorPlan);
