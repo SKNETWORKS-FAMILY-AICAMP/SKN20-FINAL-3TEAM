@@ -508,13 +508,15 @@ Authorization: Bearer {token}  (선택)
 |----------|------|------|------|
 | chatRoomId | Long | ❌ | 채팅방 ID (없으면 새 방 생성) |
 | question | String | ✅ | 질문 내용 |
+| image | File | ❌ | 도면 이미지 (PNG, JPG) - multipart/form-data로 전송 |
 
 **Response 200 (성공)**
 
 ```json
 {
   "answer": "건축법에 따르면...",
-  "chatRoomId": 123
+  "chatRoomId": 123,
+  "image_urls": ["/api/admin/floorplan/1/image", "/api/admin/floorplan/2/image"]
 }
 ```
 
@@ -591,12 +593,14 @@ Authorization: Bearer {token}
     "id": 1,
     "question": "건축법규란?",
     "answer": "건축법규는...",
+    "imageUrls": null,
     "createdAt": "2024-01-15T10:30:00"
   },
   {
     "id": 2,
-    "question": "채광 기준은?",
-    "answer": "채광 기준은...",
+    "question": "방 3개 도면 찾아줘",
+    "answer": "[도면 #1] 3베이 구조의...",
+    "imageUrls": "[\"/api/admin/floorplan/1/image\"]",
     "createdAt": "2024-01-15T10:31:00"
   }
 ]
@@ -809,28 +813,32 @@ Content-Type: application/json
 
 ---
 
-### 5.3 RAG 챗봇 질의
+### 5.3 멀티에이전트 오케스트레이터
 
 ```http
-POST /ask
-Content-Type: application/json
+POST /orchestrate
+Content-Type: multipart/form-data
 ```
 
 **Request**
 
-```json
-{
-  "email": "user@example.com",
-  "question": "건축법규에서 채광 기준은?"
-}
-```
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| email | String | ✅ | 사용자 이메일 |
+| question | String | ✅ | 질문 내용 |
+| file | File | ❌ | 도면 이미지 (PNG, JPG) |
 
 **Response 200 (성공)**
 
 ```json
 {
-  "summaryTitle": "건축법규 채광 기준",
-  "answer": "건축법 시행령 제51조에 따르면..."
+  "intent_type": "floorplan_search",
+  "agent_used": "floorplan_search",
+  "response": {
+    "summaryTitle": "도면 검색 결과",
+    "answer": "검색된 도면입니다.\n[도면 #1] 3베이 구조의...",
+    "floorplan_ids": [1, 2]
+  }
 }
 ```
 
@@ -1038,7 +1046,7 @@ CREATE TABLE floorplan (
 CREATE TABLE floorplan_analysis (
   id BIGSERIAL PRIMARY KEY,
   floorplan_id BIGINT UNIQUE REFERENCES floorplan(id),
-  windowless_ratio FLOAT,
+  windowless_count INTEGER,
   has_special_space BOOLEAN,
   bay_count INTEGER,
   balcony_ratio FLOAT,
@@ -1075,6 +1083,7 @@ CREATE TABLE chat_history (
   chatroom_id BIGINT REFERENCES chatroom(id),
   question TEXT,
   answer TEXT,
+  image_urls TEXT,          -- 도면 이미지 URL JSON 문자열 (예: '["/api/admin/floorplan/1/image"]')
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -1125,7 +1134,7 @@ CREATE TABLE chat_history (
 │  엔드포인트:                                                     │
 │  - POST /analyze           : multipart/form-data (이미지 전송)   │
 │  - POST /generate-metadata : application/json                   │
-│  - POST /ask               : application/json                   │
+│  - POST /orchestrate       : multipart/form-data                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1165,7 +1174,7 @@ CREATE TABLE chat_history (
 | **AI 분석 JSON** | PostgreSQL `floorplan.assessment_json` | TEXT | llmAnalysisJson 전체 |
 | **13개 분석 지표** | PostgreSQL `floorplan_analysis` 테이블 | 각 컬럼 | 개별 필드로 저장 |
 | **임베딩 벡터** | PostgreSQL `floorplan_analysis.embedding` | vector(1024) | pgvector 타입 (Qwen3-Embedding-0.6B) |
-| **채팅 기록** | PostgreSQL `chat_history` 테이블 | TEXT | question, answer 컬럼 |
+| **채팅 기록** | PostgreSQL `chat_history` 테이블 | TEXT | question, answer, image_urls 컬럼 |
 
 ### 10.2 프론트엔드 저장소
 
