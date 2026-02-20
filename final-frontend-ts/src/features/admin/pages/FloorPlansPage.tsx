@@ -462,10 +462,10 @@ export function FloorPlansPage() {
         </div>
       </div>
 
-      {/* 도면 이미지 모달 */}
+      {/* 도면 상세 모달 */}
       {detailPlan && (
         <div className={styles.modalOverlay} onClick={() => setDetailPlan(null)}>
-          <div className={styles.imageModal} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.detailModal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3>{detailPlan.name}</h3>
               <div className={styles.imageControls}>
@@ -484,51 +484,84 @@ export function FloorPlansPage() {
                 <FiX />
               </button>
             </div>
-            <div 
-              ref={imageContainerRef}
-              className={styles.imageModalBody}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              style={{ cursor: imageScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
-            >
-              {detailPlan.imageUrl ? (
-                <img 
-                  src={`${BASE_URL}/api/admin/floorplan/${detailPlan.id}/image`} 
-                  alt={detailPlan.name}
-                  style={{ 
-                    transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
-                    transition: isDragging ? 'none' : 'transform 0.2s ease',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    display: 'block',
-                    userSelect: 'none',
-                    pointerEvents: 'none'
-                  }}
-                  onError={(e) => {
-                    console.error('이미지 로드 실패:', detailPlan.imageUrl);
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    const container = (e.target as HTMLImageElement).parentElement;
-                    if (container) {
-                      container.innerHTML = `
-                        <div style="text-align: center; padding: 40px; color: #999;">
-                          <p>이미지를 불러올 수 없습니다.</p>
-                          <p style="font-size: 12px; margin-top: 10px;">${detailPlan.imageUrl}</p>
-                        </div>
-                      `;
-                    }
-                  }}
-                  onLoad={() => {
-                    console.log('이미지 로드 성공:', detailPlan.imageUrl);
-                  }}
-                />
-              ) : (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                  <p>이미지 URL이 없습니다.</p>
+            <div className={styles.detailModalBody}>
+              {/* 좌측: 이미지 */}
+              <div
+                ref={imageContainerRef}
+                className={styles.detailImageSection}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                style={{ cursor: imageScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+              >
+                {detailPlan.imageUrl ? (
+                  <img
+                    src={`${BASE_URL}/api/admin/floorplan/${detailPlan.id}/image`}
+                    alt={detailPlan.name}
+                    style={{
+                      transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
+                      transition: isDragging ? 'none' : 'transform 0.2s ease',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                      userSelect: 'none',
+                      pointerEvents: 'none'
+                    }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const container = (e.target as HTMLImageElement).parentElement;
+                      if (container) {
+                        container.innerHTML = `
+                          <div style="text-align: center; padding: 40px; color: #999;">
+                            <p>이미지를 불러올 수 없습니다.</p>
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                    <p>이미지 URL이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* 우측: 상세 정보 */}
+              <div className={styles.detailInfoSection}>
+                <div className={styles.detailInfoItem}>
+                  <span className={styles.detailLabel}>업로더</span>
+                  <span className={styles.detailValue}>{detailPlan.user?.name} ({detailPlan.user?.email})</span>
                 </div>
-              )}
+                <div className={styles.detailInfoItem}>
+                  <span className={styles.detailLabel}>업로드일</span>
+                  <span className={styles.detailValue}>
+                    {detailPlan.createdAt ? new Date(detailPlan.createdAt).toLocaleString('ko-KR') : '-'}
+                  </span>
+                </div>
+                {detailPlan.roomCount != null && (
+                  <div className={styles.detailInfoItem}>
+                    <span className={styles.detailLabel}>공간 수</span>
+                    <span className={styles.detailValue}>{detailPlan.roomCount}개</span>
+                  </div>
+                )}
+
+                {detailPlan.assessmentJson && (
+                  <div className={styles.detailAssessment}>
+                    <span className={styles.detailLabel}>분석 결과</span>
+                    <pre className={styles.detailJsonContent}>
+                      {(() => {
+                        try {
+                          return JSON.stringify(JSON.parse(detailPlan.assessmentJson), null, 2);
+                        } catch {
+                          return detailPlan.assessmentJson;
+                        }
+                      })()}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

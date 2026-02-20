@@ -39,6 +39,7 @@ public class SecurityConfig {
 
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+						.requestMatchers("/error").permitAll()
 						.requestMatchers("/image/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/admin/floorplan/*/image").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/floorplan/analyze").permitAll()
