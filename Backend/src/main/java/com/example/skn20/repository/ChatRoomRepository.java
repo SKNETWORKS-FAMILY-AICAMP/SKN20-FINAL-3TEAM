@@ -9,7 +9,7 @@ import com.example.skn20.entity.User;
 
 @Repository
 public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
-	List<ChatRoom> findAllByUser(User user);
+	List<ChatRoom> findAllByUserOrderByCreatedAtDesc(User user);
 	ChatRoom findChatRoomById(Long id);
 	void deleteAllById(Long id);
 }

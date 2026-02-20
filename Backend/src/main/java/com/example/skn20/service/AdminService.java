@@ -136,7 +136,7 @@ public class AdminService {
      * 전체 도면 목록 조회
      */
     public List<AdminFloorPlanResponse> getAllFloorPlans() {
-        List<FloorPlan> floorPlans = floorPlanRepository.findAll();
+        List<FloorPlan> floorPlans = floorPlanRepository.findAllByOrderByCreatedAtDesc();
         return floorPlans.stream()
                 .map(this::convertToAdminFloorPlanResponse)
                 .collect(Collectors.toList());
@@ -153,7 +153,7 @@ public class AdminService {
             Integer minRooms,
             Integer maxRooms) {
         
-        List<FloorPlan> floorPlans = floorPlanRepository.findAll();
+        List<FloorPlan> floorPlans = floorPlanRepository.findAllByOrderByCreatedAtDesc();
 
         // 필터링
         return floorPlans.stream()
@@ -261,6 +261,7 @@ public class AdminService {
                         .build())
                 .createdAt(fp.getCreatedAt())
                 .roomCount(roomCount)
+                .assessmentJson(fp.getAssessmentJson())
                 .build();
     }
 }

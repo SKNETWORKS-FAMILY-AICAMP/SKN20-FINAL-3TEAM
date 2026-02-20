@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BiChat } from 'react-icons/bi';
-import { FiImage, FiCalendar } from 'react-icons/fi';
+import { FiImage, FiCalendar, FiX } from 'react-icons/fi';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { logout as logoutUtil, formatPhoneNumber, parsePhoneNumber } from '@/shared/utils/tokenManager';
 import { updateProfile, getCurrentUser } from '@/features/auth/api/auth.api';
 import { getChatRooms } from '@/features/chat/api/chat.api';
+import { getMyFloorPlans, getFloorPlanDetail, getFloorPlanImage } from './api/profile.api';
 import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
-import type { User } from './types/profile.types';
+import type { User, MyFloorPlan, FloorPlanDetail } from './types/profile.types';
 import type { ChatRoom } from '@/features/chat/types/chat.types';
 import styles from './ProfilePage.module.css';
 
@@ -18,6 +19,11 @@ const ProfilePage: React.FC = () => {
   const [phoneDisplay, setPhoneDisplay] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const [floorPlans, setFloorPlans] = useState<MyFloorPlan[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalDetail, setModalDetail] = useState<FloorPlanDetail | null>(null);
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   // 현재 날짜 포맷
   const today = new Date();
@@ -26,9 +32,10 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [userInfo, rooms] = await Promise.all([
+        const [userInfo, rooms, plans] = await Promise.all([
           getCurrentUser(),
           getChatRooms().catch(() => []),
+          getMyFloorPlans().catch(() => []),
         ]);
         setUser({
           id: 0,
@@ -40,6 +47,7 @@ const ProfilePage: React.FC = () => {
         });
         setPhoneDisplay(formatPhoneNumber(userInfo.phonenumber));
         setChatRooms(rooms);
+        setFloorPlans(plans);
       } catch (err) {
         console.error('사용자 정보 불러오기 실패:', err);
         alert('사용자 정보를 불러올 수 없습니다.');
@@ -69,6 +77,33 @@ const ProfilePage: React.FC = () => {
       navigate('/login');
     }
   };
+
+  const handleFloorPlanClick = useCallback(async (planId: number) => {
+    setModalLoading(true);
+    setModalOpen(true);
+    try {
+      const [detail, imageUrl] = await Promise.all([
+        getFloorPlanDetail(planId),
+        getFloorPlanImage(planId),
+      ]);
+      setModalDetail(detail);
+      setModalImageUrl(imageUrl);
+    } catch (err) {
+      console.error('도면 상세 조회 실패:', err);
+      setModalOpen(false);
+    } finally {
+      setModalLoading(false);
+    }
+  }, []);
+
+  const handleModalClose = useCallback(() => {
+    setModalOpen(false);
+    if (modalImageUrl) {
+      URL.revokeObjectURL(modalImageUrl);
+    }
+    setModalDetail(null);
+    setModalImageUrl(null);
+  }, [modalImageUrl]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -257,7 +292,7 @@ const ProfilePage: React.FC = () => {
               </div>
             </div>
 
-            {/* 도면 분석 내역 (placeholder) */}
+            {/* 도면 분석 내역 */}
             <div
               className={styles.historyCard}
               style={{ backgroundColor: '#FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
@@ -266,16 +301,95 @@ const ProfilePage: React.FC = () => {
                 <h3 className={styles.historyTitle} style={{ color: colors.textPrimary }}>
                   <FiImage size={18} /> 도면 분석 내역
                 </h3>
+                <span className={styles.historyCount} style={{ color: colors.textSecondary }}>
+                  {floorPlans.length}개
+                </span>
               </div>
               <div className={styles.historyList}>
-                <p className={styles.emptyText} style={{ color: colors.textSecondary }}>
-                  도면 분석 내역은 준비 중입니다.
-                </p>
+                {floorPlans.length === 0 ? (
+                  <p className={styles.emptyText} style={{ color: colors.textSecondary }}>
+                    아직 도면 분석 내역이 없습니다.
+                  </p>
+                ) : (
+                  floorPlans.slice(0, 10).map((plan) => (
+                    <div
+                      key={plan.id}
+                      className={styles.historyItem}
+                      onClick={() => handleFloorPlanClick(plan.id)}
+                      style={{ borderBottom: `1px solid ${colors.border}` }}
+                    >
+                      <div className={styles.historyItemContent}>
+                        <span className={styles.historyItemTitle} style={{ color: colors.textPrimary }}>
+                          {plan.name || '제목 없음'}
+                        </span>
+                        <span className={styles.historyItemDate} style={{ color: colors.textSecondary }}>
+                          <FiCalendar size={12} /> {formatDate(plan.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 도면 상세 모달 */}
+      {modalOpen && (
+        <div className={styles.modalOverlay} onClick={handleModalClose}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button className={styles.modalCloseBtn} onClick={handleModalClose}>
+              <FiX size={20} />
+            </button>
+
+            {modalLoading ? (
+              <div className={styles.modalLoading}>
+                <p>불러오는 중...</p>
+              </div>
+            ) : modalDetail ? (
+              <>
+                {/* 이미지 영역 */}
+                <div className={styles.modalImageSection}>
+                  {modalImageUrl ? (
+                    <img
+                      src={modalImageUrl}
+                      alt={modalDetail.name}
+                      className={styles.modalImage}
+                    />
+                  ) : (
+                    <div className={styles.modalNoImage}>이미지 없음</div>
+                  )}
+                </div>
+
+                {/* 정보 영역 */}
+                <div className={styles.modalInfoSection}>
+                  <h3 className={styles.modalTitle}>{modalDetail.name}</h3>
+                  <p className={styles.modalDate}>
+                    <FiCalendar size={14} />
+                    {new Date(modalDetail.createdAt).toLocaleString('ko-KR')}
+                  </p>
+
+                  {modalDetail.assessmentJson && (
+                    <div className={styles.modalAssessment}>
+                      <h4 className={styles.modalSubtitle}>분석 결과</h4>
+                      <pre className={styles.modalJsonContent}>
+                        {(() => {
+                          try {
+                            return JSON.stringify(JSON.parse(modalDetail.assessmentJson), null, 2);
+                          } catch {
+                            return modalDetail.assessmentJson;
+                          }
+                        })()}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
