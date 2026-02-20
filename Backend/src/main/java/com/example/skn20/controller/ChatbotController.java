@@ -45,7 +45,7 @@ public class ChatbotController {
 	@PostMapping("/sessionuser")
 	public ResponseEntity<List<ChatRoom>> SesstoinUser(@AuthenticationPrincipal UD user) {
 		User userinfo = userservice.findByEmail(user.getEmail());
-		List<ChatRoom> chatRooms = chatRoomRep.findAllByUser(userinfo);
+		List<ChatRoom> chatRooms = chatRoomRep.findAllByUserOrderByCreatedAtDesc(userinfo);
 
 		return ResponseEntity.ok(chatRooms);
 	}
@@ -186,7 +186,7 @@ public class ChatbotController {
 	@Transactional
 	public ResponseEntity<String> deleteAllRooms(@AuthenticationPrincipal UD user) {
 		User userinfo = userservice.findByEmail(user.getEmail());
-		List<ChatRoom> chatRooms = chatRoomRep.findAllByUser(userinfo);
+		List<ChatRoom> chatRooms = chatRoomRep.findAllByUserOrderByCreatedAtDesc(userinfo);
 		for (ChatRoom chatRoom : chatRooms) {
 			chatHistoryRep.deleteAllByChatRoom(chatRoom);
 			chatRoomRep.delete(chatRoom);
