@@ -105,7 +105,7 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
         const urls: string[] = JSON.parse(item.imageUrls);
         const { summary, descriptions } = parseFloorplanAnswer(item.answer);
         images = urls.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
+          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
           name: `도면 #${idx + 1}`,
           description: descriptions[idx] || '',
         }));
@@ -423,7 +423,7 @@ const ChatPage: React.FC = () => {
       if (hasFloorplans) {
         const { summary, descriptions } = parseFloorplanAnswer(response.answer);
         floorplanImages = response.image_urls!.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
+          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
           name: `도면 #${idx + 1}`,
           description: descriptions[idx] || '',
         }));

@@ -20,6 +20,7 @@ import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -43,6 +44,12 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
 
     private static final int BATCH_SIZE = 1000;
+
+    @Value("${aws.s3.bucket}")
+    private String s3Bucket;
+
+    @Value("${aws.region}")
+    private String s3Region;
 
     private final LandCharRepository landCharRepository;
     private final LawRepository lawRepository;
@@ -627,12 +634,13 @@ public class DataInitializer implements CommandLineRunner {
                             }
                         }
 
-                        // FloorPlan 엔티티 생성
+                        // FloorPlan 엔티티 생성 (S3 URL 형식)
+                        String s3ImageUrl = "https://" + s3Bucket + ".s3." + s3Region + ".amazonaws.com/floorplan/" + documentId + ".PNG";
                         FloorPlan floorPlan = FloorPlan.builder()
                                 .user(defaultUser)
                                 .createdAt(LocalDateTime.now())
                                 .name(documentId)
-                                .imageUrl("/image/floorplan/" + documentId + ".png")
+                                .imageUrl(s3ImageUrl)
                                 .assessmentJson(null) // 필요시 추가
                                 .build();
 
