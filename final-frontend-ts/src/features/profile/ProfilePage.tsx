@@ -417,6 +417,11 @@ const ProfilePage: React.FC = () => {
                   {pwError && (
                     <p className={styles.pwMessage} style={{ color: '#DC2626' }}>{pwError}</p>
                   )}
+                  {verifyTimer === 0 && !pwError && (
+                    <p className={styles.pwMessage} style={{ color: '#DC2626' }}>
+                      인증 시간이 만료되었습니다. 다시 시도해주세요.
+                    </p>
+                  )}
                   <div className={styles.buttonGroup}>
                     <button
                       onClick={handleCancelPwChange}
@@ -425,14 +430,25 @@ const ProfilePage: React.FC = () => {
                     >
                       취소
                     </button>
-                    <button
-                      onClick={handleVerifyCode}
-                      className={styles.saveBtn}
-                      style={{ backgroundColor: colors.primary }}
-                      disabled={pwLoading || verifyTimer === 0}
-                    >
-                      {pwLoading ? '확인 중...' : '인증 확인'}
-                    </button>
+                    {verifyTimer === 0 ? (
+                      <button
+                        onClick={handleSendVerification}
+                        className={styles.saveBtn}
+                        style={{ backgroundColor: colors.primary }}
+                        disabled={pwLoading}
+                      >
+                        {pwLoading ? '발송 중...' : '재발송'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleVerifyCode}
+                        className={styles.saveBtn}
+                        style={{ backgroundColor: colors.primary }}
+                        disabled={pwLoading || verifyTimer === 0}
+                      >
+                        {pwLoading ? '확인 중...' : '인증 확인'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
