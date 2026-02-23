@@ -3066,7 +3066,7 @@ class ChatbotService:
             facility_defs = self._get_facility_definitions(question, activities)
             
             if facility_defs:
-                answer += "\n\n# 건축물 용도 설명\n\n"
+                answer += "\n\n## 건축물 용도 설명\n\n"
 
                 for facility in facility_defs:
                     answer += f"**{facility['facility_name']}** ({facility['category_name']})\n\n"
