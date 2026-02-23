@@ -6,7 +6,7 @@ import { useTheme } from '@/shared/contexts/ThemeContext';
 import { logout as logoutUtil, formatPhoneNumber, parsePhoneNumber } from '@/shared/utils/tokenManager';
 import { updateProfile, getCurrentUser } from '@/features/auth/api/auth.api';
 import { getChatRooms } from '@/features/chat/api/chat.api';
-import { getMyFloorPlans, getFloorPlanDetail, getFloorPlanImage } from './api/profile.api';
+import { getMyFloorPlans, getFloorPlanDetail } from './api/profile.api';
 import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import type { User, MyFloorPlan, FloorPlanDetail } from './types/profile.types';
 import type { ChatRoom } from '@/features/chat/types/chat.types';
@@ -82,12 +82,9 @@ const ProfilePage: React.FC = () => {
     setModalLoading(true);
     setModalOpen(true);
     try {
-      const [detail, imageUrl] = await Promise.all([
-        getFloorPlanDetail(planId),
-        getFloorPlanImage(planId),
-      ]);
+      const detail = await getFloorPlanDetail(planId);
       setModalDetail(detail);
-      setModalImageUrl(imageUrl);
+      setModalImageUrl(detail.imageUrl);
     } catch (err) {
       console.error('도면 상세 조회 실패:', err);
       setModalOpen(false);
@@ -98,12 +95,9 @@ const ProfilePage: React.FC = () => {
 
   const handleModalClose = useCallback(() => {
     setModalOpen(false);
-    if (modalImageUrl) {
-      URL.revokeObjectURL(modalImageUrl);
-    }
     setModalDetail(null);
     setModalImageUrl(null);
-  }, [modalImageUrl]);
+  }, []);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
