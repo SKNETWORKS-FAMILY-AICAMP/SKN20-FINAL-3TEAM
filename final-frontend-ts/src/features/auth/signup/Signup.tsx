@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FiMail, FiLock, FiKey } from 'react-icons/fi';
 import { BsCheckCircle } from 'react-icons/bs';
 import Input from '@/shared/components/Input/Input';
 import Button from '@/shared/components/Button/Button';
 import { useTheme } from '@/shared/contexts/ThemeContext';
-import { parsePhoneNumber } from '@/shared/utils/tokenManager';
 import { checkEmail, sendVerificationMail, verifyMailCode, signup } from '@/features/auth/api/auth.api';
 import type { AuthView, SignupStep, SignupFormData } from '@/features/auth/types/auth.types';
 import { initialSignupData } from '@/features/auth/types/auth.types';
 import styles from './Signup.module.css';
 
 interface SignupProps {
-  onViewChange: (view: AuthView) => void;
+  onViewChange: (view: AuthView, email?: string) => void;
 }
 
 const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
@@ -20,6 +19,37 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
   const [formData, setFormData] = useState<SignupFormData>(initialSignupData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [timer, setTimer] = useState(300);
+  const [timerExpired, setTimerExpired] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const startTimer = () => {
+    setTimer(300);
+    setTimerExpired(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          setTimerExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const formatTimer = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   const handleUserInfoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +71,7 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
     try {
       await sendVerificationMail({ email: formData.email });
       setStep('verify-code');
+      startTimer();
     } catch (err: any) {
       setError(err.response?.data?.message || '인증 메일 전송에 실패했습니다.');
     } finally {
@@ -50,6 +81,10 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (timerExpired) {
+      setError('인증번호 유효시간이 만료되었습니다. 인증번호를 재전송해주세요.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -57,6 +92,7 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
         mail: formData.email,
         userNumber: parseInt(formData.verificationCode, 10),
       });
+      if (timerRef.current) clearInterval(timerRef.current);
       setStep('password-setup');
     } catch (err: any) {
       setError(err.response?.data?.message || '인증번호가 올바르지 않습니다.');
@@ -82,7 +118,7 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
         name: formData.name,
         email: formData.email,
         pw: formData.password,
-        phonenumber: parsePhoneNumber(formData.phone),
+        phonenumber: 0,
       });
       setStep('complete');
     } catch (err: any) {
@@ -114,7 +150,6 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
           <form onSubmit={handleUserInfoSubmit}>
             <Input label="이름" type="text" placeholder="이름을 입력하세요" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
             <Input label="이메일" type="email" placeholder="이메일을 입력하세요" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
-            <Input label="전화번호" type="tel" placeholder="전화번호를 입력하세요" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
             <Button type="submit" fullWidth disabled={loading}>{loading ? '확인 중...' : '다음'}</Button>
           </form>
         );
@@ -140,9 +175,22 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
               <div className={styles.icon}><FiLock size={32} /></div>
               <h2 className={styles.stepTitle} style={{ color: colors.textPrimary }}>인증번호 입력</h2>
               <p className={styles.stepDesc} style={{ color: colors.textSecondary }}>{formData.email}로 전송된<br />인증번호를 입력해주세요</p>
+              <p style={{ color: timerExpired ? colors.error : colors.primary, fontWeight: 600, fontSize: '1rem', margin: '0.25rem 0 0.75rem' }}>
+                {timerExpired ? '인증번호 유효시간이 만료되었습니다.' : `남은 시간: ${formatTimer(timer)}`}
+              </p>
             </div>
-            <Input label="인증번호" type="text" placeholder="6자리 인증번호 입력" value={formData.verificationCode} onChange={(e) => setFormData({ ...formData, verificationCode: e.target.value })} required />
-            <Button type="submit" fullWidth disabled={loading}>{loading ? '확인 중...' : '인증하기'}</Button>
+            <Input
+              label="인증번호"
+              type="text"
+              placeholder="숫자 6자리 입력"
+              value={formData.verificationCode}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                setFormData({ ...formData, verificationCode: value });
+              }}
+              required
+            />
+            <Button type="submit" fullWidth disabled={loading || timerExpired}>{loading ? '확인 중...' : '인증하기'}</Button>
             <div className={styles.resendWrap}>
               <button type="button" onClick={handleSendVerification} className={styles.linkButton} style={{ color: colors.primary }}>인증번호 재전송</button>
             </div>
@@ -176,7 +224,7 @@ const Signup: React.FC<SignupProps> = ({ onViewChange }) => {
             <div className={styles.iconLarge}><BsCheckCircle size={48} color="#10B981" /></div>
             <h2 className={styles.completeTitle} style={{ color: colors.textPrimary }}>환영합니다!</h2>
             <p className={styles.completeDesc} style={{ color: colors.textSecondary }}>회원가입이 완료되었습니다.<br />이제 로그인하여 서비스를 이용하실 수 있습니다.</p>
-            <Button fullWidth onClick={() => onViewChange('login')}>로그인하기</Button>
+            <Button fullWidth onClick={() => onViewChange('login', formData.email)}>로그인하기</Button>
           </div>
         );
 

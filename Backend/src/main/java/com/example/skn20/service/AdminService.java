@@ -155,15 +155,15 @@ public class AdminService {
         // 필터링
         return floorPlans.stream()
                 .filter(fp -> {
-                    // 이름 검색
+                    // 이름 검색 (대소문자 무시)
                     if (name != null && !name.isEmpty()) {
-                        if (fp.getName() == null || !fp.getName().contains(name)) {
+                        if (fp.getName() == null || !fp.getName().toLowerCase().contains(name.toLowerCase())) {
                             return false;
                         }
                     }
-                    // 업로더 이메일 검색
+                    // 업로더 이메일 검색 (대소문자 무시)
                     if (uploaderEmail != null && !uploaderEmail.isEmpty()) {
-                        if (!fp.getUser().getEmail().contains(uploaderEmail)) {
+                        if (!fp.getUser().getEmail().toLowerCase().contains(uploaderEmail.toLowerCase())) {
                             return false;
                         }
                     }

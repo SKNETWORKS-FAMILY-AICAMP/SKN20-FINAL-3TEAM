@@ -11,6 +11,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const { colors } = useTheme();
   const isUser = message.role === 'user';
   const [selectedImage, setSelectedImage] = useState<ChatImage | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+
+  const handleImageError = (idx: number) => {
+    setFailedImages(prev => new Set(prev).add(idx));
+  };
 
   return (
     <div className={styles.container}>
@@ -55,13 +60,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
                 <div
                   key={idx}
                   className={styles.thumbnailCard}
-                  onClick={() => setSelectedImage(img)}
+                  onClick={() => !failedImages.has(idx) && setSelectedImage(img)}
+                  style={{ cursor: failedImages.has(idx) ? 'default' : 'pointer' }}
                 >
-                  <img
-                    src={img.url}
-                    alt={img.name}
-                    className={styles.thumbnail}
-                  />
+                  {failedImages.has(idx) ? (
+                    <div className={styles.deletedImagePlaceholder}>
+                      <span>🗑️</span>
+                      <span>이미지가 삭제되었습니다</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={img.url}
+                      alt={img.name}
+                      className={styles.thumbnail}
+                      onError={() => handleImageError(idx)}
+                    />
+                  )}
                   <span className={styles.thumbnailLabel}>{img.name}</span>
                 </div>
               ))}
