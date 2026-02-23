@@ -106,7 +106,7 @@ public class FloorPlanController {
 			result.put("id", fp.getId());
 			result.put("name", fp.getName());
 			result.put("createdAt", fp.getCreatedAt());
-			result.put("imageUrl", "/api/floorplan/" + fp.getId() + "/image");
+			result.put("imageUrl", fp.getImageUrl());  // S3 URL 직접 반환
 			result.put("assessmentJson", fp.getAssessmentJson());
 			return ResponseEntity.ok(result);
 		} catch (Exception e) {
@@ -115,7 +115,7 @@ public class FloorPlanController {
 	}
 
 	/**
-	 * [Step 5] 도면 이미지 반환 (본인 도면만)
+	 * [Step 5] 도면 이미지 URL 반환 → S3로 리다이렉트
 	 */
 	@GetMapping("/{id}/image")
 	public ResponseEntity<?> getFloorPlanImage(
@@ -127,10 +127,10 @@ public class FloorPlanController {
 		}
 		try {
 			User user = principalDetails.getUser();
-			byte[] imageBytes = floorPlanService.getFloorPlanImage(id, user.getId());
-			HttpHeaders headers = new HttpHeaders();
-			headers.setContentType(MediaType.IMAGE_PNG);
-			return new ResponseEntity<>(imageBytes, headers, HttpStatus.OK);
+			String imageUrl = floorPlanService.getFloorPlanImageUrl(id, user.getId());
+			return ResponseEntity.status(HttpStatus.FOUND)
+					.header(HttpHeaders.LOCATION, imageUrl)
+					.build();
 		} catch (Exception e) {
 			return ResponseEntity.status(500).body("이미지 조회 실패: " + e.getMessage());
 		}
