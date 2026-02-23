@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { FiUser } from 'react-icons/fi';
+import { FiUser, FiExternalLink } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import ImageModal from './ImageModal';
@@ -28,7 +28,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
 
       <div className={styles.content}>
         <div
-          className={styles.bubble}
+          className={`${styles.bubble} ${isUser ? styles.bubbleUser : ''}`}
           style={{
             backgroundColor: isUser ? '#FFFFFF' : colors.chatBg,
             color: colors.textPrimary,
@@ -39,16 +39,36 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           ) : (
             <ReactMarkdown
               components={{
+                h2: ({ children }) => <h2 className={styles.mdH2}>{children}</h2>,
+                h3: ({ children }) => <h3 className={styles.mdH3}>{children}</h3>,
                 p: ({ children }) => <p className={styles.mdP}>{children}</p>,
                 strong: ({ children }) => <strong className={styles.mdStrong}>{children}</strong>,
                 ul: ({ children }) => <ul className={styles.mdUl}>{children}</ul>,
                 ol: ({ children }) => <ol className={styles.mdOl}>{children}</ol>,
-                li: ({ children }) => <li className={styles.mdLi}>{children}</li>,
-                a: ({ href, children }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer" className={styles.mdLink}>
-                    {children}
-                  </a>
+                li: ({ children }) => (
+                  <li className={styles.mdLi}>
+                    {React.Children.map(children, child =>
+                      React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === 'p'
+                        ? child.props.children
+                        : child
+                    )}
+                  </li>
                 ),
+                a: ({ href, children }) => {
+                  let domain = '';
+                  try {
+                    domain = new URL(href || '').hostname.replace('www.', '');
+                  } catch { /* ignore */ }
+                  return (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className={styles.linkCard}>
+                      <span className={styles.linkInfo}>
+                        <span className={styles.linkTitle}>{children}</span>
+                        <span className={styles.linkDomain}>{domain}</span>
+                      </span>
+                      <FiExternalLink size={14} className={styles.linkIcon} />
+                    </a>
+                  );
+                },
               }}
             >
               {message.content}
