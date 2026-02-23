@@ -33,6 +33,7 @@ public class FloorPlanService {
 	private final FloorPlanRepository floorPlanRepository;
 	private final FloorplanSummaryRepository summaryRepository;
 	private final RestTemplate restTemplate;
+	private final S3Service s3Service;
 
 	@Value("${python.server.url:http://localhost:8000}")
 	private String pythonServerUrl;
@@ -191,33 +192,19 @@ public class FloorPlanService {
 	}
 	
 	/**
-	 * 이미지 파일을 resources/image/floorplan/ 경로에 저장
-	 * 파일명: userId_timestamp_originalFilename
+	 * 이미지 파일을 S3에 업로드하고 URL 반환
+	 * S3 키: floorplan/userId_timestamp_originalFilename
 	 */
 	private String saveImageFile(MultipartFile file, Long userId) throws Exception {
-		// 저장 디렉토리 경로 (절대 경로 사용)
-		String uploadDir = System.getProperty("user.dir") + "/src/main/resources/image/floorplan/";
-		java.io.File directory = new java.io.File(uploadDir);
-
-		// 디렉토리가 없으면 생성
-		if (!directory.exists()) {
-			boolean created = directory.mkdirs();
-			System.out.println("[FloorPlanService] 디렉토리 생성: " + uploadDir + " -> " + created);
-		}
-
-		// 고유한 파일명 생성 (userId_timestamp_originalFilename)
 		String timestamp = String.valueOf(System.currentTimeMillis());
 		String originalFilename = file.getOriginalFilename();
-		String savedFilename = userId + "_" + timestamp + "_" + originalFilename;
+		String s3Key = "floorplan/" + userId + "_" + timestamp + "_" + originalFilename;
 
-		// 파일 저장
-		String filePath = uploadDir + savedFilename;
-		java.io.File destFile = new java.io.File(filePath);
-		System.out.println("[FloorPlanService] 파일 저장 경로: " + destFile.getAbsolutePath());
-		file.transferTo(destFile.getAbsoluteFile());
+		String contentType = file.getContentType() != null ? file.getContentType() : "image/png";
+		String s3Url = s3Service.upload(s3Key, file.getBytes(), contentType);
 
-		// DB에 저장할 경로 반환 (상대 경로)
-		return "/image/floorplan/" + savedFilename;
+		System.out.println("[FloorPlanService] S3 업로드 완료: " + s3Url);
+		return s3Url;
 	}
 
 	/**
@@ -247,20 +234,14 @@ public class FloorPlanService {
 	}
 
 	/**
-	 * 도면 이미지 로드 (본인 도면만)
+	 * 도면 이미지 URL 반환 (S3 URL)
 	 */
-	public byte[] getFloorPlanImage(Long floorPlanId, Long userId) throws java.io.IOException {
+	public String getFloorPlanImageUrl(Long floorPlanId, Long userId) {
 		FloorPlan fp = getFloorPlanDetail(floorPlanId, userId);
 		String imageUrl = fp.getImageUrl();
 		if (imageUrl == null || imageUrl.isEmpty()) {
 			throw new RuntimeException("이미지 URL이 없습니다.");
 		}
-		String resourcePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
-		String absolutePath = System.getProperty("user.dir") + "/src/main/resources/" + resourcePath;
-		java.io.File file = new java.io.File(absolutePath);
-		if (!file.exists()) {
-			throw new RuntimeException("이미지 파일을 찾을 수 없습니다.");
-		}
-		return java.nio.file.Files.readAllBytes(file.toPath());
+		return imageUrl;
 	}
 }
