@@ -36,16 +36,26 @@ public class ChatbotService {
 
 //텍스트 전용 (기존 호환)
 
-	public Map<String, Object> question2answer(User user, String question) {
-		return orchestrate(user, question, null);
+	public Map<String, Object> question2answer(User user, String question, Long chatRoomId) {
+		return orchestrate(user, question, null, chatRoomId);
 	}
 
 //텍스트 + 이미지
-	public Map<String, Object> question2answerWithImage(User user, String question, MultipartFile image) {
-		return orchestrate(user, question, image);
+	public Map<String, Object> question2answerWithImage(
+		User user,
+		String question,
+		MultipartFile image,
+		Long chatRoomId
+	) {
+		return orchestrate(user, question, image, chatRoomId);
 	}
 
-	private Map<String, Object> orchestrate(User user, String question, MultipartFile image) {
+	private Map<String, Object> orchestrate(
+		User user,
+		String question,
+		MultipartFile image,
+		Long chatRoomId
+	) {
 
 		Map<String, Object> result = new HashMap<>();
 
@@ -58,6 +68,9 @@ public class ChatbotService {
 			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
 			body.add("email", user != null ? user.getEmail() : "anonymous");
 			body.add("question", question != null ? question : "");
+			if (chatRoomId != null) {
+				body.add("chat_room_id", chatRoomId.toString());
+			}
 
 			// 3. 이미지가 있으면 file 필드 추가
 			if (image != null && !image.isEmpty()) {
@@ -72,7 +85,12 @@ public class ChatbotService {
 			// 4. Python /orchestrate 호출
 			HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-			log.info("Python /orchestrate 호출 - question: {}, hasImage: {}", question, image != null);
+			log.info(
+				"Python /orchestrate 호출 - question: {}, chatRoomId: {}, hasImage: {}",
+				question,
+				chatRoomId,
+				image != null
+			);
 
 			ResponseEntity<String> response = restTemplate.postForEntity(FASTAPI_ORCHESTRATE_URL, requestEntity,
 					String.class);
