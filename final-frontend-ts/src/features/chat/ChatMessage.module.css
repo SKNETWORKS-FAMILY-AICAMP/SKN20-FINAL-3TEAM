@@ -25,8 +25,11 @@
   border-radius: 0.5rem;
   font-size: 0.9375rem;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.bubbleUser {
+  white-space: pre-wrap;
 }
 
 /* 도면 썸네일 카드 그리드 */
@@ -92,8 +95,22 @@
 }
 
 /* Markdown 스타일 */
+.mdH2 {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.2rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.mdH3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin: 0.4rem 0 0.15rem;
+}
+
 .mdP {
-  margin: 0.25rem 0;
+  margin: 0.15rem 0;
 }
 
 .mdP:first-child {
@@ -110,16 +127,62 @@
 
 .mdUl,
 .mdOl {
-  margin: 0.25rem 0;
+  margin: 0.15rem 0;
   padding-left: 1.25rem;
 }
 
 .mdLi {
-  margin: 0.15rem 0;
+  margin: 0.1rem 0;
 }
 
-.mdLink {
+.mdLiP {
+  margin: 0;
+}
+
+.linkCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: #FFFFFF;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  max-width: 100%;
+}
+
+.linkCard:hover {
+  border-color: #93C5FD;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.1);
+}
+
+.linkInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.linkTitle {
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: #2563EB;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkDomain {
+  font-size: 0.6875rem;
+  color: #9CA3AF;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkIcon {
+  flex-shrink: 0;
+  color: #9CA3AF;
 }
