@@ -55,8 +55,8 @@ public class JwtUtil {
     public String generateToken(UserDetails userDetails, boolean rememberMe) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("rememberMe", rememberMe);
-        // rememberMe: 48시간, 아니면: 1시간
-        long tokenExpiration = rememberMe ? 48 * 60 * 60 * 1000L : 60 * 60 * 1000L;
+        // rememberMe: 24시간, 아니면: 1시간
+        long tokenExpiration = rememberMe ? 24 * 60 * 60 * 1000L : 60 * 60 * 1000L;
         return createToken(claims, userDetails.getUsername(), tokenExpiration);
     }
 

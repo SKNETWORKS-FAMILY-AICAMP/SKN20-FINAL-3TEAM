@@ -172,7 +172,7 @@ export function LogsPage() {
               <tbody>
                 {currentLogs.map((log) => (
                   <tr key={`${log.type}-${log.id}`}>
-                    <td className={styles.timestamp}>{log.createdAt}</td>
+                    <td className={styles.timestamp}>{(() => { const d = new Date(log.createdAt); return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; })()}</td>
                     <td>
                       <span className={`${styles.logLevel} ${getTypeStyle(log.type)}`}>
                         {getTypeLabel(log.type)}
@@ -265,7 +265,7 @@ export function LogsPage() {
             <div className={styles.modalBody}>
               <div className={styles.formGroup}>
                 <label>작성일시</label>
-                <input type="text" value={new Date(chatDetail.createdAt).toLocaleString('ko-KR')} disabled />
+                <input type="text" value={(() => { const d = new Date(chatDetail.createdAt); return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; })()} disabled />
               </div>
               <div className={styles.formGroup}>
                 <label>질문</label>

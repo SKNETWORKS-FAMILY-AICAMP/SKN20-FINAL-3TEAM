@@ -62,6 +62,21 @@
   display: block;
 }
 
+.deletedImagePlaceholder {
+  width: 150px;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: #F3F4F6;
+  color: #9CA3AF;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.5rem;
+}
+
 .thumbnailLabel {
   padding: 0.5rem 0.625rem;
   font-size: 0.8125rem;
