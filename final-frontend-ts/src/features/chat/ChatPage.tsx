@@ -525,13 +525,13 @@ const ChatPage: React.FC = () => {
                   💬 "방 3개, 화장실 2개짜리 도면 찾아줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
-                  💬 "남향에 거실이 넓은 아파트 평면도 추천해줘"
+                  💬 "(도면이미지 첨부) 이 도면 분석해줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
-                  💬 "이 건물을 근린생활시설로 사용할 수 있나요?"
+                  💬 "서울특별시 도봉구 방학동 645-28 필지 정보 알려줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
-                  💬 "2종 일반주거지역의 건폐율 기준이 어떻게 되나요?"
+                  💬 "경기도 수원시 팔달구에서 공장 건축 가능해?"
                 </div>
               </div>
             </div>
