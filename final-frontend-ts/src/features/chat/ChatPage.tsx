@@ -64,10 +64,19 @@ const getLoadingMessage = (elapsedSeconds: number): string => {
 // 도면 답변 파싱: 요약 + 개별 설명 분리
 // ============================================
 const parseFloorplanAnswer = (answer: string) => {
-  // [도면 #N] 기준으로 분리
-  const firstMarker = answer.search(/\[도면 #\d+\]/);
+  // "### [도면 #N]" 또는 "[도면 #N]" 기준으로 분리
+  const markerRegex = /(?:#{1,6}\s*)?\[도면 #\d+\]/;
+  const splitRegex = /(?:#{1,6}\s*)?\[도면 #\d+\]/;
+  const firstMarker = answer.search(markerRegex);
+
+  // [도면 #N] 마커가 없는 경우 (단일 도면 검색 응답)
+  // → 전체 답변을 첫 번째 도면의 description으로 사용
+  if (firstMarker === -1) {
+    return { summary: '', descriptions: [answer.trim()] };
+  }
+
   const summary = firstMarker > 0 ? answer.substring(0, firstMarker).trim() : '';
-  const parts = answer.split(/\[도면 #\d+\]/);
+  const parts = answer.split(splitRegex);
   // parts[0] = 요약, parts[1~] = 각 도면 설명
   const descriptions = parts.slice(1).map((part) =>
     part.replace(/^---\s*/gm, '').replace(/\s*---\s*$/gm, '').trim()
@@ -105,12 +114,24 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
       try {
         const urls: string[] = JSON.parse(item.imageUrls);
         const { summary, descriptions } = parseFloorplanAnswer(item.answer);
-        images = urls.map((url, idx) => ({
-          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
-          name: `도면 #${idx + 1}`,
-          description: descriptions[idx] || '',
-        }));
-        displayContent = summary || `검색된 도면 ${urls.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+        images = urls.map((url, idx) => {
+          const fileName = url.split('/').pop() || '';
+          const docId = fileName.replace(/\.[^.]+$/, '');
+          return {
+            url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+            name: docId || `도면 #${idx + 1}`,
+            description: descriptions[idx] || '',
+          };
+        });
+        // 요약에서 총 개수 파싱 후 친절한 문구 생성
+        const shownCount = urls.length;
+        const totalMatch = summary.match(/(\d+)/);
+        const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+        if (totalCount > shownCount) {
+          displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+        } else {
+          displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+        }
       } catch (e) {
         console.error('imageUrls 파싱 실패:', e);
       }
@@ -432,12 +453,25 @@ const ChatPage: React.FC = () => {
 
       if (hasFloorplans) {
         const { summary, descriptions } = parseFloorplanAnswer(response.answer);
-        floorplanImages = response.image_urls!.map((url, idx) => ({
-          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
-          name: `도면 #${idx + 1}`,
-          description: descriptions[idx] || '',
-        }));
-        displayContent = summary || `검색된 도면 ${response.image_urls!.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+        floorplanImages = response.image_urls!.map((url, idx) => {
+          // URL에서 실제 도면 ID 추출 (예: .../APT_FP_OBJ_644126077.PNG → APT_FP_OBJ_644126077)
+          const fileName = url.split('/').pop() || '';
+          const docId = fileName.replace(/\.[^.]+$/, ''); // 확장자 제거
+          return {
+            url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+            name: docId || `도면 #${idx + 1}`,
+            description: descriptions[idx] || '',
+          };
+        });
+        // 요약에서 총 개수 파싱 후 친절한 문구 생성
+        const shownCount = response.image_urls!.length;
+        const totalMatch = summary.match(/(\d+)/);
+        const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+        if (totalCount > shownCount) {
+          displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+        } else {
+          displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+        }
       }
 
       const aiMessage: ChatMessageType = {

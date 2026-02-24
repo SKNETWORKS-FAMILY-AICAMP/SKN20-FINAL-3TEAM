@@ -165,7 +165,7 @@ class ArchitecturalHybridRAG:
         re.IGNORECASE,
     )
     FLOORPLAN_BLOCK_HEADER_RE = re.compile(
-        r"(?m)^\s*\[도면\s*#\d+\]\s*(?P<document_id>[^\n]+?)\s*$"
+        r"(?m)^\s*(?:#{1,6}\s*)?\[도면\s*#\d+\]\s*(?P<document_id>[^\n]+?)\s*$"
     )
 
     def __init__(
@@ -494,7 +494,7 @@ class ArchitecturalHybridRAG:
             return normalized
 
         section_pattern = re.compile(
-            r"(?s)(?P<header>3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*)(?P<body>.*?)(?=\n\[\s*도면\s*#|\Z)"
+            r"(?s)(?P<header>3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*)(?P<body>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)"
         )
 
         return section_pattern.sub(
@@ -541,11 +541,11 @@ class ArchitecturalHybridRAG:
         text = str(answer or "")
         if not text:
             return text
-        # Ensure each "[도면 #N]" marker starts on a new line even if LLM 붙여쓰기를 한 경우.
-        text = re.sub(r"(?<!^)(?<!\n)\s*(\[\s*도면\s*#\d+\])", r"\n\1", text)
+        # Ensure each "[도면 #N]" or "### [도면 #N]" marker starts on a new line.
+        text = re.sub(r"(?<!^)(?<!\n)\s*((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\1", text)
         # Keep one blank line before each marker for readability.
-        text = re.sub(r"(?m)([^\n])\n(\[\s*도면\s*#\d+\])", r"\1\n\n\2", text)
-        return re.sub(r"\n{3,}(\[\s*도면\s*#\d+\])", r"\n\n\1", text)
+        text = re.sub(r"(?m)([^\n])\n((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\1\n\n\2", text)
+        return re.sub(r"\n{3,}((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\n\1", text)
 
     def _normalize_generated_answer(self, answer: str) -> str:
         return self._normalize_floorplan_block_breaks(
@@ -584,7 +584,7 @@ class ArchitecturalHybridRAG:
         if not text:
             return []
         matches = re.finditer(
-            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*(?P<section>.*?)(?=\n\[\s*도면\s*#|\Z)",
+            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*(?P<section>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)",
             text,
         )
         sections = [m.group("section").strip() for m in matches]
@@ -683,12 +683,16 @@ class ArchitecturalHybridRAG:
                 missing_fields.append("general_total_count_line")
 
             # Each floorplan marker must start on a new line, not be attached to prior text.
-            if re.search(r"(?<!^)(?<!\n)\[\s*도면\s*#\d+\]", text):
-                missing_fields.append("general_doc_header_linebreak")
+            for _line in text.splitlines():
+                _stripped = _line.strip()
+                if re.search(r"\[\s*도면\s*#\d+\]", _stripped):
+                    if not re.match(r"(?:#{1,6}\s*)?\[\s*도면\s*#\d+\]", _stripped):
+                        missing_fields.append("general_doc_header_linebreak")
+                        break
 
             general_blocks = list(
                 re.finditer(
-                    r"(?ms)^\s*\[도면\s*#\d+\]\s*[^\n]+\n(?P<body>.*?)(?=^\s*\[도면\s*#\d+\]\s*[^\n]+\n|\Z)",
+                    r"(?ms)^\s*(?:#{1,6}\s*)?\[도면\s*#\d+\]\s*[^\n]+\n(?P<body>.*?)(?=^\s*(?:#{1,6}\s*)?\[도면\s*#\d+\]\s*[^\n]+\n|\Z)",
                     text,
                 )
             )
@@ -2071,9 +2075,9 @@ Output Format (Must Be Preserved, Repeated for Each Floor Plan)
 조건을 만족하는 도면 총 개수: {total_count}
 
 Repeat the format below **for each representative floor plan**.
-[도면 #{rank}] {document_id}
+### [도면 #{rank}] {document_id}
 
-1. 도면 선택 근거 🔍
+### 1. 도면 선택 근거 🔍
 This section outputs **only the correspondence between the user’s search conditions and the floor plan information**.
 
 **[General Rules]**
@@ -2101,7 +2105,7 @@ This section outputs **only the correspondence between the user’s search condi
 • 찾는 조건: {사용자 조건을 한국어 표현으로 나열}
 • 일치 조건: {도면 메타데이터 및 document에서 확인된 일치 항목을 한국어 항목명=값 형태로 나열}
 
-2. 도면 기본 정보 📊
+### 2. 도면 기본 정보 📊
 ■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
 true → 존재, false → 없음
 
@@ -2123,7 +2127,7 @@ true → 존재, false → 없음
 • 특화 공간: {has_special_space}
 • 기타 공간: {has_etc_space}
 
-3. 도면 공간 구성 설명 🧩
+### 3. 도면 공간 구성 설명 🧩
 Reformat the original internal evaluation into a user-friendly version, but strictly output it in the fixed format below.
 
 구성 규칙:

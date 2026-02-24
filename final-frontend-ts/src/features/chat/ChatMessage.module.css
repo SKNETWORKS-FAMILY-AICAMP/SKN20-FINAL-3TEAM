@@ -94,6 +94,20 @@
   border-top: 1px solid #F3F4F6;
 }
 
+/* 유저 업로드 이미지 (클릭/그림자 없음) */
+.uploadedImageWrap {
+  display: inline-block;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.uploadedImage {
+  max-width: 200px;
+  max-height: 160px;
+  object-fit: contain;
+  display: block;
+}
+
 /* Markdown 스타일 */
 .mdH2 {
   font-size: 0.9375rem;
