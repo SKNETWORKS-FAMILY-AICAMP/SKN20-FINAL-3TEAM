@@ -76,29 +76,41 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           )}
           {message.images && message.images.length > 0 && (
             <div className={styles.imageGrid}>
-              {message.images.map((img, idx) => (
-                <div
-                  key={idx}
-                  className={styles.thumbnailCard}
-                  onClick={() => !failedImages.has(idx) && setSelectedImage(img)}
-                  style={{ cursor: failedImages.has(idx) ? 'default' : 'pointer' }}
-                >
-                  {failedImages.has(idx) ? (
-                    <div className={styles.deletedImagePlaceholder}>
-                      <span>🗑️</span>
-                      <span>이미지가 삭제되었습니다</span>
-                    </div>
-                  ) : (
+              {message.images.map((img, idx) =>
+                isUser ? (
+                  /* 유저 업로드 이미지: 클릭/그림자 없이 이미지만 표시 */
+                  <div key={idx} className={styles.uploadedImageWrap}>
                     <img
                       src={img.url}
                       alt={img.name}
-                      className={styles.thumbnail}
-                      onError={() => handleImageError(idx)}
+                      className={styles.uploadedImage}
                     />
-                  )}
-                  <span className={styles.thumbnailLabel}>{img.name}</span>
-                </div>
-              ))}
+                  </div>
+                ) : (
+                  /* AI 응답 도면: 클릭 가능한 썸네일 카드 */
+                  <div
+                    key={idx}
+                    className={styles.thumbnailCard}
+                    onClick={() => !failedImages.has(idx) && setSelectedImage(img)}
+                    style={{ cursor: failedImages.has(idx) ? 'default' : 'pointer' }}
+                  >
+                    {failedImages.has(idx) ? (
+                      <div className={styles.deletedImagePlaceholder}>
+                        <span>🗑️</span>
+                        <span>이미지가 삭제되었습니다</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={img.url}
+                        alt={img.name}
+                        className={styles.thumbnail}
+                        onError={() => handleImageError(idx)}
+                      />
+                    )}
+                    <span className={styles.thumbnailLabel}>{img.name}</span>
+                  </div>
+                )
+              )}
             </div>
           )}
         </div>

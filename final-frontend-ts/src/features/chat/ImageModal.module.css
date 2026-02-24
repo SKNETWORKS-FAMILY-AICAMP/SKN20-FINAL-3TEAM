@@ -95,8 +95,38 @@
   font-size: 0.875rem;
   line-height: 1.75;
   color: #4B5563;
-  white-space: pre-wrap;
   word-break: keep-all;
+}
+
+/* 마크다운 렌더링 스타일 */
+.imageDescription h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 1rem 0 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.imageDescription h3:first-child {
+  margin-top: 0;
+}
+
+.imageDescription p {
+  margin: 0.3rem 0;
+}
+
+.imageDescription ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.imageDescription li {
+  margin: 0.15rem 0;
+}
+
+.imageDescription strong {
+  color: #111827;
 }
 
 .noDescription {
