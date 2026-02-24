@@ -4,13 +4,9 @@ import com.example.skn20.dto.*;
 import com.example.skn20.entity.*;
 import com.example.skn20.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StreamUtils;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -28,6 +24,7 @@ public class AdminService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatHistoryRepository chatHistoryRepository;
     private final FloorplanAnalysisRepository floorplanAnalysisRepository;
+    private final S3Service s3Service;
 
     /**
      * 대시보드 통계 조회
@@ -158,15 +155,15 @@ public class AdminService {
         // 필터링
         return floorPlans.stream()
                 .filter(fp -> {
-                    // 이름 검색
+                    // 이름 검색 (대소문자 무시)
                     if (name != null && !name.isEmpty()) {
-                        if (fp.getName() == null || !fp.getName().contains(name)) {
+                        if (fp.getName() == null || !fp.getName().toLowerCase().contains(name.toLowerCase())) {
                             return false;
                         }
                     }
-                    // 업로더 이메일 검색
+                    // 업로더 이메일 검색 (대소문자 무시)
                     if (uploaderEmail != null && !uploaderEmail.isEmpty()) {
-                        if (!fp.getUser().getEmail().contains(uploaderEmail)) {
+                        if (!fp.getUser().getEmail().toLowerCase().contains(uploaderEmail.toLowerCase())) {
                             return false;
                         }
                     }
@@ -202,9 +199,19 @@ public class AdminService {
     @Transactional
     public String deleteFloorPlans(List<Long> ids) {
         for (Long id : ids) {
-            if (floorPlanRepository.existsById(id)) {
-                floorPlanRepository.deleteById(id);
-            }
+            floorPlanRepository.findById(id).ifPresent(fp -> {
+                // S3 이미지 삭제 (URL에서 key 추출)
+                String imageUrl = fp.getImageUrl();
+                if (imageUrl != null && imageUrl.contains(".amazonaws.com/")) {
+                    String s3Key = imageUrl.substring(imageUrl.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+                    try {
+                        s3Service.delete(s3Key);
+                    } catch (Exception e) {
+                        // S3 삭제 실패해도 DB 삭제는 진행
+                    }
+                }
+                floorPlanRepository.delete(fp);
+            });
         }
         return ids.size() + "개의 도면이 삭제되었습니다.";
     }
@@ -219,9 +226,9 @@ public class AdminService {
     }
 
     /**
-     * 도면 이미지 파일 로드
+     * 도면 이미지 S3 URL 반환
      */
-    public byte[] getFloorPlanImage(Long floorplanid) throws IOException {
+    public String getFloorPlanImageUrl(Long floorplanid) {
         FloorPlan fp = floorPlanRepository.findById(floorplanid)
                 .orElseThrow(() -> new RuntimeException("도면을 찾을 수 없습니다."));
 
@@ -230,16 +237,7 @@ public class AdminService {
             throw new RuntimeException("이미지 URL이 없습니다.");
         }
 
-        // /image/floorplan/xxx.png → src/main/resources/image/floorplan/xxx.png (저장 경로와 동일)
-        String resourcePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
-        String absolutePath = System.getProperty("user.dir") + "/src/main/resources/" + resourcePath;
-
-        java.io.File file = new java.io.File(absolutePath);
-        if (!file.exists()) {
-            throw new RuntimeException("이미지 파일을 찾을 수 없습니다: " + absolutePath);
-        }
-
-        return java.nio.file.Files.readAllBytes(file.toPath());
+        return imageUrl;
     }
 
     /**

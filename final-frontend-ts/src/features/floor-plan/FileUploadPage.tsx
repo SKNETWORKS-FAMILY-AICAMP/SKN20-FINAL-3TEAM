@@ -372,8 +372,8 @@ const FileUploadPage: React.FC = () => {
   const renderStatusBadge = () => {
     const statusConfig = {
       idle: { text: '대기중', bg: colors.border, color: colors.textSecondary },
-      analyzing: { text: '분석중...', bg: '#FCD34D', color: '#92400E' },
-      completed: { text: '완료', bg: '#10B981', color: '#FFFFFF' },
+      analyzing: { text: '분석중...', bg: '#F97316', color: '#FFFFFF' },
+      completed: { text: '완료', bg: '#3B82F6', color: '#FFFFFF' },
       error: { text: '오류', bg: '#EF4444', color: '#FFFFFF' },
     };
     const config = statusConfig[analysisStatus];
@@ -693,15 +693,15 @@ const FileUploadPage: React.FC = () => {
           <div
             className={styles.aiSummaryBox}
             style={{
-              backgroundColor: analysisStatus === 'completed' ? '#F0FDF4' : '#FFFFFF',
-              border: `1px solid ${analysisStatus === 'completed' ? '#86EFAC' : colors.border}`,
+              backgroundColor: analysisStatus === 'completed' ? '#EFF6FF' : '#FFFFFF',
+              border: `1px solid ${analysisStatus === 'completed' ? '#93C5FD' : colors.border}`,
             }}
           >
             {analysisStatus === 'completed' ? (
               <>
                 <div className={styles.aiSummaryHeader}>
-                  <RiRobot2Line size={18} style={{ color: '#10B981' }} />
-                  <span className={styles.aiSummaryTitle} style={{ color: colors.textPrimary }}>AI 요약</span>
+                  <RiRobot2Line size={18} style={{ color: '#3B82F6' }} />
+                  <span className={styles.aiSummaryTitle} style={{ color: '#3B82F6' }}>AI 요약</span>
                 </div>
 
                 {/* 기본 요약 */}
@@ -795,7 +795,7 @@ const FileUploadPage: React.FC = () => {
               disabled={analysisStatus !== 'completed' || isSaving}
               className={styles.actionBtn}
               style={{
-                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#10B981' : colors.border,
+                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#F97316' : colors.border,
                 color: analysisStatus === 'completed' && !isSaving ? '#FFFFFF' : colors.textSecondary,
                 cursor: analysisStatus === 'completed' && !isSaving ? 'pointer' : 'not-allowed',
               }}

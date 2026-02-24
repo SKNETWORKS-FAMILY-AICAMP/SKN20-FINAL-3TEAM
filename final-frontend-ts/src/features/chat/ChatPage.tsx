@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IoSend, IoImageOutline, IoCloseCircle } from 'react-icons/io5';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { BASE_URL } from '@/shared/api/axios';
@@ -105,7 +106,7 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
         const urls: string[] = JSON.parse(item.imageUrls);
         const { summary, descriptions } = parseFloorplanAnswer(item.answer);
         images = urls.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
+          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
           name: `도면 #${idx + 1}`,
           description: descriptions[idx] || '',
         }));
@@ -133,6 +134,7 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
 // ============================================
 const ChatPage: React.FC = () => {
   const { colors } = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // 상태
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -190,8 +192,16 @@ const ChatPage: React.FC = () => {
   // 초기 로드
   // ============================================
   useEffect(() => {
-    loadChatRooms();
-  }, [loadChatRooms]);
+    const init = async () => {
+      await loadChatRooms();
+      const roomIdParam = searchParams.get('roomId');
+      if (roomIdParam) {
+        setCurrentRoomId(Number(roomIdParam));
+        setSearchParams({}, { replace: true });
+      }
+    };
+    init();
+  }, []);
 
   // ============================================
   // 방 선택 시 기록 로드
@@ -423,7 +433,7 @@ const ChatPage: React.FC = () => {
       if (hasFloorplans) {
         const { summary, descriptions } = parseFloorplanAnswer(response.answer);
         floorplanImages = response.image_urls!.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
+          url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
           name: `도면 #${idx + 1}`,
           description: descriptions[idx] || '',
         }));
@@ -507,11 +517,23 @@ const ChatPage: React.FC = () => {
             <div className={styles.emptyState}>
               <Logo size={140} />
               <h2 className={styles.emptyTitle} style={{ color: colors.textPrimary }}>
-                원하는 도면, 말로 찾으세요
+                무엇이든 물어보세요
               </h2>
-              <p className={styles.emptySubtitle} style={{ color: colors.textSecondary }}>
-                "방 3개, 화장실 2개" 입력하면 즉시 추천
-              </p>
+              <div className={styles.emptyExamples}>
+                <p className={styles.emptyExampleLabel} style={{ color: colors.textSecondary }}>사용 예시</p>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "방 3개, 화장실 2개짜리 도면 찾아줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "(도면이미지 첨부) 이 도면 분석해줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "서울특별시 도봉구 방학동 645-28 필지 정보 알려줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "경기도 수원시 팔달구에서 공장 건축 가능해?"
+                </div>
+              </div>
             </div>
           ) : (
             <div>

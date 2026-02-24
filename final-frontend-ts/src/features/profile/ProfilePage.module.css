@@ -24,6 +24,8 @@
   padding: 2rem 2.5rem;
   overflow-y: auto;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 상단 헤더 */
@@ -53,12 +55,39 @@
 .twoColumn {
   display: flex;
   gap: 1.5rem;
-  align-items: flex-start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .leftPanel {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.leftPanel .card:first-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.leftPanel .card:first-child .formSection {
+  flex: 1;
+}
+
+.leftPanel .card:last-child {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.leftPanel .card:last-child .formSection {
+  flex: 1;
+  justify-content: center;
 }
 
 .rightPanel {
@@ -67,6 +96,19 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  align-self: stretch;
+}
+
+.rightPanel .historyCard {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rightPanel .historyList {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 프로필 카드 */
@@ -143,13 +185,14 @@
 
 .formRow {
   display: flex;
-  flex-direction: column;
   gap: 1.25rem;
 }
 
 .formGroup {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .label {
@@ -208,6 +251,61 @@
   opacity: 0.9;
 }
 
+/* 비밀번호 변경 */
+.pwHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.pwTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.pwMessage {
+  font-size: 16px;
+  margin: 0;
+}
+
+.pwDesc {
+  font-size: 16px;
+  margin: 0;
+}
+
+.verifyRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pwFullBtn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.pwFullBtn:hover {
+  opacity: 0.9;
+}
+
+.timerText {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 /* ==========================================
    우측 사용 내역 패널
    ========================================== */
@@ -240,7 +338,6 @@
 .historyList {
   display: flex;
   flex-direction: column;
-  max-height: 280px;
   overflow-y: auto;
 }
 
@@ -440,6 +537,10 @@
 }
 
 @media (max-width: 768px) {
+  .formRow {
+    flex-direction: column;
+  }
+
   .mainContent {
     padding: 1.5rem;
   }

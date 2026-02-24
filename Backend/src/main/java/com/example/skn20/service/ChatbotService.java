@@ -16,7 +16,9 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.example.skn20.entity.FloorPlan;
 import com.example.skn20.entity.User;
+import com.example.skn20.repository.FloorPlanRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -30,6 +32,7 @@ public class ChatbotService {
 
 	private final RestTemplate restTemplate;
 	private final ObjectMapper objectMapper;
+	private final FloorPlanRepository floorPlanRepository;
 
 	// 변경: /ask → /orchestrate
 	private final String FASTAPI_ORCHESTRATE_URL = "http://localhost:8000/orchestrate";
@@ -84,19 +87,22 @@ public class ChatbotService {
 			result.put("summaryTitle", responseNode.path("summaryTitle").asText("도면 분석 결과"));
 			result.put("answer", responseNode.path("answer").asText("답변을 생성할 수 없습니다."));
 			
-			// 6. floorplan_ids가 있으면 이미지 API URL 생성
+			// 6. floorplan_ids가 있으면 DB에서 S3 URL 직접 조회
 			JsonNode floorplanIdsNode = responseNode.path("floorplan_ids");
 			if (!floorplanIdsNode.isMissingNode() && floorplanIdsNode.isArray()) {
 				List<Long> floorplanIds = new java.util.ArrayList<>();
 				floorplanIdsNode.forEach(node -> floorplanIds.add(node.asLong()));
-				
+
 				if (!floorplanIds.isEmpty()) {
-					List<String> imageApiUrls = floorplanIds.stream()
-							.map(id -> "/api/admin/floorplan/" + id + "/image")
+					List<String> imageS3Urls = floorplanIds.stream()
+							.map(id -> floorPlanRepository.findById(id)
+									.map(FloorPlan::getImageUrl)
+									.orElse(null))
+							.filter(url -> url != null && !url.isEmpty())
 							.collect(Collectors.toList());
-					
-					result.put("image_urls", imageApiUrls);
-					log.info("생성된 도면 이미지 API URL 개수: {}", imageApiUrls.size());
+
+					result.put("image_urls", imageS3Urls);
+					log.info("조회된 도면 S3 이미지 URL 개수: {}", imageS3Urls.size());
 				}
 			}
 			

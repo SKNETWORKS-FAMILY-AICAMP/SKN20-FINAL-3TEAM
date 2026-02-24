@@ -41,6 +41,9 @@ law/
 Backend/src/main/resources/data/*
 Backend/src/main/resources/image/*
 
+# 환경설정 (민감 정보 포함)
+Backend/src/main/resources/application.properties
+
 .env
 CV/rag_data/chroma.sqlite3
 
@@ -120,3 +123,4 @@ final-frontend-ts/public/result/
 .claude/
 nul
 */node_modules*/**
+Backend/src/main/resources/application.properties.example

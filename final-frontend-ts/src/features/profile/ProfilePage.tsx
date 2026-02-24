@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BiChat } from 'react-icons/bi';
-import { FiImage, FiCalendar, FiX } from 'react-icons/fi';
+import { FiImage, FiCalendar, FiX, FiMail, FiLock } from 'react-icons/fi';
 import { useTheme } from '@/shared/contexts/ThemeContext';
-import { logout as logoutUtil, formatPhoneNumber, parsePhoneNumber } from '@/shared/utils/tokenManager';
-import { updateProfile, getCurrentUser } from '@/features/auth/api/auth.api';
+import { logout as logoutUtil } from '@/shared/utils/tokenManager';
+import { updateProfile, getCurrentUser, changePassword, sendVerificationMail, verifyMailCode } from '@/features/auth/api/auth.api';
 import { getChatRooms } from '@/features/chat/api/chat.api';
-import { getMyFloorPlans, getFloorPlanDetail, getFloorPlanImage } from './api/profile.api';
+import { getMyFloorPlans, getFloorPlanDetail } from './api/profile.api';
 import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import type { User, MyFloorPlan, FloorPlanDetail } from './types/profile.types';
 import type { ChatRoom } from '@/features/chat/types/chat.types';
@@ -16,7 +16,6 @@ const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { colors } = useTheme();
   const [user, setUser] = useState<User | null>(null);
-  const [phoneDisplay, setPhoneDisplay] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [floorPlans, setFloorPlans] = useState<MyFloorPlan[]>([]);
@@ -24,6 +23,15 @@ const ProfilePage: React.FC = () => {
   const [modalDetail, setModalDetail] = useState<FloorPlanDetail | null>(null);
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
+  // 비밀번호 변경 4단계: 'idle' → 'verify' → 'code' → 'newpw'
+  const [pwStep, setPwStep] = useState<'idle' | 'verify' | 'code' | 'newpw'>('idle');
+  const [pwForm, setPwForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [verifyCode, setVerifyCode] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [verifyTimer, setVerifyTimer] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 현재 날짜 포맷
   const today = new Date();
@@ -45,7 +53,6 @@ const ProfilePage: React.FC = () => {
           role: userInfo.role,
           create_at: userInfo.create_at,
         });
-        setPhoneDisplay(formatPhoneNumber(userInfo.phonenumber));
         setChatRooms(rooms);
         setFloorPlans(plans);
       } catch (err) {
@@ -60,15 +67,114 @@ const ProfilePage: React.FC = () => {
   const handleSave = async () => {
     if (!user) return;
     try {
-      const phonenumber = parsePhoneNumber(phoneDisplay);
-      await updateProfile({ name: user.name, phonenumber });
-      setUser({ ...user, phonenumber });
+      await updateProfile({ name: user.name, phonenumber: user.phonenumber });
+      setUser({ ...user });
       alert('프로필이 저장되었습니다.');
       setIsEditing(false);
     } catch (err: any) {
       console.error('프로필 저장 실패:', err);
       alert('프로필 저장에 실패했습니다.');
     }
+  };
+
+  const startTimer = (seconds: number) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setVerifyTimer(seconds);
+    timerRef.current = setInterval(() => {
+      setVerifyTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          timerRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const formatTimer = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Step 1: 변경하기 클릭 → verify 단계로 이동
+  const handleStartPwChange = () => {
+    setPwError('');
+    setPwSuccess('');
+    setPwStep('verify');
+  };
+
+  // Step 2: 이메일 인증 버튼 클릭 → 인증 메일 발송
+  const handleSendVerification = async () => {
+    setPwError('');
+    setPwLoading(true);
+    try {
+      await sendVerificationMail({ email: user!.email });
+      setPwStep('code');
+      startTimer(300);
+    } catch (err: any) {
+      setPwError('인증 메일 발송에 실패했습니다.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  // Step 3: 인증번호 확인
+  const handleVerifyCode = async () => {
+    setPwError('');
+    if (!verifyCode || verifyCode.length !== 6) {
+      setPwError('6자리 인증번호를 입력해주세요.');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await verifyMailCode({ mail: user!.email, userNumber: parseInt(verifyCode) });
+      if (timerRef.current) clearInterval(timerRef.current);
+      setPwStep('newpw');
+    } catch (err: any) {
+      setPwError('인증번호가 올바르지 않습니다.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  // Step 3: 새 비밀번호 저장
+  const handleChangePassword = async () => {
+    setPwError('');
+    if (!pwForm.newPassword || !pwForm.confirmPassword) {
+      setPwError('모든 항목을 입력해주세요.');
+      return;
+    }
+    if (pwForm.newPassword.length < 8) {
+      setPwError('비밀번호는 8자 이상이어야 합니다.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await changePassword({ email: user!.email, newPassword: pwForm.newPassword });
+      setPwSuccess('비밀번호가 변경되었습니다.');
+      setPwForm({ newPassword: '', confirmPassword: '' });
+      setVerifyCode('');
+      setPwStep('idle');
+    } catch (err: any) {
+      setPwError(err.response?.data?.message || '비밀번호 변경에 실패했습니다.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  const handleCancelPwChange = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setPwStep('idle');
+    setPwForm({ newPassword: '', confirmPassword: '' });
+    setVerifyCode('');
+    setPwError('');
+    setPwSuccess('');
   };
 
   const handleLogout = () => {
@@ -82,12 +188,9 @@ const ProfilePage: React.FC = () => {
     setModalLoading(true);
     setModalOpen(true);
     try {
-      const [detail, imageUrl] = await Promise.all([
-        getFloorPlanDetail(planId),
-        getFloorPlanImage(planId),
-      ]);
+      const detail = await getFloorPlanDetail(planId);
       setModalDetail(detail);
-      setModalImageUrl(imageUrl);
+      setModalImageUrl(detail.imageUrl);
     } catch (err) {
       console.error('도면 상세 조회 실패:', err);
       setModalOpen(false);
@@ -98,16 +201,18 @@ const ProfilePage: React.FC = () => {
 
   const handleModalClose = useCallback(() => {
     setModalOpen(false);
-    if (modalImageUrl) {
-      URL.revokeObjectURL(modalImageUrl);
-    }
     setModalDetail(null);
     setModalImageUrl(null);
-  }, [modalImageUrl]);
+  }, []);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  const formatDateOnly = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getDate().toString().padStart(2, '0')}`;
   };
 
   if (!user) {
@@ -133,8 +238,6 @@ const ProfilePage: React.FC = () => {
           </p>
         </div>
 
-        {/* 그라데이션 배너 (전체 너비) */}
-        <div className={styles.gradientBanner} />
 
         {/* 2열 레이아웃: 좌측 프로필 / 우측 사용 내역 */}
         <div className={styles.twoColumn}>
@@ -157,6 +260,7 @@ const ProfilePage: React.FC = () => {
                       {user.name}
                     </h2>
                     <p className={styles.userEmail} style={{ color: colors.textSecondary }}>
+                      <FiMail size={13} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
                       {user.email}
                     </p>
                   </div>
@@ -167,69 +271,48 @@ const ProfilePage: React.FC = () => {
               </div>
 
               <div className={styles.formSection}>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} style={{ color: colors.textPrimary }}>이름</label>
-                    <input
-                      type="text"
-                      value={user.name}
-                      onChange={(e) => setUser({ ...user, name: e.target.value })}
-                      disabled={!isEditing}
-                      className={styles.input}
-                      style={{
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} style={{ color: colors.textPrimary }}>전화번호</label>
-                    <input
-                      type="tel"
-                      value={phoneDisplay}
-                      onChange={(e) => setPhoneDisplay(e.target.value)}
-                      placeholder="010-0000-0000"
-                      disabled={!isEditing}
-                      className={styles.input}
-                      style={{
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} style={{ color: colors.textPrimary }}>이름</label>
+                  <input
+                    type="text"
+                    value={user.name}
+                    onChange={(e) => setUser({ ...user, name: e.target.value })}
+                    disabled={!isEditing}
+                    className={styles.input}
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
+                      color: colors.textPrimary,
+                    }}
+                  />
                 </div>
-
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} style={{ color: colors.textPrimary }}>이메일</label>
-                    <input
-                      type="email"
-                      value={user.email}
-                      disabled
-                      className={styles.input}
-                      style={{
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.inputBg,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label} style={{ color: colors.textPrimary }}>가입일</label>
-                    <input
-                      type="text"
-                      value={user.create_at || '-'}
-                      disabled
-                      className={styles.input}
-                      style={{
-                        border: `1px solid ${colors.border}`,
-                        backgroundColor: colors.inputBg,
-                        color: colors.textPrimary,
-                      }}
-                    />
-                  </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} style={{ color: colors.textPrimary }}>이메일</label>
+                  <input
+                    type="email"
+                    value={user.email}
+                    disabled
+                    className={styles.input}
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      backgroundColor: colors.inputBg,
+                      color: colors.textPrimary,
+                    }}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.label} style={{ color: colors.textPrimary }}>가입일</label>
+                  <input
+                    type="text"
+                    value={user.create_at ? formatDateOnly(user.create_at) : '-'}
+                    disabled
+                    className={styles.input}
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      backgroundColor: colors.inputBg,
+                      color: colors.textPrimary,
+                    }}
+                  />
                 </div>
 
                 <div className={styles.buttonGroup}>
@@ -247,6 +330,186 @@ const ProfilePage: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* 비밀번호 변경 */}
+            <div
+              className={styles.card}
+              style={{ backgroundColor: '#FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
+            >
+              <div className={styles.pwHeader}>
+                <FiLock size={18} />
+                <h3 className={styles.pwTitle} style={{ color: colors.textPrimary }}>비밀번호 변경</h3>
+              </div>
+
+              {/* Step 1: idle - 비밀번호 변경하기 풀사이즈 버튼 */}
+              {pwStep === 'idle' && (
+                <div className={styles.formSection}>
+                  <p className={styles.pwDesc} style={{ color: colors.textSecondary }}>
+                    이메일 인증 후 비밀번호를 변경할 수 있습니다.
+                  </p>
+                  {pwSuccess && (
+                    <p className={styles.pwMessage} style={{ color: '#16A34A' }}>{pwSuccess}</p>
+                  )}
+                  <button
+                    onClick={handleStartPwChange}
+                    className={styles.pwFullBtn}
+                    style={{ backgroundColor: colors.primary }}
+                  >
+                    비밀번호 변경하기
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: verify - 이메일 인증 발송 버튼 */}
+              {pwStep === 'verify' && (
+                <div className={styles.formSection}>
+                  <p className={styles.pwDesc} style={{ color: colors.textSecondary }}>
+                    <strong>{user.email}</strong>로 인증번호를 발송합니다.
+                  </p>
+                  {pwError && (
+                    <p className={styles.pwMessage} style={{ color: '#DC2626' }}>{pwError}</p>
+                  )}
+                  <div className={styles.buttonGroup}>
+                    <button
+                      onClick={handleCancelPwChange}
+                      className={styles.outlineBtn}
+                      style={{ border: `1px solid ${colors.border}`, backgroundColor: '#FFFFFF', color: colors.textSecondary }}
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSendVerification}
+                      className={styles.saveBtn}
+                      style={{ backgroundColor: colors.primary }}
+                      disabled={pwLoading}
+                    >
+                      {pwLoading ? '발송 중...' : '이메일 인증'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: code - 인증번호 입력 */}
+              {pwStep === 'code' && (
+                <div className={styles.formSection}>
+                  <div className={styles.verifyRow}>
+                    <input
+                      type="text"
+                      placeholder="인증번호 6자리"
+                      value={verifyCode}
+                      onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className={styles.input}
+                      style={{
+                        border: `1px solid ${colors.border}`,
+                        backgroundColor: '#FFFFFF',
+                        color: colors.textPrimary,
+                        flex: 1,
+                      }}
+                      maxLength={6}
+                    />
+                    {verifyTimer > 0 && (
+                      <span className={styles.timerText} style={{ color: verifyTimer <= 60 ? '#DC2626' : colors.textSecondary }}>
+                        {formatTimer(verifyTimer)}
+                      </span>
+                    )}
+                  </div>
+                  {pwError && (
+                    <p className={styles.pwMessage} style={{ color: '#DC2626' }}>{pwError}</p>
+                  )}
+                  {verifyTimer === 0 && !pwError && (
+                    <p className={styles.pwMessage} style={{ color: '#DC2626' }}>
+                      인증 시간이 만료되었습니다. 다시 시도해주세요.
+                    </p>
+                  )}
+                  <div className={styles.buttonGroup}>
+                    <button
+                      onClick={handleCancelPwChange}
+                      className={styles.outlineBtn}
+                      style={{ border: `1px solid ${colors.border}`, backgroundColor: '#FFFFFF', color: colors.textSecondary }}
+                    >
+                      취소
+                    </button>
+                    {verifyTimer === 0 ? (
+                      <button
+                        onClick={handleSendVerification}
+                        className={styles.saveBtn}
+                        style={{ backgroundColor: colors.primary }}
+                        disabled={pwLoading}
+                      >
+                        {pwLoading ? '발송 중...' : '재발송'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleVerifyCode}
+                        className={styles.saveBtn}
+                        style={{ backgroundColor: colors.primary }}
+                        disabled={pwLoading || verifyTimer === 0}
+                      >
+                        {pwLoading ? '확인 중...' : '인증 확인'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: newpw - 새 비밀번호 입력 */}
+              {pwStep === 'newpw' && (
+                <div className={styles.formSection}>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label} style={{ color: colors.textPrimary }}>새 비밀번호</label>
+                      <input
+                        type="password"
+                        placeholder="영문자, 숫자, 특수문자 포함 8자 이상"
+                        value={pwForm.newPassword}
+                        onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
+                        className={styles.input}
+                        style={{
+                          border: `1px solid ${colors.border}`,
+                          backgroundColor: '#FFFFFF',
+                          color: colors.textPrimary,
+                        }}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label} style={{ color: colors.textPrimary }}>비밀번호 확인</label>
+                      <input
+                        type="password"
+                        placeholder="비밀번호 재입력"
+                        value={pwForm.confirmPassword}
+                        onChange={(e) => setPwForm({ ...pwForm, confirmPassword: e.target.value })}
+                        className={styles.input}
+                        style={{
+                          border: `1px solid ${colors.border}`,
+                          backgroundColor: '#FFFFFF',
+                          color: colors.textPrimary,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {pwError && (
+                    <p className={styles.pwMessage} style={{ color: '#DC2626' }}>{pwError}</p>
+                  )}
+                  <div className={styles.buttonGroup}>
+                    <button
+                      onClick={handleCancelPwChange}
+                      className={styles.outlineBtn}
+                      style={{ border: `1px solid ${colors.border}`, backgroundColor: '#FFFFFF', color: colors.textSecondary }}
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleChangePassword}
+                      className={styles.saveBtn}
+                      style={{ backgroundColor: colors.primary }}
+                      disabled={pwLoading}
+                    >
+                      {pwLoading ? '변경 중...' : '비밀번호 변경'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -275,7 +538,7 @@ const ProfilePage: React.FC = () => {
                     <div
                       key={room.id}
                       className={styles.historyItem}
-                      onClick={() => navigate('/main')}
+                      onClick={() => navigate(`/main?roomId=${room.id}`)}
                       style={{ borderBottom: `1px solid ${colors.border}` }}
                     >
                       <div className={styles.historyItemContent}>
@@ -367,7 +630,7 @@ const ProfilePage: React.FC = () => {
                   <h3 className={styles.modalTitle}>{modalDetail.name}</h3>
                   <p className={styles.modalDate}>
                     <FiCalendar size={14} />
-                    {new Date(modalDetail.createdAt).toLocaleString('ko-KR')}
+                    {formatDate(modalDetail.createdAt)}
                   </p>
 
                   {modalDetail.assessmentJson && (
