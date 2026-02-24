@@ -73,6 +73,7 @@ wheels/
 .installed.cfg
 *.egg
 *.json
+!word.json
 
 # Virtual Environment
 venv/
