@@ -1165,6 +1165,9 @@ class ArchitecturalHybridRAG:
             bounds.append({"op": op, "val": val})
         return bounds
 
+    # 비율 필터 "동일" 연산자의 허용 오차 (±)
+    RATIO_EQUAL_TOLERANCE = 3.0
+
     def _ratio_filter_to_bounds(self, value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, dict):
             return []
@@ -1193,7 +1196,13 @@ class ArchitecturalHybridRAG:
         op = self._normalize_ratio_operator(value.get("op", value.get("operator")))
         val = self._parse_float(value.get("val", value.get("value")))
         if op is not None and val is not None:
-            bounds.append({"op": op, "val": val})
+            # "동일" → ±RATIO_EQUAL_TOLERANCE 범위로 변환 (정확한 소수점 매칭 방지)
+            if op == "동일":
+                tol = self.RATIO_EQUAL_TOLERANCE
+                bounds.append({"op": "이상", "val": round(val - tol, 4)})
+                bounds.append({"op": "이하", "val": round(val + tol, 4)})
+            else:
+                bounds.append({"op": op, "val": val})
 
         deduped: list[dict[str, Any]] = []
         seen: set[tuple[str, float]] = set()
@@ -1934,10 +1943,67 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             OFFSET %s
         """
 
-        try:
+        def _exec_hybrid(w_sql, w_params, use_text=True):
+            """하이브리드 검색 SQL 실행 헬퍼"""
+            if use_text:
+                p = [embedding_vector, text_query, *w_params,
+                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                ts_expr = "ts_rank_cd(to_tsvector('simple', COALESCE(fa.analysis_description, '')), websearch_to_tsquery('simple', %s))"
+            else:
+                p = [embedding_vector, *w_params,
+                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                ts_expr = "0.0::double precision"
+                # text_query placeholder 제거
+            text_placeholder = "%s, " if use_text else ""
+            q = f"""
+                WITH scored AS (
+                    SELECT f.id AS floorplan_id, f.name AS document_id,
+                    fa.analysis_description AS document,
+                    fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                    fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.has_special_space, fa.has_etc_space,
+                    (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
+                    {ts_expr} AS text_score
+                    FROM floorplan_analysis fa
+                    JOIN floorplan f ON fa.floorplan_id = f.id
+                    WHERE {w_sql}
+                )
+                SELECT floorplan_id, document_id, document,
+                windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+                structure_type, bay_count, room_count, bathroom_count,
+                compliance_grade, ventilation_grade, has_special_space, has_etc_space,
+                (%s * vector_similarity + %s * text_score) AS similarity
+                FROM scored
+                ORDER BY similarity DESC
+                LIMIT %s
+                OFFSET %s
+            """
             with self.conn.cursor() as cur:
-                cur.execute(sql, params)
+                cur.execute(q, p)
                 return cur.fetchall()
+
+        try:
+            results = _exec_hybrid(where_sql, filter_params, use_text=True)
+
+            # 폴백: 결과 0 → 점진적 필터 완화 (평가성 → 비율/부울 → 구조 순 제거)
+            if not results and filters:
+                for relaxed in self._relax_filters(filters):
+                    if len(relaxed) >= len(filters):
+                        continue
+                    self._log_event(
+                        event="retrieve_filter_relaxation",
+                        level=logging.INFO,
+                        reason="progressive_filter_relaxation",
+                        dropped=[k for k in filters if k not in relaxed],
+                        remaining=list(relaxed.keys()),
+                    )
+                    fb_where, fb_params = self._build_filter_where_parts(relaxed)
+                    results = _exec_hybrid(fb_where, fb_params, use_text=True)
+                    if results:
+                        break
+
+            return results
         except Exception as exc:
             self.conn.rollback()
             if text_query:
@@ -1949,42 +2015,235 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     filter_count=len(filter_params),
                     error=str(exc),
                 )
-                fallback_params = [
-                    embedding_vector,
-                    *filter_params,
-                    self.vector_weight,
-                    self.text_weight,
-                    top_k,
-                    max(0, int(offset)),
-                ]
-                fallback_sql = f"""
-                    WITH scored AS (
-                        SELECT f.id AS floorplan_id, f.name AS document_id,
-                        fa.analysis_description AS document,
-                        fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
-                        fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                        fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
-                        fa.has_special_space, fa.has_etc_space,
-                        (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
-                        0.0::double precision AS text_score
-                        FROM floorplan_analysis fa
-                        JOIN floorplan f ON fa.floorplan_id = f.id
-                        WHERE {where_sql}
-                    )
-                    SELECT floorplan_id, document_id, document,
-                    windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-                    structure_type, bay_count, room_count, bathroom_count,
-                    compliance_grade, ventilation_grade, has_special_space, has_etc_space,
-                    (%s * vector_similarity + %s * text_score) AS similarity
-                    FROM scored
-                    ORDER BY similarity DESC
-                    LIMIT %s
-                    OFFSET %s
-                """
+                try:
+                    return _exec_hybrid(where_sql, filter_params, use_text=False)
+                except Exception:
+                    self.conn.rollback()
+                    # 필터 전체 제거 후 최종 시도
+                    return _exec_hybrid("TRUE", [], use_text=False)
+            raise
+
+    def retrieve_by_embedding(
+        self,
+        embedding: list[float],
+        filters: dict[str, Any] | None = None,
+        top_k: int = 3,
+    ) -> list:
+        """
+        Pre-computed embedding 기반 유사 도면 검색.
+        CV 분석에서 생성된 embedding 벡터를 직접 사용하여 DB에서 유사 도면을 찾는다.
+
+        Args:
+            embedding: 1024-dim embedding vector (text-embedding-3-small)
+            filters: 메트릭 기반 필터 (structure_type, room_count 등). None이면 필터 없이 검색.
+            top_k: 반환할 최대 도면 수
+        Returns:
+            list of tuples (_retrieve_hybrid와 동일 형식)
+        """
+        embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
+
+        where_sql, filter_params = self._build_filter_where_parts(filters or {})
+        params = [embedding_vector, *filter_params, top_k]
+
+        sql = f"""
+            SELECT f.id AS floorplan_id, f.name AS document_id,
+                fa.analysis_description AS document,
+                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
+                fa.bathroom_ratio, fa.kitchen_ratio,
+                fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                fa.has_special_space, fa.has_etc_space,
+                (1 - (fa.embedding <=> %s::vector)) AS similarity
+            FROM floorplan_analysis fa
+            JOIN floorplan f ON fa.floorplan_id = f.id
+            WHERE {where_sql}
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, params)
+                results = cur.fetchall()
+        except Exception:
+            self.conn.rollback()
+            results = []
+
+        # Progressive filter relaxation: 필터 적용 시 결과가 부족하면 필터 없이 재검색
+        if len(results) < top_k and filters:
+            fallback_params = [embedding_vector, top_k]
+            fallback_sql = """
+                SELECT f.id AS floorplan_id, f.name AS document_id,
+                    fa.analysis_description AS document,
+                    fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
+                    fa.bathroom_ratio, fa.kitchen_ratio,
+                    fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.has_special_space, fa.has_etc_space,
+                    (1 - (fa.embedding <=> %s::vector)) AS similarity
+                FROM floorplan_analysis fa
+                JOIN floorplan f ON fa.floorplan_id = f.id
+                ORDER BY similarity DESC
+                LIMIT %s
+            """
+            try:
                 with self.conn.cursor() as cur:
                     cur.execute(fallback_sql, fallback_params)
-                    return cur.fetchall()
-            raise
+                    fallback_results = cur.fetchall()
+                # 기존 결과 ID를 제외하고 부족분 채우기
+                existing_ids = {row[0] for row in results}
+                for row in fallback_results:
+                    if row[0] not in existing_ids:
+                        results.append(row)
+                        existing_ids.add(row[0])
+                    if len(results) >= top_k:
+                        break
+            except Exception:
+                self.conn.rollback()
+
+        return results[:top_k]
+
+    def search_by_description(
+        self, description: str, top_k: int = 3,
+        explicit_filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        텍스트 설명(document)으로 유사 도면 검색.
+        이미지 분석 후 생성된 document를 검색 쿼리로 사용한다.
+        run()과 달리 세션/히스토리 부작용 없이 검색+리랭킹만 수행.
+
+        Args:
+            description: 자연어 도면 설명 (to_natural_language() 결과)
+            top_k: 최종 반환할 도면 수
+            explicit_filters: 명시적 필터 (LLM 추출 필터를 덮어씀, 이미지 검색용)
+        Returns:
+            {"docs": [...], "query_json": {...}, "total_count": int}
+        """
+        query_json = self._analyze_query(description)
+        filters = query_json.get("filters", {}) or {}
+        documents = query_json.get("documents", "") or ""
+
+        # 명시적 필터가 있으면 LLM 추출 필터에 병합 (명시적 필터 우선)
+        if explicit_filters:
+            self.logger.info("[search_by_description] LLM 추출 필터: %s", filters)
+            self.logger.info("[search_by_description] 명시적 필터: %s", explicit_filters)
+            filters.update(explicit_filters)
+            query_json["filters"] = filters
+
+        self.logger.info("[search_by_description] 최종 필터: %s", filters)
+        self.logger.info("[search_by_description] documents: %s", documents[:100] if documents else "(없음)")
+
+        total_count = self._count_matches(filters, documents)
+        self.logger.info("[search_by_description] 매칭 도면: %d개", total_count)
+
+        if total_count <= 0:
+            return {"docs": [], "query_json": query_json, "total_count": 0}
+
+        retrieve_k = min(max(total_count, top_k), 50)
+        docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
+
+        docs = self._rerank_by_query_signal_preferences(
+            docs, description, filters,
+        )
+
+        return {
+            "docs": docs[:top_k],
+            "query_json": query_json,
+            "total_count": total_count,
+        }
+
+    def count_by_filters(self, filters: dict[str, Any] | None = None) -> int:
+        """필터 조건에 맞는 도면 총 개수 반환 (public wrapper)"""
+        return self._count_matches(filters or {})
+
+    def generate_similar_answer(
+        self,
+        analysis_metrics: dict[str, Any],
+        docs: list,
+        total_count: int,
+    ) -> str:
+        """
+        유사 도면 검색 결과를 텍스트 검색과 동일한 구조로 생성.
+        기존 _generate_answer를 재사용하고 마커를 [유사 도면 #N]으로 변환.
+
+        Args:
+            analysis_metrics: CV 분석 메트릭 (room_count, bay_count 등)
+            docs: retrieve_by_embedding 결과 (tuple list)
+            total_count: 필터 조건에 맞는 전체 도면 수
+        Returns:
+            [유사 도면 #N] 마커가 포함된 구조화된 답변 문자열
+        """
+        if not docs:
+            return ""
+
+        # 메트릭에서 검색 쿼리 텍스트 생성
+        parts = []
+        m = analysis_metrics or {}
+        if m.get("structure_type"):
+            parts.append(f"{m['structure_type']} 구조")
+        if m.get("bay_count"):
+            parts.append(f"Bay {m['bay_count']}개")
+        if m.get("room_count"):
+            parts.append(f"방 {m['room_count']}개")
+        if m.get("bathroom_count"):
+            parts.append(f"화장실 {m['bathroom_count']}개")
+        if m.get("windowless_count") is not None:
+            parts.append(f"무창 공간 {m['windowless_count']}개")
+        if m.get("living_room_ratio") is not None:
+            parts.append(f"거실 비율 {m['living_room_ratio']}%")
+        query = ", ".join(parts) + " 구성의 도면과 유사한 도면" if parts else "업로드된 도면과 유사한 도면"
+
+        # query_json 구성 (구조 필터 + 비율 필터)
+        filters: dict[str, Any] = {}
+        for key in ("structure_type", "room_count", "bay_count", "bathroom_count", "windowless_count"):
+            if key in m and m[key] is not None:
+                filters[key] = m[key]
+        if m.get("living_room_ratio") is not None:
+            filters["living_room_ratio"] = {"op": "동일", "val": m["living_room_ratio"]}
+        query_json = {"filters": filters, "documents": "", "raw_query": query}
+
+        # 기존 _generate_answer 재사용
+        answer = self._generate_answer(query, query_json, docs, total_count)
+
+        # [도면 #N] → [유사 도면 #N] 마커 변환
+        answer = re.sub(
+            r"(#{1,6}\s*)?\[도면 #(\d+)\]",
+            lambda mat: f"{mat.group(1) or ''}[유사 도면 #{mat.group(2)}]",
+            answer,
+        )
+        # "조건을 만족하는 도면 총 개수: N" → "유사 도면 N개"
+        answer = re.sub(
+            r"조건을 만족하는 도면 총 개수:\s*(\d+)",
+            r"유사 도면 \1개",
+            answer,
+        )
+        return answer
+
+    # 점진적 필터 완화 우선순위 (먼저 제거할 필터 → 나중에 제거할 필터)
+    # 평가성 필터 → 비율 필터 → 부울 필터 → 구조 필터 순으로 제거
+    _FILTER_DROP_PRIORITY = [
+        # 1단계: 평가성 필터 (가장 제한적, 먼저 제거)
+        {"compliance_grade", "ventilation_grade"},
+        # 2단계: 비율 필터 + 부울 필터
+        {"balcony_ratio", "living_room_ratio", "bathroom_ratio", "kitchen_ratio",
+         "has_special_space", "has_etc_space"},
+        # 3단계: 구조 필터 (마지막까지 유지, 최후에 제거)
+        {"structure_type", "bay_count", "room_count", "bathroom_count", "windowless_count"},
+    ]
+
+    def _relax_filters(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        필터를 점진적으로 완화한 후보 목록 반환.
+        우선순위가 낮은 필터부터 제거하여 여러 단계의 완화된 필터셋을 생성.
+        """
+        candidates = []
+        current = dict(filters)
+        for drop_set in self._FILTER_DROP_PRIORITY:
+            keys_to_drop = [k for k in current if k in drop_set]
+            if keys_to_drop:
+                current = {k: v for k, v in current.items() if k not in drop_set}
+                candidates.append(current.copy())
+        return candidates
 
     def _count_matches(self, filters: dict[str, Any], documents: str = "") -> int:
         where_sql, params = self._build_filter_where_parts(filters)
@@ -1996,12 +2255,18 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                 "to_tsvector('simple', COALESCE(fa.analysis_description, '')) @@ websearch_to_tsquery('simple', %s)"
             )
             params = [*params, normalized_documents]
-        sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {where_sql}"
-        try:
+        base_sql = "SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {}"
+
+        def _exec_count(w_sql, w_params):
             with self.conn.cursor() as cur:
-                cur.execute(sql, params)
-                matched_count = int(cur.fetchone()[0])
-            if normalized_documents and matched_count == 0 and filters:
+                cur.execute(base_sql.format(w_sql), w_params)
+                return int(cur.fetchone()[0])
+
+        try:
+            matched_count = _exec_count(where_sql, params)
+
+            # 폴백 1: 텍스트 검색 제거 (필터만)
+            if matched_count == 0 and normalized_documents and filters:
                 self._log_event(
                     event="count_matches_zero_text_fallback",
                     level=logging.INFO,
@@ -2009,11 +2274,26 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     text_query=normalized_documents,
                     filter_count=len(filters),
                 )
-                fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
-                with self.conn.cursor() as cur:
-                    cur.execute(fallback_sql, fallback_params)
-                    return int(cur.fetchone()[0])
+                fb_where, fb_params = self._build_filter_where_parts(filters)
+                matched_count = _exec_count(fb_where, fb_params)
+
+            # 폴백 2~N: 점진적 필터 완화 (평가성 → 비율/부울 → 구조 순 제거)
+            if matched_count == 0 and filters:
+                for relaxed in self._relax_filters(filters):
+                    if len(relaxed) >= len(filters):
+                        continue
+                    self._log_event(
+                        event="count_matches_filter_relaxation",
+                        level=logging.INFO,
+                        reason="progressive_filter_relaxation",
+                        dropped=[k for k in filters if k not in relaxed],
+                        remaining=list(relaxed.keys()),
+                    )
+                    fb_where, fb_params = self._build_filter_where_parts(relaxed)
+                    matched_count = _exec_count(fb_where, fb_params)
+                    if matched_count > 0:
+                        break
+
             return matched_count
         except Exception as exc:
             self.conn.rollback()
@@ -2026,10 +2306,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     error=str(exc),
                 )
                 fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
-                with self.conn.cursor() as cur:
-                    cur.execute(fallback_sql, fallback_params)
-                    return int(cur.fetchone()[0])
+                return _exec_count(fallback_where_sql, fallback_params)
             raise
 
     def _generate_answer(
