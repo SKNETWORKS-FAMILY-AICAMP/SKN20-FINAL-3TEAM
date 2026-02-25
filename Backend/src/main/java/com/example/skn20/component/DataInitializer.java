@@ -103,6 +103,10 @@ public class DataInitializer implements CommandLineRunner {
 
             log.info("토지특성정보 데이터 로드 중... (JDBC batch insert)");
             ClassPathResource resource = new ClassPathResource("data/토지특성정보_전처리완료.csv");
+            if (!resource.exists()) {
+                log.warn("토지특성정보 CSV 파일이 없습니다. 스킵합니다.");
+                return;
+            }
 
             final String sql = "INSERT INTO land_char (legal_dong_code, legal_dong_name, ledger_type, lot_number, " +
                     "land_category, land_area, zone1, zone2, land_use, terrain_height, terrain_shape, " +
@@ -196,6 +200,10 @@ public class DataInitializer implements CommandLineRunner {
 
             log.info("법규조례 데이터 로드 중... (JDBC batch insert)");
             ClassPathResource resource = new ClassPathResource("data/법규조례_전처리완료.csv");
+            if (!resource.exists()) {
+                log.warn("법규조례 CSV 파일이 없습니다. 스킵합니다.");
+                return;
+            }
 
             final String sql = "INSERT INTO law (region_code, region_name, law_name, zone_district_name, " +
                     "land_use_activity, permission_category, condition_exception) VALUES (?,?,?,?,?,?,?)";
@@ -333,6 +341,10 @@ public class DataInitializer implements CommandLineRunner {
 
             log.info("사내 평가 문서 데이터 로드 중...");
             ClassPathResource resource = new ClassPathResource("data/evaluation_docs_export.json");
+            if (!resource.exists()) {
+                log.warn("사내 평가 문서 JSON 파일이 없습니다. 스킵합니다.");
+                return;
+            }
 
             int loadedCount = 0;
             int skippedCount = 0;
@@ -440,6 +452,10 @@ public class DataInitializer implements CommandLineRunner {
 
             log.info("건축물용도 정의 데이터 로드 중...");
             ClassPathResource resource = new ClassPathResource("data/건축물용도_정의.csv");
+            if (!resource.exists()) {
+                log.warn("건축물용도 정의 CSV 파일이 없습니다. 스킵합니다.");
+                return;
+            }
 
             int loadedCount = 0;
             int skippedCount = 0;
@@ -544,6 +560,10 @@ public class DataInitializer implements CommandLineRunner {
 
             log.info("도면 분석 데이터 로드 중...");
             ClassPathResource resource = new ClassPathResource("data/chromadb_phase4c_content.json");
+            if (!resource.exists()) {
+                log.warn("도면 분석 JSON 파일이 없습니다. 스킵합니다.");
+                return;
+            }
 
             int loadedCount = 0;
             int skippedCount = 0;
