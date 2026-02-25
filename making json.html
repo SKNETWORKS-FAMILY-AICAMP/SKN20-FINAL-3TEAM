@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Floor Plan Editor - Making JSON</title>
+<style>
+:root {
+  --bg-primary: #0f0f1a;
+  --bg-secondary: #1a1a2e;
+  --bg-tertiary: #16213e;
+  --bg-card: #1e2a4a;
+  --bg-hover: #253a5e;
+  --accent: #4fc3f7;
+  --accent-dim: #2980b9;
+  --text-primary: #e8eaf6;
+  --text-secondary: #9e9e9e;
+  --text-muted: #616161;
+  --border: #2a3a5e;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --error: #f44336;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --radius: 8px;
+  --radius-sm: 4px;
+  --transition: 0.25s ease;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Segoe UI', -apple-system, 'Malgun Gothic', sans-serif;
+  background: var(--bg-primary); color: var(--text-primary);
+  overflow: hidden; height: 100vh; user-select: none;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+/* ==================== UPLOAD ==================== */
+#upload-phase {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100vh; padding:20px;
+  background: radial-gradient(ellipse at center, #1a1a3e 0%, #0f0f1a 70%);
+}
+.upload-title { text-align:center; margin-bottom:36px; }
+.upload-title h1 { font-size:28px; font-weight:700; color:var(--accent); margin-bottom:8px; }
+.upload-title p { font-size:14px; color:var(--text-secondary); }
+#drop-zone {
+  max-width:720px; width:100%; min-height:200px; background:var(--bg-card);
+  border:3px dashed var(--border); border-radius:12px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; cursor:pointer; transition:var(--transition);
+  padding:32px 24px; margin-bottom:20px;
+}
+#drop-zone:hover { border-color:var(--accent-dim); background:var(--bg-hover); }
+#drop-zone.drag-over { border-color:var(--accent); background:rgba(79,195,247,0.1); transform:scale(1.01); }
+#drop-zone .dz-icon { font-size:48px; margin-bottom:12px; opacity:0.6; }
+#drop-zone .dz-text { font-size:16px; font-weight:600; margin-bottom:6px; }
+#drop-zone .dz-sub { font-size:12px; color:var(--text-secondary); }
+#drop-zone input[type="file"] { display:none; }
+#file-status {
+  max-width:720px; width:100%; display:grid; grid-template-columns:1fr 1fr;
+  gap:10px; margin-bottom:20px;
+}
+.fs-item {
+  background:var(--bg-tertiary); border-radius:var(--radius); padding:10px 14px;
+  display:flex; align-items:center; gap:10px; border-left:4px solid var(--border); transition:var(--transition);
+}
+.fs-item.ok { border-left-color:var(--success); }
+.fs-item .fs-icon { font-size:20px; flex-shrink:0; }
+.fs-item .fs-info { flex:1; min-width:0; }
+.fs-item .fs-label { font-size:11px; color:var(--text-muted); }
+.fs-item .fs-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-secondary); }
+.fs-item.ok .fs-name { color:var(--success); }
+#btn-generate {
+  padding:14px 48px; font-size:16px; font-weight:600; background:var(--accent-dim);
+  color:#fff; border:none; border-radius:var(--radius); cursor:pointer;
+  transition:var(--transition); opacity:0.5; pointer-events:none;
+}
+#btn-generate.active { opacity:1; pointer-events:auto; }
+#btn-generate.active:hover { background:var(--accent); color:#000; }
+
+/* ==================== VIZ ==================== */
+#viz-phase { display:none; height:100vh; flex-direction:column; }
+#viz-phase.active { display:flex; }
+#toolbar {
+  height:44px; background:var(--bg-secondary); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 12px; gap:6px; flex-shrink:0; z-index:100;
+}
+.tb-group { display:flex; align-items:center; gap:4px; padding:0 8px; border-right:1px solid var(--border); height:28px; }
+.tb-group:last-child { border-right:none; }
+.tb-btn {
+  padding:4px 10px; font-size:12px; background:var(--bg-card); color:var(--text-secondary);
+  border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer;
+  transition:var(--transition); white-space:nowrap;
+}
+.tb-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+.tb-btn.active { background:var(--accent-dim); color:#fff; border-color:var(--accent-dim); }
+.tb-btn.edit-btn { background:#1b3a1b; color:#66bb6a; border-color:#2e5a2e; }
+.tb-btn.edit-btn:hover { background:#2e5a2e; color:#a5d6a7; }
+.tb-btn.export-btn { background:#1a3a5a; color:var(--accent); border-color:#2a5a8a; }
+.tb-btn.export-btn:hover { background:#2a5a8a; color:#fff; }
+.tb-label { font-size:11px; color:var(--text-muted); margin-right:4px; }
+.tb-title { font-size:14px; font-weight:600; color:var(--accent); margin-right:16px; white-space:nowrap; }
+.tb-spacer { flex:1; }
+
+#main-area { display:flex; flex:1; overflow:hidden; }
+#canvas-area { flex:1; overflow:hidden; position:relative; background:#0a0a14; cursor:grab; }
+#canvas-area.grabbing { cursor:grabbing; }
+#canvas-area.add-edge-mode { cursor:crosshair; }
+#canvas-wrapper { position:absolute; transform-origin:0 0; will-change:transform; }
+#floor-plan-img { display:block; max-width:none; pointer-events:none; }
+#edge-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; }
+#edge-svg line, #edge-svg path { pointer-events:stroke; }
+#node-layer { position:absolute; top:0; left:0; width:100%; height:100%; }
+
+/* Nodes */
+.graph-node { position:absolute; transform:translate(-50%,-50%); cursor:pointer; z-index:10; }
+.graph-node .node-dot {
+  width:90px; height:90px; border-radius:50%; border:12px solid #fff;
+  box-shadow:0 0 30px rgba(0,0,0,0.5); transition:transform 0.15s ease, box-shadow 0.15s ease;
+}
+.graph-node:hover .node-dot { transform:scale(1.3); box-shadow:0 0 60px rgba(79,195,247,0.5); }
+.graph-node.selected .node-dot { transform:scale(1.4); box-shadow:0 0 80px rgba(79,195,247,0.7); animation:pulse 1.5s ease infinite; }
+.graph-node.edge-src .node-dot { border-color:#ff9800; box-shadow:0 0 60px rgba(255,152,0,0.6); transform:scale(1.3); }
+@keyframes pulse {
+  0%,100% { box-shadow:0 0 40px rgba(79,195,247,0.5); }
+  50% { box-shadow:0 0 100px rgba(79,195,247,0.8); }
+}
+.graph-node .node-label {
+  position:absolute; top:-70px; left:50%; transform:translateX(-50%);
+  font-size:55px; font-weight:600; white-space:nowrap; color:#fff;
+  text-shadow:0 0 20px #000, 0 0 40px #000, 3px 3px 10px #000; pointer-events:none;
+}
+.graph-node .node-id {
+  position:absolute; bottom:-65px; left:50%; transform:translateX(-50%);
+  font-size:45px; white-space:nowrap; color:var(--text-secondary);
+  text-shadow:0 0 15px #000, 0 0 30px #000; pointer-events:none;
+}
+.graph-node.dragging { cursor:grabbing; z-index:50; }
+
+/* Edge SVG */
+.edge-line { stroke-width:12.5; fill:none; }
+.edge-line:hover { stroke-width:20; filter:brightness(1.3); }
+.edge-hitbox { stroke-width:70; fill:none; stroke:transparent; cursor:pointer; }
+
+/* Edge tooltip */
+#edge-tooltip {
+  position:fixed; z-index:1000; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:6px 10px; font-size:11px;
+  pointer-events:none; display:none; box-shadow:var(--shadow); max-width:260px;
+}
+#edge-tooltip .et-row { display:flex; gap:6px; align-items:center; margin:2px 0; }
+#edge-tooltip .et-type { padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; color:#fff; }
+
+/* ==================== SIDE PANEL ==================== */
+#side-panel {
+  width:300px; min-width:300px; background:var(--bg-secondary);
+  border-left:1px solid var(--border); display:flex; flex-direction:column;
+  overflow:hidden; flex-shrink:0; transition:width var(--transition), min-width var(--transition);
+}
+#side-panel.collapsed { width:0; min-width:0; }
+.sp-section { border-bottom:1px solid var(--border); padding:12px; }
+.sp-section-title {
+  font-size:11px; font-weight:700; text-transform:uppercase;
+  color:var(--text-muted); letter-spacing:0.5px; margin-bottom:8px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.sp-scroll { flex:1; overflow-y:auto; }
+
+.detail-card { background:var(--bg-card); border-radius:var(--radius); padding:12px; }
+.detail-card .dc-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.detail-card .dc-dot { width:14px; height:14px; border-radius:50%; border:2px solid #fff; flex-shrink:0; }
+.detail-card .dc-title { font-size:15px; font-weight:700; }
+.detail-card .dc-id { font-size:11px; color:var(--text-secondary); }
+.dc-props { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; }
+.dc-prop { font-size:11px; }
+.dc-prop .prop-key { color:var(--text-muted); }
+.dc-prop .prop-val { color:var(--text-primary); font-weight:600; }
+.dc-connections { margin-top:10px; }
+.dc-conn-item {
+  font-size:11px; padding:4px 8px; background:var(--bg-tertiary);
+  border-radius:var(--radius-sm); margin:3px 0;
+  transition:var(--transition); display:flex; align-items:center; gap:4px;
+}
+.dc-conn-item:hover { background:var(--bg-hover); }
+.dc-conn-item .dc-conn-left { flex:1; cursor:pointer; }
+.dc-conn-badge { font-size:9px; padding:1px 5px; border-radius:3px; color:#fff; flex-shrink:0; }
+.dc-conn-btn {
+  font-size:9px; padding:2px 6px; border:none; border-radius:3px; cursor:pointer;
+  transition:var(--transition); font-family:inherit; flex-shrink:0;
+}
+.dc-conn-btn.conn-edit { background:#1b3a1b; color:#66bb6a; }
+.dc-conn-btn.conn-edit:hover { background:#2e5a2e; }
+.dc-conn-btn.conn-del { background:#3a1b1b; color:#ef5350; }
+.dc-conn-btn.conn-del:hover { background:#5a2e2e; }
+.dc-actions { display:flex; gap:6px; margin-top:12px; }
+.dc-actions .btn-sm {
+  flex:1; padding:5px 0; font-size:11px; font-weight:600; border:none; border-radius:var(--radius-sm);
+  cursor:pointer; transition:var(--transition); font-family:inherit;
+}
+.btn-edit { background:#1b3a1b; color:#66bb6a; }
+.btn-edit:hover { background:#2e5a2e; }
+.btn-del { background:#3a1b1b; color:#ef5350; }
+.btn-del:hover { background:#5a2e2e; }
+
+.stat-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.stat-item { background:var(--bg-card); border-radius:var(--radius-sm); padding:8px; text-align:center; }
+.stat-item .stat-val { font-size:20px; font-weight:700; color:var(--accent); }
+.stat-item .stat-label { font-size:10px; color:var(--text-muted); margin-top:2px; }
+.sp-edit-btn {
+  font-size:10px; padding:2px 8px; background:var(--bg-card); color:var(--text-secondary);
+  border:1px solid var(--border); border-radius:3px; cursor:pointer; transition:var(--transition);
+}
+.sp-edit-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+.node-list-item {
+  display:flex; align-items:center; gap:8px; padding:5px 8px;
+  border-radius:var(--radius-sm); cursor:pointer; transition:var(--transition); font-size:12px;
+}
+.node-list-item:hover { background:var(--bg-hover); }
+.node-list-item.active { background:var(--accent-dim); }
+.node-list-item .nli-dot { width:10px; height:10px; border-radius:50%; border:1.5px solid #fff; flex-shrink:0; }
+.node-list-item .nli-label { flex:1; }
+.node-list-item .nli-id { font-size:10px; color:var(--text-muted); }
+
+.legend-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:11px; }
+.legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; border:1.5px solid rgba(255,255,255,0.5); }
+.legend-line { width:20px; height:0; border-top-width:2.5px; border-top-style:solid; flex-shrink:0; }
+.legend-line.dashed { border-top-style:dashed; }
+
+#status-bar {
+  height:24px; background:var(--bg-tertiary); border-top:1px solid var(--border);
+  display:flex; align-items:center; padding:0 12px; font-size:11px;
+  color:var(--text-muted); gap:16px; flex-shrink:0;
+}
+.sb-item { white-space:nowrap; }
+.sb-item span { color:var(--text-secondary); }
+.sb-modified { color:var(--warning) !important; font-weight:600; }
+
+.toast {
+  position:fixed; bottom:40px; left:50%; transform:translateX(-50%);
+  padding:10px 20px; border-radius:var(--radius); font-size:13px; z-index:2000;
+  animation:toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards; box-shadow:var(--shadow);
+}
+.toast.success { background:#1b5e20; color:#a5d6a7; }
+.toast.error { background:#b71c1c; color:#ef9a9a; }
+.toast.warning { background:#e65100; color:#ffcc80; }
+@keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(20px); } }
+@keyframes toastOut { to { opacity:0; transform:translateX(-50%) translateY(-10px); } }
+
+/* ==================== MODAL ==================== */
+#modal-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+  z-index:3000; align-items:center; justify-content:center;
+}
+#modal-overlay.active { display:flex; }
+#modal-card {
+  background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:0 8px 40px rgba(0,0,0,0.6); min-width:360px; max-width:480px; width:90%;
+  max-height:80vh; display:flex; flex-direction:column;
+}
+#modal-title {
+  padding:14px 18px; font-size:14px; font-weight:700; color:var(--accent);
+  border-bottom:1px solid var(--border);
+}
+#modal-body { padding:18px; overflow-y:auto; flex:1; }
+#modal-footer {
+  padding:12px 18px; border-top:1px solid var(--border);
+  display:flex; justify-content:flex-end; gap:8px;
+}
+.modal-btn {
+  padding:7px 20px; font-size:12px; font-weight:600; border:none;
+  border-radius:var(--radius-sm); cursor:pointer; transition:var(--transition); font-family:inherit;
+}
+.modal-btn-cancel { background:var(--bg-card); color:var(--text-secondary); }
+.modal-btn-cancel:hover { background:var(--bg-hover); color:var(--text-primary); }
+.modal-btn-ok { background:var(--accent-dim); color:#fff; }
+.modal-btn-ok:hover { background:var(--accent); color:#000; }
+.modal-btn-danger { background:#b71c1c; color:#ef9a9a; }
+.modal-btn-danger:hover { background:#d32f2f; color:#fff; }
+
+/* Modal form */
+.mf-row { margin-bottom:12px; }
+.mf-row:last-child { margin-bottom:0; }
+.mf-label { display:block; font-size:11px; color:var(--text-muted); margin-bottom:4px; font-weight:600; }
+.mf-input {
+  width:100%; padding:7px 10px; background:var(--bg-primary); border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text-primary); font-size:12px; font-family:inherit;
+  outline:none; transition:var(--transition);
+}
+.mf-input:focus { border-color:var(--accent-dim); }
+.mf-input:read-only { opacity:0.5; cursor:not-allowed; }
+.mf-check-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.mf-check-row input[type="checkbox"] {
+  width:16px; height:16px; accent-color:var(--accent); cursor:pointer;
+}
+.mf-check-row label { font-size:12px; color:var(--text-primary); cursor:pointer; }
+.mf-radio-group { display:flex; gap:10px; margin-top:4px; }
+.mf-radio-item { display:flex; align-items:center; gap:5px; cursor:pointer; }
+.mf-radio-item input[type="radio"] { accent-color:var(--accent); cursor:pointer; }
+.mf-radio-item label { font-size:12px; cursor:pointer; }
+.mf-hint { font-size:10px; color:var(--text-muted); margin-top:3px; }
+
+/* Edge add mode banner */
+#edge-mode-banner {
+  display:none; position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  background:rgba(255,152,0,0.9); color:#000; padding:6px 18px; border-radius:20px;
+  font-size:13px; font-weight:600; z-index:90; pointer-events:none;
+}
+#edge-mode-banner.active { display:block; }
+</style>
+</head>
+<body>
+
+<!-- ==================== UPLOAD ==================== -->
+<div id="upload-phase">
+  <div class="upload-title">
+    <h1>Floor Plan Editor</h1>
+    <p>result.png + GT JSON + topology_graph.json 3개를 올려주세요</p>
+  </div>
+  <div id="drop-zone">
+    <div class="dz-icon">&#128194;</div>
+    <div class="dz-text">파일 3개를 드래그하거나 클릭하세요</div>
+    <div class="dz-sub">result.png + *_gt.json + topology_graph.json &mdash; 자동 분류</div>
+    <input type="file" id="file-multi" multiple>
+  </div>
+  <div id="file-status">
+    <div class="fs-item" id="fs-image"><span class="fs-icon">&#127912;</span><div class="fs-info"><div class="fs-label">result.png (필수)</div><div class="fs-name" id="fn-image">-</div></div></div>
+    <div class="fs-item" id="fs-gt"><span class="fs-icon">&#128203;</span><div class="fs-info"><div class="fs-label">GT JSON (*_gt.json) (필수)</div><div class="fs-name" id="fn-gt">-</div></div></div>
+    <div class="fs-item" id="fs-topo"><span class="fs-icon">&#128206;</span><div class="fs-info"><div class="fs-label">Topology JSON (필수)</div><div class="fs-name" id="fn-topo">-</div></div></div>
+  </div>
+  <button id="btn-generate">시각화 생성</button>
+</div>
+
+<!-- ==================== VIZ ==================== -->
+<div id="viz-phase">
+  <div id="toolbar">
+    <span class="tb-title">FloorPlan Editor</span>
+    <div class="tb-group">
+      <button class="tb-btn active" id="tb-labels" onclick="toggleLabels()">라벨</button>
+      <button class="tb-btn active" id="tb-edges" onclick="toggleEdges()">엣지</button>
+      <button class="tb-btn active" id="tb-ids" onclick="toggleIds()">ID</button>
+    </div>
+    <div class="tb-group">
+      <span class="tb-label">엣지:</span>
+      <button class="tb-btn active" id="tb-edge-door" onclick="toggleEdgeType('door')" style="color:#F44336">문</button>
+      <button class="tb-btn active" id="tb-edge-window" onclick="toggleEdgeType('window')" style="color:#42A5F5">창</button>
+      <button class="tb-btn active" id="tb-edge-open" onclick="toggleEdgeType('open')" style="color:#66BB6A">개방</button>
+    </div>
+    <div class="tb-group">
+      <span class="tb-label">편집:</span>
+      <button class="tb-btn edit-btn" onclick="showAddNodeModal()">+ 노드</button>
+      <button class="tb-btn edit-btn" onclick="startAddEdgeMode()">+ 엣지</button>
+    </div>
+    <span class="tb-spacer"></span>
+    <div class="tb-group">
+      <button class="tb-btn" onclick="resetView()">뷰 리셋</button>
+      <button class="tb-btn" onclick="fitView()">맞춤</button>
+      <button class="tb-btn export-btn" onclick="exportJson()">JSON 저장</button>
+      <button class="tb-btn" onclick="togglePanel()">패널</button>
+      <button class="tb-btn" onclick="goBack()">&#8592; 업로드</button>
+    </div>
+  </div>
+
+  <div id="main-area">
+    <div id="canvas-area">
+      <div id="canvas-wrapper">
+        <img id="floor-plan-img" alt="Floor Plan">
+        <svg id="edge-svg"></svg>
+        <div id="node-layer"></div>
+      </div>
+      <div id="edge-mode-banner"></div>
+    </div>
+
+    <div id="side-panel">
+      <div class="sp-section" id="sp-detail" style="display:none">
+        <div class="sp-section-title">선택된 노드</div>
+        <div class="detail-card" id="detail-card"></div>
+      </div>
+      <div class="sp-section" id="sp-stats">
+        <div class="sp-section-title">통계 <button class="sp-edit-btn" onclick="showEditStatsModal()">수정</button></div>
+        <div class="stat-grid" id="stat-grid"></div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-title">범례</div>
+        <div id="legend-nodes" class="legend-grid" style="margin-bottom:8px"></div>
+        <div id="legend-edges" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="sp-scroll">
+        <div class="sp-section">
+          <div class="sp-section-title">노드 목록 (<span id="node-count">0</span>)</div>
+          <div id="node-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-bar">
+    <div class="sb-item">좌표: <span id="sb-coords">-</span></div>
+    <div class="sb-item">줌: <span id="sb-zoom">100%</span></div>
+    <div class="sb-item">노드: <span id="sb-nodes">0</span></div>
+    <div class="sb-item">엣지: <span id="sb-edges">0</span></div>
+    <div class="sb-item" id="sb-modified"></div>
+    <div class="sb-item" id="sb-warnings" style="color:var(--warning)"></div>
+  </div>
+</div>
+
+<div id="edge-tooltip"></div>
+
+<!-- ==================== MODAL ==================== -->
+<div id="modal-overlay">
+  <div id="modal-card">
+    <div id="modal-title"></div>
+    <div id="modal-body"></div>
+    <div id="modal-footer"></div>
+  </div>
+</div>
+
+<script>
+// ===================== CONSTANTS =====================
+const ROOM_COLORS = {
+  '거실':'#4CAF50','침실':'#2196F3','안방':'#1565C0',
+  '주방':'#FF9800','식당':'#FFB74D','주방식당':'#FF9800',
+  '화장실':'#9C27B0','욕실':'#9C27B0','현관':'#795548',
+  '발코니':'#00BCD4','테라스':'#009688','드레스룸':'#E91E63',
+  '다용도실':'#FFC107','실외기실':'#FF5722','팬트리':'#8BC34A',
+  '서재':'#3F51B5','기타':'#607D8B','복도':'#9E9E9E','_default':'#757575'
+};
+const EDGE_STYLES = {
+  door:   { color:'#F44336', dash:'',      width:12.5, label:'문' },
+  window: { color:'#42A5F5', dash:'40,20', width:10.0, label:'창' },
+  open:   { color:'#66BB6A', dash:'20,20', width:10.0, label:'open' },
+  _default:{ color:'#9E9E9E', dash:'10,10', width:7.5,  label:'기타' }
+};
+const EDGE_MID_LABEL = { door:'문', window:'창', open:'open' };
+
+function roomColor(label) {
+  if (!label) return ROOM_COLORS._default;
+  for (const k of Object.keys(ROOM_COLORS)) { if (k !== '_default' && label.includes(k)) return ROOM_COLORS[k]; }
+  return ROOM_COLORS._default;
+}
+function edgeStyle(type) { return EDGE_STYLES[type] || EDGE_STYLES._default; }
+function spaceNum(nodeId) { const m = nodeId.match(/(\d+)$/); return m ? m[1] : nodeId; }
+
+// ===================== STATE =====================
+const S = {
+  files: { image:null, gt:null, topo:null },
+  imgFloor:null,
+  gtJson:null, topoJson:null,
+  graph: { nodes:[], edges:[], statistics:{} },
+  nodePos: {},
+  imgW:0, imgH:0,
+  zoom:1, panX:0, panY:0,
+  showLabels:true, showEdges:true, showIds:true,
+  edgeFilter: { door:true, window:true, open:true },
+  selectedNode:null,
+  isPanning:false, panSX:0, panSY:0,
+  dragNode:null, dragSX:0, dragSY:0, dragNX:0, dragNY:0,
+  warnings:[],
+  modified:false,
+  // Edge add mode
+  addEdgeMode:false, addEdgeSrc:null
+};
+
+// ===================== DOM =====================
+const $ = id => document.getElementById(id);
+const uploadPhase = $('upload-phase');
+const vizPhase = $('viz-phase');
+const canvasArea = $('canvas-area');
+const canvasWrap = $('canvas-wrapper');
+const floorImg = $('floor-plan-img');
+const edgeSvg = $('edge-svg');
+const nodeLayer = $('node-layer');
+const edgeTooltip = $('edge-tooltip');
+
+// ===================== FILE UPLOAD =====================
+const dropZone = $('drop-zone');
+const fileInput = $('file-multi');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) classifyFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) classifyFiles(fileInput.files); });
+
+function classifyFiles(fileList) {
+  const IMAGE_EXT = /\.(png|jpe?g|bmp|gif|webp|tiff?)$/i;
+  const JSON_EXT = /\.json$/i;
+  for (const file of fileList) {
+    const name = file.name; let type = null;
+    if (JSON_EXT.test(name)) {
+      if (name.endsWith('_gt.json')) type = 'gt';
+      else if (name === 'topology_graph.json') type = 'topo';
+      else type = 'gt';
+    } else if (IMAGE_EXT.test(name)) {
+      type = 'image';
+    }
+    if (type) {
+      S.files[type] = file;
+      const fsItem = $('fs-' + type), fnSpan = $('fn-' + type);
+      if (fsItem) fsItem.classList.add('ok');
+      if (fnSpan) fnSpan.textContent = name;
+    }
+  }
+  $('btn-generate').classList.toggle('active', !!(S.files.image && S.files.gt && S.files.topo));
+}
+
+$('btn-generate').addEventListener('click', async () => {
+  if (!S.files.image || !S.files.gt || !S.files.topo) return;
+  try {
+    await loadAll();
+    uploadPhase.style.display = 'none';
+    vizPhase.classList.add('active');
+    initViz();
+  } catch(err) { showToast('error','로드 실패: '+err.message); console.error(err); }
+});
+
+async function loadAll() {
+  S.imgFloor = await loadImage(S.files.image);
+  S.gtJson = JSON.parse(await S.files.gt.text());
+  S.topoJson = JSON.parse(await S.files.topo.text());
+  if (S.topoJson.image_info) { S.imgW = S.topoJson.image_info.width; S.imgH = S.topoJson.image_info.height; }
+  else { S.imgW = S.imgFloor.naturalWidth; S.imgH = S.imgFloor.naturalHeight; }
+  buildGraph();
+}
+
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = () => rej(new Error('이미지 로드 실패'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ===================== BUILD GRAPH =====================
+function buildGraph() {
+  const topoNodes = S.topoJson.nodes || [];
+  const gtNodes = S.gtJson.nodes || [];
+  const gtEdges = S.gtJson.edges || [];
+  const topoMap = {}, gtMap = {};
+  topoNodes.forEach(n => { topoMap[n.node_id] = n; });
+  gtNodes.forEach(n => { gtMap[n.node_id] = n; });
+
+  const allIds = new Set([...Object.keys(topoMap), ...Object.keys(gtMap)]);
+  const mergedNodes = [];
+  allIds.forEach(id => {
+    const gt = gtMap[id], tp = topoMap[id];
+    mergedNodes.push({
+      node_id: id,
+      ground_truth_label: gt ? gt.ground_truth_label : (tp ? tp.label : '?'),
+      has_window: gt ? gt.has_window : false,
+      window_count: gt ? (gt.window_count || 0) : 0,
+      has_door: gt ? gt.has_door : false,
+      is_outside: gt ? gt.is_outside : (tp ? tp.is_outside : false),
+      area: tp ? tp.area : null,
+      area_ratio: tp ? tp.area_ratio : null,
+      category_name: tp ? tp.category_name : null,
+      space_type: tp ? tp.space_type : null,
+    });
+  });
+
+  const mergedEdges = gtEdges.map(e => ({
+    source: e.source, target: e.target,
+    connection_exists: e.connection_exists, connection_type: e.connection_type
+  }));
+
+  S.graph = { nodes: mergedNodes, edges: mergedEdges, statistics: { ...(S.gtJson.statistics || {}) } };
+
+  S.nodePos = {};
+  mergedNodes.forEach(n => {
+    const tp = topoMap[n.node_id];
+    if (tp && tp.centroid) S.nodePos[n.node_id] = { x: tp.centroid[0], y: tp.centroid[1] };
+  });
+}
+
+// ===================== INIT VIZ =====================
+function initViz() {
+  S.warnings = []; S.modified = false;
+  floorImg.src = S.imgFloor.src; floorImg.style.width = S.imgW+'px'; floorImg.style.height = S.imgH+'px';
+  edgeSvg.setAttribute('width',S.imgW); edgeSvg.setAttribute('height',S.imgH);
+  edgeSvg.style.width = S.imgW+'px'; edgeSvg.style.height = S.imgH+'px';
+
+  const noPos = S.graph.nodes.filter(n => !S.nodePos[n.node_id]);
+  if (noPos.length) {
+    S.warnings.push(noPos.length+'개 노드 centroid 없음');
+    noPos.forEach((n,i) => { S.nodePos[n.node_id] = { x:80+(i%5)*120, y:80+Math.floor(i/5)*100 }; });
+  }
+
+  renderAll();
+  fitView();
+  if (S.warnings.length) $('sb-warnings').textContent = '⚠ '+S.warnings.join(' | ');
+  bindCanvasEvents();
+  bindKeyboard();
+}
+
+function renderAll() {
+  renderNodes(); renderEdges(); renderSidePanel(); renderLegend(); updateStatusBar();
+}
+
+// ===================== RENDER NODES =====================
+function renderNodes() {
+  nodeLayer.innerHTML = '';
+  S.graph.nodes.forEach(n => {
+    const pos = S.nodePos[n.node_id]; if (!pos) return;
+    const color = roomColor(n.ground_truth_label);
+    const el = document.createElement('div');
+    el.className = 'graph-node'; el.dataset.nodeId = n.node_id;
+    el.style.left = pos.x+'px'; el.style.top = pos.y+'px';
+    el.innerHTML = `
+      <div class="node-label" style="display:${S.showLabels?'block':'none'}">${n.ground_truth_label}</div>
+      <div class="node-dot" style="background:${color}"></div>
+      <div class="node-id" style="display:${S.showIds?'block':'none'}">${spaceNum(n.node_id)}</div>`;
+    el.addEventListener('mousedown', e => onNodeMouseDown(e, n.node_id));
+    el.addEventListener('click', e => { e.stopPropagation(); onNodeClick(n.node_id); });
+    nodeLayer.appendChild(el);
+  });
+}
+
+function renderNodePosition(nodeId) {
+  const el = nodeLayer.querySelector(`[data-node-id="${nodeId}"]`);
+  if (!el) return; const pos = S.nodePos[nodeId];
+  el.style.left = pos.x+'px'; el.style.top = pos.y+'px';
+}
+
+// ===================== RENDER EDGES =====================
+function renderEdges() {
+  edgeSvg.innerHTML = '';
+  const nodeMap = {}; S.graph.nodes.forEach(n => { nodeMap[n.node_id] = n; });
+
+  S.graph.edges.forEach((e, idx) => {
+    if (!e.connection_exists) return;
+    const p1 = S.nodePos[e.source], p2 = S.nodePos[e.target];
+    if (!p1 || !p2) return;
+    const style = edgeStyle(e.connection_type);
+    const visible = S.showEdges && (S.edgeFilter[e.connection_type] !== false);
+
+    const hitbox = document.createElementNS('http://www.w3.org/2000/svg','line');
+    hitbox.setAttribute('x1',p1.x); hitbox.setAttribute('y1',p1.y);
+    hitbox.setAttribute('x2',p2.x); hitbox.setAttribute('y2',p2.y);
+    hitbox.setAttribute('class','edge-hitbox'); hitbox.dataset.edgeIdx = idx;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',p1.x); line.setAttribute('y1',p1.y);
+    line.setAttribute('x2',p2.x); line.setAttribute('y2',p2.y);
+    line.setAttribute('stroke',style.color); line.setAttribute('stroke-width',style.width);
+    if (style.dash) line.setAttribute('stroke-dasharray',style.dash);
+    line.setAttribute('class','edge-line'); line.dataset.edgeIdx = idx;
+    line.dataset.type = e.connection_type; line.dataset.source = e.source; line.dataset.target = e.target;
+    line.style.display = visible ? '' : 'none';
+    hitbox.style.display = visible ? '' : 'none';
+
+    const srcLabel = nodeMap[e.source]?.ground_truth_label || e.source;
+    const tgtLabel = nodeMap[e.target]?.ground_truth_label || e.target;
+    const tooltipHTML = `<div class="et-row"><strong>${srcLabel}</strong> (${e.source}) &rarr; <strong>${tgtLabel}</strong> (${e.target})</div>
+      <div class="et-row"><span class="et-type" style="background:${style.color}">${style.label}</span></div>
+      <div class="et-row" style="font-size:10px;color:var(--text-muted)">클릭하여 편집</div>`;
+
+    hitbox.addEventListener('mouseenter', ev => {
+      if (S.addEdgeMode) return;
+      edgeTooltip.innerHTML = tooltipHTML; edgeTooltip.style.display='block';
+      edgeTooltip.style.left=(ev.clientX+12)+'px'; edgeTooltip.style.top=(ev.clientY-10)+'px';
+      line.setAttribute('stroke-width',style.width+10); line.style.filter='brightness(1.4)';
+    });
+    hitbox.addEventListener('mousemove', ev => {
+      edgeTooltip.style.left=(ev.clientX+12)+'px'; edgeTooltip.style.top=(ev.clientY-10)+'px';
+    });
+    hitbox.addEventListener('mouseleave', () => {
+      edgeTooltip.style.display='none'; line.setAttribute('stroke-width',style.width); line.style.filter='';
+    });
+    // Edge click → edit modal
+    hitbox.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if (S.addEdgeMode) return;
+      showEditEdgeModal(idx);
+    });
+
+    const mx = (p1.x+p2.x)/2, my = (p1.y+p2.y)/2;
+    const midLabel = EDGE_MID_LABEL[e.connection_type] || e.connection_type;
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',mx); txt.setAttribute('y',my-30);
+    txt.setAttribute('text-anchor','middle'); txt.setAttribute('font-size','50');
+    txt.setAttribute('fill',style.color); txt.setAttribute('font-weight','600');
+    txt.setAttribute('paint-order','stroke'); txt.setAttribute('stroke','#000'); txt.setAttribute('stroke-width','15');
+    txt.textContent = midLabel;
+    txt.style.display = visible ? '' : 'none';
+    txt.dataset.edgeIdx = idx; txt.classList.add('edge-line');
+    txt.dataset.type = e.connection_type; txt.dataset.source = e.source; txt.dataset.target = e.target;
+
+    edgeSvg.appendChild(line); edgeSvg.appendChild(txt); edgeSvg.appendChild(hitbox);
+  });
+}
+
+// ===================== SIDE PANEL =====================
+function renderSidePanel() {
+  const nodes = S.graph.nodes, stats = S.graph.statistics;
+  const labelMap = { bay_count:'베이', room_count:'방', bathroom_count:'욕실' };
+  $('stat-grid').innerHTML = Object.entries(stats).map(([k,v]) =>
+    `<div class="stat-item"><div class="stat-val">${v}</div><div class="stat-label">${labelMap[k]||k}</div></div>`
+  ).join('');
+  $('node-count').textContent = nodes.length;
+  $('node-list').innerHTML = nodes.map(n => {
+    const c = roomColor(n.ground_truth_label);
+    return `<div class="node-list-item" data-nli="${n.node_id}" onclick="onNodeClick('${n.node_id}')">
+      <div class="nli-dot" style="background:${c}"></div>
+      <span class="nli-label">${n.ground_truth_label}</span>
+      <span class="nli-id">${n.node_id}</span></div>`;
+  }).join('');
+}
+
+function renderLegend() {
+  const usedLabels = new Set(); S.graph.nodes.forEach(n => usedLabels.add(n.ground_truth_label));
+  let nh = ''; usedLabels.forEach(l => { nh += `<div class="legend-item"><div class="legend-dot" style="background:${roomColor(l)}"></div>${l}</div>`; });
+  $('legend-nodes').innerHTML = nh;
+  let eh = ''; ['door','window','open'].forEach(t => {
+    const s = edgeStyle(t);
+    eh += `<div class="legend-item"><div class="legend-line ${s.dash?'dashed':'solid'}" style="border-top-color:${s.color}"></div>${s.label}</div>`;
+  });
+  $('legend-edges').innerHTML = eh;
+}
+
+function showNodeDetail(nodeId) {
+  const node = S.graph.nodes.find(n => n.node_id === nodeId);
+  if (!node) { $('sp-detail').style.display='none'; return; }
+  const c = roomColor(node.ground_truth_label);
+  const nodeMap = {}; S.graph.nodes.forEach(n => { nodeMap[n.node_id]=n; });
+  const pos = S.nodePos[nodeId];
+
+  let html = `<div class="dc-header">
+    <div class="dc-dot" style="background:${c}"></div>
+    <div><div class="dc-title">${node.ground_truth_label}</div><div class="dc-id">${node.node_id}</div></div>
+  </div>
+  <div class="dc-props">
+    <div class="dc-prop"><span class="prop-key">창문: </span><span class="prop-val">${node.has_window?'있음 ('+node.window_count+')':'없음'}</span></div>
+    <div class="dc-prop"><span class="prop-key">문: </span><span class="prop-val">${node.has_door?'있음':'없음'}</span></div>
+    <div class="dc-prop"><span class="prop-key">외부: </span><span class="prop-val">${node.is_outside?'예':'아니오'}</span></div>
+    ${pos?`<div class="dc-prop"><span class="prop-key">좌표: </span><span class="prop-val">(${Math.round(pos.x)}, ${Math.round(pos.y)})</span></div>`:''}
+    ${node.area?`<div class="dc-prop"><span class="prop-key">면적: </span><span class="prop-val">${Math.round(node.area).toLocaleString()}px</span></div>`:''}
+    ${node.area_ratio?`<div class="dc-prop"><span class="prop-key">면적비: </span><span class="prop-val">${(node.area_ratio*100).toFixed(1)}%</span></div>`:''}
+    ${node.space_type?`<div class="dc-prop"><span class="prop-key">유형: </span><span class="prop-val">${node.space_type}</span></div>`:''}
+  </div>`;
+
+  // Find edges with their real index in S.graph.edges
+  const connEdges = [];
+  S.graph.edges.forEach((e, idx) => {
+    if (e.connection_exists && (e.source===nodeId||e.target===nodeId)) {
+      connEdges.push({ edge:e, idx });
+    }
+  });
+
+  if (connEdges.length) {
+    html += `<div class="dc-connections"><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600">연결 (${connEdges.length})</div>`;
+    connEdges.forEach(({edge:e, idx}) => {
+      const otherId = e.source===nodeId?e.target:e.source;
+      const otherNode = nodeMap[otherId]; const otherLabel = otherNode?otherNode.ground_truth_label:otherId;
+      const s = edgeStyle(e.connection_type);
+      html += `<div class="dc-conn-item">
+        <span class="dc-conn-left" onclick="onNodeClick('${otherId}')">${otherLabel} (${otherId})</span>
+        <span class="dc-conn-badge" style="background:${s.color}">${s.label}</span>
+        <button class="dc-conn-btn conn-edit" onclick="event.stopPropagation();showEditEdgeModal(${idx})" title="엣지 유형 변경">수정</button>
+        <button class="dc-conn-btn conn-del" onclick="event.stopPropagation();doDeleteEdge(${idx})" title="엣지 삭제">X</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  // Edit/Delete buttons
+  html += `<div class="dc-actions">
+    <button class="btn-sm btn-edit" onclick="showEditNodeModal('${nodeId}')">수정</button>
+    <button class="btn-sm btn-del" onclick="showDeleteNodeModal('${nodeId}')">삭제</button>
+  </div>`;
+
+  $('detail-card').innerHTML = html;
+  $('sp-detail').style.display = 'block';
+}
+
+// ===================== INTERACTIONS =====================
+function bindCanvasEvents() {
+  canvasArea.addEventListener('mousedown', onCanvasMouseDown);
+  window.addEventListener('mousemove', onCanvasMouseMove);
+  window.addEventListener('mouseup', onCanvasMouseUp);
+  canvasArea.addEventListener('wheel', onCanvasWheel, { passive:false });
+  canvasArea.addEventListener('click', e => {
+    if (e.target===canvasArea||e.target===floorImg) {
+      if (S.addEdgeMode) { cancelAddEdgeMode(); return; }
+      deselectNode();
+    }
+  });
+  canvasArea.addEventListener('mousemove', e => {
+    const rect = canvasWrap.getBoundingClientRect();
+    const ix = (e.clientX-rect.left)/S.zoom, iy = (e.clientY-rect.top)/S.zoom;
+    if (ix>=0&&iy>=0&&ix<=S.imgW&&iy<=S.imgH) $('sb-coords').textContent = `X:${Math.round(ix)}, Y:${Math.round(iy)}`;
+    else $('sb-coords').textContent = '-';
+  });
+}
+
+function onCanvasMouseDown(e) {
+  if (S.dragNode||S.addEdgeMode) return;
+  S.isPanning=true; S.panSX=e.clientX-S.panX; S.panSY=e.clientY-S.panY;
+  canvasArea.classList.add('grabbing');
+}
+function onCanvasMouseMove(e) {
+  if (S.dragNode) {
+    const dx=(e.clientX-S.dragSX)/S.zoom, dy=(e.clientY-S.dragSY)/S.zoom;
+    S.nodePos[S.dragNode].x=S.dragNX+dx; S.nodePos[S.dragNode].y=S.dragNY+dy;
+    renderNodePosition(S.dragNode); updateEdgePositions();
+    if (S.selectedNode===S.dragNode) showNodeDetail(S.dragNode);
+    return;
+  }
+  if (S.isPanning) { S.panX=e.clientX-S.panSX; S.panY=e.clientY-S.panSY; updateTransform(); }
+}
+function onCanvasMouseUp() {
+  if (S.dragNode) {
+    const el = nodeLayer.querySelector(`[data-node-id="${S.dragNode}"]`);
+    if (el) el.classList.remove('dragging');
+    S.dragNode=null;
+  }
+  S.isPanning=false; canvasArea.classList.remove('grabbing');
+}
+function onCanvasWheel(e) {
+  e.preventDefault();
+  const rect=canvasArea.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top, oldZoom=S.zoom;
+  S.zoom = Math.max(0.05, Math.min(8, S.zoom*(e.deltaY<0?1.12:0.89)));
+  S.panX=mx-(mx-S.panX)*(S.zoom/oldZoom); S.panY=my-(my-S.panY)*(S.zoom/oldZoom);
+  updateTransform(); $('sb-zoom').textContent=Math.round(S.zoom*100)+'%';
+}
+
+function onNodeMouseDown(e, nodeId) {
+  if (S.addEdgeMode) return; // don't drag in edge-add mode
+  e.stopPropagation(); e.preventDefault();
+  S.dragNode=nodeId; S.dragSX=e.clientX; S.dragSY=e.clientY;
+  S.dragNX=S.nodePos[nodeId].x; S.dragNY=S.nodePos[nodeId].y;
+  const el = nodeLayer.querySelector(`[data-node-id="${nodeId}"]`);
+  if (el) el.classList.add('dragging');
+}
+
+function onNodeClick(nodeId) {
+  // Edge add mode
+  if (S.addEdgeMode) {
+    handleAddEdgeClick(nodeId);
+    return;
+  }
+  if (S.selectedNode===nodeId) { deselectNode(); return; }
+  S.selectedNode = nodeId;
+  nodeLayer.querySelectorAll('.graph-node').forEach(el => {
+    el.classList.toggle('selected', el.dataset.nodeId===nodeId);
+  });
+  showNodeDetail(nodeId);
+  document.querySelectorAll('.node-list-item').forEach(li => {
+    li.classList.toggle('active', li.dataset.nli===nodeId);
+  });
+}
+
+function deselectNode() {
+  S.selectedNode=null;
+  nodeLayer.querySelectorAll('.graph-node').forEach(el => el.classList.remove('selected'));
+  $('sp-detail').style.display='none';
+  document.querySelectorAll('.node-list-item').forEach(li => li.classList.remove('active'));
+}
+
+// ===================== EDGE POSITION UPDATE =====================
+function updateEdgePositions() {
+  S.graph.edges.forEach((e, idx) => {
+    if (!e.connection_exists) return;
+    const p1=S.nodePos[e.source], p2=S.nodePos[e.target]; if (!p1||!p2) return;
+    edgeSvg.querySelectorAll(`line[data-edge-idx="${idx}"]`).forEach(l => {
+      l.setAttribute('x1',p1.x); l.setAttribute('y1',p1.y); l.setAttribute('x2',p2.x); l.setAttribute('y2',p2.y);
+    });
+    edgeSvg.querySelectorAll(`text[data-edge-idx="${idx}"]`).forEach(t => {
+      t.setAttribute('x',(p1.x+p2.x)/2); t.setAttribute('y',(p1.y+p2.y)/2-30);
+    });
+  });
+}
+
+// ===================== TRANSFORM =====================
+function updateTransform() { canvasWrap.style.transform=`translate(${S.panX}px,${S.panY}px) scale(${S.zoom})`; }
+function resetView() { S.zoom=1; S.panX=0; S.panY=0; updateTransform(); $('sb-zoom').textContent='100%'; }
+function fitView() {
+  const aW=canvasArea.clientWidth, aH=canvasArea.clientHeight; if(!S.imgW||!S.imgH) return;
+  S.zoom = Math.min(aW/S.imgW, aH/S.imgH)*0.95;
+  S.panX=(aW-S.imgW*S.zoom)/2; S.panY=(aH-S.imgH*S.zoom)/2;
+  updateTransform(); $('sb-zoom').textContent=Math.round(S.zoom*100)+'%';
+}
+
+// ===================== TOOLBAR =====================
+function toggleLabels() {
+  S.showLabels=!S.showLabels; $('tb-labels').classList.toggle('active',S.showLabels);
+  nodeLayer.querySelectorAll('.node-label').forEach(el => { el.style.display=S.showLabels?'block':'none'; });
+}
+function toggleEdges() { S.showEdges=!S.showEdges; $('tb-edges').classList.toggle('active',S.showEdges); applyEdgeVisibility(); }
+function toggleIds() {
+  S.showIds=!S.showIds; $('tb-ids').classList.toggle('active',S.showIds);
+  nodeLayer.querySelectorAll('.node-id').forEach(el => { el.style.display=S.showIds?'block':'none'; });
+}
+function toggleEdgeType(type) { S.edgeFilter[type]=!S.edgeFilter[type]; $('tb-edge-'+type).classList.toggle('active',S.edgeFilter[type]); applyEdgeVisibility(); }
+function applyEdgeVisibility() {
+  edgeSvg.querySelectorAll('.edge-line').forEach(el => {
+    el.style.display = (S.showEdges&&S.edgeFilter[el.dataset.type]!==false)?'':'none';
+  });
+  edgeSvg.querySelectorAll('.edge-hitbox').forEach(el => {
+    const s=edgeSvg.querySelector(`.edge-line[data-edge-idx="${el.dataset.edgeIdx}"]`);
+    el.style.display=s?s.style.display:'none';
+  });
+}
+function togglePanel() { $('side-panel').classList.toggle('collapsed'); }
+function goBack() { vizPhase.classList.remove('active'); uploadPhase.style.display='flex'; }
+
+// ===================== STATUS BAR =====================
+function updateStatusBar() {
+  $('sb-nodes').textContent = S.graph.nodes.length+'개';
+  $('sb-edges').textContent = S.graph.edges.filter(e=>e.connection_exists).length+'개';
+  $('sb-zoom').textContent = Math.round(S.zoom*100)+'%';
+  $('sb-modified').textContent = S.modified ? '● 수정됨' : '';
+  $('sb-modified').className = S.modified ? 'sb-item sb-modified' : 'sb-item';
+}
+
+function markModified() { S.modified=true; updateStatusBar(); }
+
+// ===================== KEYBOARD =====================
+function bindKeyboard() {
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
+    // ESC in edge mode
+    if (e.key==='Escape'&&S.addEdgeMode) { cancelAddEdgeMode(); return; }
+    // Delete selected node
+    if ((e.key==='Delete'||e.key==='Backspace')&&S.selectedNode) { showDeleteNodeModal(S.selectedNode); return; }
+    switch(e.key.toLowerCase()) {
+      case 'l': toggleLabels(); break;
+      case 'e': toggleEdges(); break;
+      case 'i': toggleIds(); break;
+      case 'r': resetView(); break;
+      case 'f': fitView(); break;
+      case 'escape': deselectNode(); break;
+      case 'p': togglePanel(); break;
+    }
+  });
+}
+
+// ===================== MODAL SYSTEM =====================
+function showModal(title, bodyHTML, buttons) {
+  $('modal-title').textContent = title;
+  $('modal-body').innerHTML = bodyHTML;
+  const footer = $('modal-footer');
+  footer.innerHTML = '';
+  buttons.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'modal-btn ' + (b.cls||'modal-btn-cancel');
+    btn.textContent = b.text;
+    btn.onclick = () => { if (b.action) b.action(); };
+    footer.appendChild(btn);
+  });
+  $('modal-overlay').classList.add('active');
+}
+function hideModal() { $('modal-overlay').classList.remove('active'); }
+
+// Close modal on overlay click or ESC
+$('modal-overlay').addEventListener('click', e => { if (e.target===$('modal-overlay')) hideModal(); });
+window.addEventListener('keydown', e => { if (e.key==='Escape'&&$('modal-overlay').classList.contains('active')) hideModal(); });
+
+// ===================== HELPER: next space id =====================
+function nextSpaceId() {
+  let max = -1;
+  S.graph.nodes.forEach(n => { const m=n.node_id.match(/(\d+)$/); if(m) max=Math.max(max,parseInt(m[1])); });
+  return 'space_'+(max+1);
+}
+
+// ===================== NODE: ADD =====================
+function showAddNodeModal() {
+  if (S.addEdgeMode) cancelAddEdgeMode();
+  const newId = nextSpaceId();
+  const body = `
+    <div class="mf-row"><label class="mf-label">Node ID (space_N 형식)</label><input class="mf-input" id="mf-nid" value="${newId}">
+      <div class="mf-hint">기본값: ${newId} — 직접 수정 가능</div></div>
+    <div class="mf-row"><label class="mf-label">라벨 (ground_truth_label)</label><input class="mf-input" id="mf-nlabel" placeholder="예: 거실, 침실, 화장실..."></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-nwin"><label for="mf-nwin">has_window</label></div>
+    <div class="mf-row"><label class="mf-label">window_count</label><input class="mf-input" id="mf-nwcnt" type="number" value="0" min="0"></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-ndoor" checked><label for="mf-ndoor">has_door</label></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-nout"><label for="mf-nout">is_outside</label></div>
+    <div class="mf-hint">노드는 이미지 중앙에 생성됩니다. 이후 드래그로 위치를 조정하세요.</div>`;
+  showModal('노드 추가', body, [
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'추가', cls:'modal-btn-ok', action:doAddNode }
+  ]);
+  setTimeout(() => { const el=$('mf-nlabel'); if(el) el.focus(); }, 100);
+}
+
+function doAddNode() {
+  const nid = $('mf-nid').value.trim();
+  const label = $('mf-nlabel').value.trim();
+  if (!nid) { showToast('warning','Node ID를 입력하세요'); return; }
+  if (!label) { showToast('warning','라벨을 입력하세요'); return; }
+  if (S.graph.nodes.find(n=>n.node_id===nid)) { showToast('error','이미 존재하는 ID입니다: '+nid); return; }
+
+  S.graph.nodes.push({
+    node_id: nid,
+    ground_truth_label: label,
+    has_window: $('mf-nwin').checked,
+    window_count: parseInt($('mf-nwcnt').value)||0,
+    has_door: $('mf-ndoor').checked,
+    is_outside: $('mf-nout').checked,
+    area:null, area_ratio:null, category_name:null, space_type:null
+  });
+  S.nodePos[nid] = { x: S.imgW/2, y: S.imgH/2 };
+
+  hideModal(); markModified(); renderAll();
+  showToast('success', `노드 ${nid} (${label}) 추가됨`);
+  onNodeClick(nid);
+}
+
+// ===================== NODE: EDIT =====================
+function showEditNodeModal(nodeId) {
+  const node = S.graph.nodes.find(n=>n.node_id===nodeId);
+  if (!node) return;
+  const body = `
+    <div class="mf-row"><label class="mf-label">Node ID</label><input class="mf-input" id="mf-nid" value="${node.node_id}" readonly></div>
+    <div class="mf-row"><label class="mf-label">라벨 (ground_truth_label)</label><input class="mf-input" id="mf-nlabel" value="${node.ground_truth_label}"></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-nwin" ${node.has_window?'checked':''}><label for="mf-nwin">has_window</label></div>
+    <div class="mf-row"><label class="mf-label">window_count</label><input class="mf-input" id="mf-nwcnt" type="number" value="${node.window_count}" min="0"></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-ndoor" ${node.has_door?'checked':''}><label for="mf-ndoor">has_door</label></div>
+    <div class="mf-check-row"><input type="checkbox" id="mf-nout" ${node.is_outside?'checked':''}><label for="mf-nout">is_outside</label></div>`;
+  showModal('노드 수정 — '+node.node_id, body, [
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'저장', cls:'modal-btn-ok', action:() => doEditNode(nodeId) }
+  ]);
+}
+
+function doEditNode(nodeId) {
+  const node = S.graph.nodes.find(n=>n.node_id===nodeId); if (!node) return;
+  const label = $('mf-nlabel').value.trim();
+  if (!label) { showToast('warning','라벨을 입력하세요'); return; }
+  node.ground_truth_label = label;
+  node.has_window = $('mf-nwin').checked;
+  node.window_count = parseInt($('mf-nwcnt').value)||0;
+  node.has_door = $('mf-ndoor').checked;
+  node.is_outside = $('mf-nout').checked;
+
+  hideModal(); markModified(); renderAll();
+  showToast('success', `${nodeId} 수정됨`);
+  if (S.selectedNode===nodeId) showNodeDetail(nodeId);
+}
+
+// ===================== NODE: DELETE =====================
+function showDeleteNodeModal(nodeId) {
+  const node = S.graph.nodes.find(n=>n.node_id===nodeId); if (!node) return;
+  const connEdges = S.graph.edges.filter(e=>e.connection_exists&&(e.source===nodeId||e.target===nodeId));
+  const body = `<p style="font-size:13px;margin-bottom:8px"><strong>${node.ground_truth_label}</strong> (${nodeId})을(를) 삭제하시겠습니까?</p>
+    ${connEdges.length?`<p style="font-size:11px;color:var(--warning)">연결된 엣지 ${connEdges.length}개도 함께 삭제됩니다.</p>`:''}`;
+  showModal('노드 삭제', body, [
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'삭제', cls:'modal-btn-danger', action:() => doDeleteNode(nodeId) }
+  ]);
+}
+
+function doDeleteNode(nodeId) {
+  S.graph.nodes = S.graph.nodes.filter(n=>n.node_id!==nodeId);
+  S.graph.edges = S.graph.edges.filter(e=>e.source!==nodeId&&e.target!==nodeId);
+  delete S.nodePos[nodeId];
+  if (S.selectedNode===nodeId) deselectNode();
+
+  hideModal(); markModified(); renderAll();
+  showToast('success', `${nodeId} 삭제됨`);
+}
+
+// ===================== EDGE: ADD MODE =====================
+function startAddEdgeMode() {
+  if (S.addEdgeMode) { cancelAddEdgeMode(); return; }
+  deselectNode();
+  S.addEdgeMode = true; S.addEdgeSrc = null;
+  canvasArea.classList.add('add-edge-mode');
+  $('edge-mode-banner').textContent = 'Source 노드를 클릭하세요 (ESC: 취소)';
+  $('edge-mode-banner').classList.add('active');
+}
+
+function cancelAddEdgeMode() {
+  S.addEdgeMode = false; S.addEdgeSrc = null;
+  canvasArea.classList.remove('add-edge-mode');
+  $('edge-mode-banner').classList.remove('active');
+  nodeLayer.querySelectorAll('.graph-node').forEach(el => el.classList.remove('edge-src'));
+}
+
+function handleAddEdgeClick(nodeId) {
+  if (!S.addEdgeSrc) {
+    // First click: source
+    S.addEdgeSrc = nodeId;
+    const el = nodeLayer.querySelector(`[data-node-id="${nodeId}"]`);
+    if (el) el.classList.add('edge-src');
+    $('edge-mode-banner').textContent = `Source: ${nodeId} → Target 노드를 클릭하세요 (ESC: 취소)`;
+  } else {
+    // Second click: target
+    if (nodeId === S.addEdgeSrc) { showToast('warning','같은 노드는 선택할 수 없습니다'); return; }
+    // Check duplicate
+    const dup = S.graph.edges.find(e=>e.connection_exists&&
+      ((e.source===S.addEdgeSrc&&e.target===nodeId)||(e.source===nodeId&&e.target===S.addEdgeSrc)));
+    if (dup) { showToast('warning','이미 연결된 엣지가 존재합니다'); cancelAddEdgeMode(); return; }
+
+    const srcId = S.addEdgeSrc, tgtId = nodeId;
+    cancelAddEdgeMode();
+    showAddEdgeTypeModal(srcId, tgtId);
+  }
+}
+
+function showAddEdgeTypeModal(srcId, tgtId) {
+  const srcNode = S.graph.nodes.find(n=>n.node_id===srcId);
+  const tgtNode = S.graph.nodes.find(n=>n.node_id===tgtId);
+  const srcLabel = srcNode?srcNode.ground_truth_label:srcId;
+  const tgtLabel = tgtNode?tgtNode.ground_truth_label:tgtId;
+
+  const body = `
+    <p style="font-size:13px;margin-bottom:12px"><strong>${srcLabel}</strong> (${srcId}) &rarr; <strong>${tgtLabel}</strong> (${tgtId})</p>
+    <div class="mf-row"><label class="mf-label">연결 유형</label>
+      <div class="mf-radio-group">
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-door" value="door" checked><label for="et-door" style="color:#F44336">문 (door)</label></div>
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-window" value="window"><label for="et-window" style="color:#42A5F5">창 (window)</label></div>
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-open" value="open"><label for="et-open" style="color:#66BB6A">개방 (open)</label></div>
+      </div>
+    </div>`;
+  showModal('엣지 추가', body, [
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'추가', cls:'modal-btn-ok', action:() => doAddEdge(srcId, tgtId) }
+  ]);
+}
+
+function doAddEdge(srcId, tgtId) {
+  const type = document.querySelector('input[name="etype"]:checked').value;
+  S.graph.edges.push({ source:srcId, target:tgtId, connection_exists:true, connection_type:type });
+  hideModal(); markModified(); renderEdges(); updateStatusBar();
+  showToast('success', `엣지 추가됨: ${srcId} → ${tgtId} (${type})`);
+}
+
+// ===================== EDGE: EDIT =====================
+function showEditEdgeModal(edgeIdx) {
+  const e = S.graph.edges[edgeIdx]; if (!e) return;
+  const nodeMap = {}; S.graph.nodes.forEach(n=>{nodeMap[n.node_id]=n;});
+  const srcLabel = nodeMap[e.source]?.ground_truth_label||e.source;
+  const tgtLabel = nodeMap[e.target]?.ground_truth_label||e.target;
+
+  const body = `
+    <p style="font-size:13px;margin-bottom:12px"><strong>${srcLabel}</strong> (${e.source}) &rarr; <strong>${tgtLabel}</strong> (${e.target})</p>
+    <div class="mf-row"><label class="mf-label">연결 유형</label>
+      <div class="mf-radio-group">
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-door" value="door" ${e.connection_type==='door'?'checked':''}><label for="et-door" style="color:#F44336">문 (door)</label></div>
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-window" value="window" ${e.connection_type==='window'?'checked':''}><label for="et-window" style="color:#42A5F5">창 (window)</label></div>
+        <div class="mf-radio-item"><input type="radio" name="etype" id="et-open" value="open" ${e.connection_type==='open'?'checked':''}><label for="et-open" style="color:#66BB6A">개방 (open)</label></div>
+      </div>
+    </div>`;
+  showModal('엣지 편집', body, [
+    { text:'삭제', cls:'modal-btn-danger', action:() => doDeleteEdge(edgeIdx) },
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'저장', cls:'modal-btn-ok', action:() => doEditEdge(edgeIdx) }
+  ]);
+}
+
+function doEditEdge(edgeIdx) {
+  const type = document.querySelector('input[name="etype"]:checked').value;
+  S.graph.edges[edgeIdx].connection_type = type;
+  hideModal(); markModified(); renderEdges(); updateStatusBar();
+  showToast('success', '엣지 유형 변경됨: '+type);
+}
+
+function doDeleteEdge(edgeIdx) {
+  S.graph.edges.splice(edgeIdx, 1);
+  hideModal(); markModified(); renderEdges(); updateStatusBar();
+  showToast('success', '엣지 삭제됨');
+  if (S.selectedNode) showNodeDetail(S.selectedNode);
+}
+
+// ===================== STATS: EDIT =====================
+function showEditStatsModal() {
+  const st = S.graph.statistics;
+  const body = `
+    <div class="mf-row"><label class="mf-label">bay_count (베이)</label><input class="mf-input" id="mf-bay" type="number" value="${st.bay_count||0}" min="0"></div>
+    <div class="mf-row"><label class="mf-label">room_count (방)</label><input class="mf-input" id="mf-room" type="number" value="${st.room_count||0}" min="0"></div>
+    <div class="mf-row"><label class="mf-label">bathroom_count (욕실)</label><input class="mf-input" id="mf-bath" type="number" value="${st.bathroom_count||0}" min="0"></div>`;
+  showModal('통계 수정', body, [
+    { text:'취소', cls:'modal-btn-cancel', action:hideModal },
+    { text:'저장', cls:'modal-btn-ok', action:doEditStats }
+  ]);
+}
+
+function doEditStats() {
+  S.graph.statistics.bay_count = parseInt($('mf-bay').value)||0;
+  S.graph.statistics.room_count = parseInt($('mf-room').value)||0;
+  S.graph.statistics.bathroom_count = parseInt($('mf-bath').value)||0;
+  hideModal(); markModified(); renderSidePanel();
+  showToast('success', '통계 수정됨');
+}
+
+// ===================== JSON EXPORT =====================
+function exportJson() {
+  const gtOut = {
+    image_name: S.topoJson.image_info ? S.topoJson.image_info.file_name : '',
+    nodes: S.graph.nodes.map(n => ({
+      node_id: n.node_id,
+      ground_truth_label: n.ground_truth_label,
+      has_window: n.has_window,
+      window_count: n.window_count,
+      has_door: n.has_door,
+      is_outside: n.is_outside
+    })),
+    edges: S.graph.edges.map(e => ({
+      source: e.source,
+      target: e.target,
+      connection_exists: e.connection_exists,
+      connection_type: e.connection_type
+    })),
+    statistics: { ...S.graph.statistics },
+    notes: ''
+  };
+
+  const jsonStr = JSON.stringify(gtOut, null, 2);
+  const blob = new Blob([jsonStr], { type:'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  // APT_FP_OBJ_XXX_gt.json → APT_FP_OBJ_XXX_gt_fixed.json
+  const gtName = S.files.gt ? S.files.gt.name : 'output_gt.json';
+  const fixedName = gtName.replace(/\.json$/i, '_fixed.json');
+  a.download = fixedName;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('success', 'JSON 파일이 다운로드되었습니다');
+}
+
+// ===================== TOAST =====================
+function showToast(type, msg) {
+  const el = document.createElement('div');
+  el.className='toast '+type; el.textContent=msg;
+  document.body.appendChild(el); setTimeout(()=>el.remove(),3200);
+}
+</script>
+</body>
+</html>

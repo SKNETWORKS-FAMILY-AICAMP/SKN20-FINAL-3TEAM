@@ -4,7 +4,7 @@ from pathlib import Path
 
 class RAGConfig(BaseSettings):
     # Embedding 모델 (Qwen3-Embedding-0.6B)
-    EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
+    EMBEDDING_MODEL: str = "qwen3-embedding-0.6b"
     EMBEDDING_DIM: int = 1024
 
     # PostgreSQL pgvector 설정
@@ -27,4 +27,3 @@ class RAGConfig(BaseSettings):
         # python/.env 파일을 명시적으로 찾기
         env_file = str(Path(__file__).parent.parent.parent / ".env")
         env_file_encoding = 'utf-8'
-

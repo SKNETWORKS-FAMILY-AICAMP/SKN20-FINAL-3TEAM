@@ -23,12 +23,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +45,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private static final int BATCH_SIZE = 1000;
+    private static final int BATCH_SIZE = 5000;
 
     @Value("${aws.s3.bucket}")
     private String s3Bucket;
@@ -59,6 +61,7 @@ public class DataInitializer implements CommandLineRunner {
     private final FloorplanAnalysisRepository floorplanAnalysisRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) throws Exception {
@@ -87,34 +90,34 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     /**
-     * 토지특성정보 CSV 로드
+     * 토지특성정보 CSV 로드 (JDBC batch insert - 고속)
      */
     @Transactional
     public void loadLandCharData() {
         try {
-            // 이미 데이터가 있으면 스킵
             long count = landCharRepository.count();
             if (count > 0) {
                 log.info("토지특성정보 데이터가 이미 존재합니다. ({}건) - 스킵", count);
                 return;
             }
 
-            log.info("토지특성정보 데이터 로드 중...");
+            log.info("토지특성정보 데이터 로드 중... (JDBC batch insert)");
             ClassPathResource resource = new ClassPathResource("data/토지특성정보_전처리완료.csv");
+
+            final String sql = "INSERT INTO land_char (legal_dong_code, legal_dong_name, ledger_type, lot_number, " +
+                    "land_category, land_area, zone1, zone2, land_use, terrain_height, terrain_shape, " +
+                    "road_access, address_text, region_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
             int loadedCount = 0;
             int skippedCount = 0;
             int lineNumber = 0;
-            List<LandChar> batch = new ArrayList<>(BATCH_SIZE);
+            List<String[]> batch = new ArrayList<>(BATCH_SIZE);
 
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
 
-                // 헤더 파싱하여 컬럼 인덱스 찾기
                 String headerLine = br.readLine();
                 lineNumber++;
-                log.debug("CSV 헤더: {}", headerLine);
-                
                 String[] headers = parseCsvLine(headerLine);
                 int legalDongCodeIdx = findColumnIndex(headers, "법정동코드", "legal_dong_code");
                 int legalDongNameIdx = findColumnIndex(headers, "법정동명", "legal_dong_name");
@@ -130,102 +133,83 @@ public class DataInitializer implements CommandLineRunner {
                 int roadAccessIdx = findColumnIndex(headers, "도로접면", "road_access");
                 int addressTextIdx = findColumnIndex(headers, "주소_텍스트", "address_text");
                 int regionCodeIdx = findColumnIndex(headers, "구분코드", "region_code");
-                
-                log.info("컬럼 매핑: 법정동코드={}, 법정동명={}, 대장구분명={}, 지번={}, 지목명={}, 토지면적={}, 용도지역명1={}, 용도지역명2={}, 토지이용상황={}, 지형높이={}, 지형형상={}, 도로접면={}, 주소_텍스트={}, 구분코드={}", 
-                    legalDongCodeIdx, legalDongNameIdx, ledgerTypeIdx, lotNumberIdx, landCategoryIdx, landAreaIdx, zone1Idx, zone2Idx, landUseIdx, terrainHeightIdx, terrainShapeIdx, roadAccessIdx, addressTextIdx, regionCodeIdx);
+                final int[] colIdx = {legalDongCodeIdx, legalDongNameIdx, ledgerTypeIdx, lotNumberIdx,
+                        landCategoryIdx, landAreaIdx, zone1Idx, zone2Idx, landUseIdx,
+                        terrainHeightIdx, terrainShapeIdx, roadAccessIdx, addressTextIdx, regionCodeIdx};
 
                 String line;
                 while ((line = br.readLine()) != null) {
                     lineNumber++;
                     try {
                         String[] columns = parseCsvLine(line);
-                        
-                        // 최소한 필수 컬럼이 있는지 확인 (유효성 체크만)
-                        if (columns.length < 5) {
-                            log.warn("[라인 {}] 컬럼 수 부족: {}", lineNumber, columns.length);
-                            skippedCount++;
-                            continue;
-                        }
-
-                        // LandChar 엔티티 생성
-                        LandChar landChar = LandChar.builder()
-                                .legalDongCode(getValueOrNull(columns, legalDongCodeIdx))
-                                .legalDongName(getValueOrNull(columns, legalDongNameIdx))
-                                .ledgerType(getValueOrNull(columns, ledgerTypeIdx))
-                                .lotNumber(getValueOrNull(columns, lotNumberIdx))
-                                .landCategory(getValueOrNull(columns, landCategoryIdx))
-                                .landArea(parseFloat(getValueOrNull(columns, landAreaIdx)))
-                                .zone1(getValueOrNull(columns, zone1Idx))
-                                .zone2(getValueOrNull(columns, zone2Idx))
-                                .landUse(getValueOrNull(columns, landUseIdx))
-                                .terrainHeight(getValueOrNull(columns, terrainHeightIdx))
-                                .terrainShape(getValueOrNull(columns, terrainShapeIdx))
-                                .roadAccess(getValueOrNull(columns, roadAccessIdx))
-                                .addressText(getValueOrNull(columns, addressTextIdx))
-                                .regionCode(getValueOrNull(columns, regionCodeIdx))
-                                .build();
-
-                        batch.add(landChar);
+                        if (columns.length < 5) { skippedCount++; continue; }
+                        batch.add(columns);
                         loadedCount++;
 
-                        // 배치 단위로 저장
                         if (batch.size() >= BATCH_SIZE) {
-                            landCharRepository.saveAll(batch);
+                            flushLandCharBatch(sql, batch, colIdx);
                             batch.clear();
-                            log.info("토지특성정보 로드 중... {}건 완료 (현재 라인: {})", loadedCount, lineNumber);
+                            log.info("토지특성정보 로드 중... {}건 완료", loadedCount);
                         }
-
                     } catch (Exception e) {
-                        if (skippedCount < 10) { // 처음 10개만 상세 로그
-                            log.error("[라인 {}] 토지특성정보 처리 중 오류", lineNumber, e);
-                        }
+                        if (skippedCount < 10) log.error("[라인 {}] 토지특성정보 처리 중 오류", lineNumber, e);
                         skippedCount++;
                     }
                 }
-
-                // 남은 데이터 저장
                 if (!batch.isEmpty()) {
-                    landCharRepository.saveAll(batch);
+                    flushLandCharBatch(sql, batch, colIdx);
                     batch.clear();
                 }
             }
-
             log.info("토지특성정보 로드 완료: {}건 저장, {}건 스킵", loadedCount, skippedCount);
-
         } catch (Exception e) {
             log.error("토지특성정보 로드 실패", e);
         }
     }
 
+    private void flushLandCharBatch(String sql, List<String[]> batch, int[] colIdx) {
+        jdbcTemplate.batchUpdate(sql, batch, batch.size(), (PreparedStatement ps, String[] columns) -> {
+            for (int i = 0; i < colIdx.length; i++) {
+                String val = getValueOrNull(columns, colIdx[i]);
+                if (i == 5) { // land_area (Float)
+                    Float f = parseFloat(val);
+                    if (f != null) ps.setFloat(i + 1, f);
+                    else ps.setNull(i + 1, java.sql.Types.FLOAT);
+                } else {
+                    ps.setString(i + 1, val);
+                }
+            }
+        });
+    }
+
     /**
-     * 법규조례 CSV 로드
+     * 법규조례 CSV 로드 (JDBC batch insert - 고속)
      */
     @Transactional
     public void loadLawData() {
         try {
-            // 이미 데이터가 있으면 스킵
             long count = lawRepository.count();
             if (count > 0) {
                 log.info("법규조례 데이터가 이미 존재합니다. ({}건) - 스킵", count);
                 return;
             }
 
-            log.info("법규조례 데이터 로드 중...");
+            log.info("법규조례 데이터 로드 중... (JDBC batch insert)");
             ClassPathResource resource = new ClassPathResource("data/법규조례_전처리완료.csv");
+
+            final String sql = "INSERT INTO law (region_code, region_name, law_name, zone_district_name, " +
+                    "land_use_activity, permission_category, condition_exception) VALUES (?,?,?,?,?,?,?)";
 
             int loadedCount = 0;
             int skippedCount = 0;
             int lineNumber = 0;
-            List<Law> batch = new ArrayList<>(BATCH_SIZE);
+            List<String[]> batch = new ArrayList<>(BATCH_SIZE);
 
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
 
-                // 헤더 파싱하여 컬럼 인덱스 찾기
                 String headerLine = br.readLine();
                 lineNumber++;
-                log.debug("CSV 헤더: {}", headerLine);
-                
                 String[] headers = parseCsvLine(headerLine);
                 int regionCodeIdx = findColumnIndex(headers, "구분코드", "region_code");
                 int regionNameIdx = findColumnIndex(headers, "지역명", "region_name");
@@ -234,63 +218,45 @@ public class DataInitializer implements CommandLineRunner {
                 int landUseActivityIdx = findColumnIndex(headers, "토지이용명", "land_use_activity");
                 int permissionCategoryIdx = findColumnIndex(headers, "가능여부_정규화", "permission_category");
                 int conditionExceptionIdx = findColumnIndex(headers, "조건제한예외사항", "condition_exception");
-                
-                log.info("컬럼 매핑: 구분코드={}, 지역명={}, 법률명={}, 용도지역지구명={}, 토지이용명={}, 가능여부_정규화={}, 조건제한예외사항={}", 
-                    regionCodeIdx, regionNameIdx, lawNameIdx, zoneDistrictNameIdx, landUseActivityIdx, permissionCategoryIdx, conditionExceptionIdx);
+                final int[] colIdx = {regionCodeIdx, regionNameIdx, lawNameIdx, zoneDistrictNameIdx,
+                        landUseActivityIdx, permissionCategoryIdx, conditionExceptionIdx};
 
                 String line;
                 while ((line = br.readLine()) != null) {
                     lineNumber++;
                     try {
                         String[] columns = parseCsvLine(line);
-                        
-                        if (columns.length < 7) {
-                            log.warn("[라인 {}] 컬럼 수 부족: {} (최소 7개 필요)", lineNumber, columns.length);
-                            skippedCount++;
-                            continue;
-                        }
-
-                        // Law 엔티티 생성
-                        Law law = Law.builder()
-                                .regionCode(getValueOrNull(columns, regionCodeIdx))
-                                .regionName(getValueOrNull(columns, regionNameIdx))
-                                .lawName(getValueOrNull(columns, lawNameIdx))
-                                .zoneDistrictName(getValueOrNull(columns, zoneDistrictNameIdx))
-                                .landUseActivity(getValueOrNull(columns, landUseActivityIdx))
-                                .permissionCategory(getValueOrNull(columns, permissionCategoryIdx))
-                                .conditionException(getValueOrNull(columns, conditionExceptionIdx))
-                                .build();
-
-                        batch.add(law);
+                        if (columns.length < 7) { skippedCount++; continue; }
+                        batch.add(columns);
                         loadedCount++;
 
-                        // 배치 단위로 저장
                         if (batch.size() >= BATCH_SIZE) {
-                            lawRepository.saveAll(batch);
+                            flushLawBatch(sql, batch, colIdx);
                             batch.clear();
-                            log.info("법규조례 로드 중... {}건 완료 (현재 라인: {})", loadedCount, lineNumber);
+                            log.info("법규조례 로드 중... {}건 완료", loadedCount);
                         }
-
                     } catch (Exception e) {
-                        if (skippedCount < 10) { // 처음 10개만 상세 로그
-                            log.error("[라인 {}] 법규조례 처리 중 오류", lineNumber, e);
-                        }
+                        if (skippedCount < 10) log.error("[라인 {}] 법규조례 처리 중 오류", lineNumber, e);
                         skippedCount++;
                     }
                 }
-
-                // 남은 데이터 저장
                 if (!batch.isEmpty()) {
-                    lawRepository.saveAll(batch);
+                    flushLawBatch(sql, batch, colIdx);
                     batch.clear();
                 }
             }
-
             log.info("법규조례 로드 완료: {}건 저장, {}건 스킵", loadedCount, skippedCount);
-
         } catch (Exception e) {
             log.error("법규조례 로드 실패", e);
         }
+    }
+
+    private void flushLawBatch(String sql, List<String[]> batch, int[] colIdx) {
+        jdbcTemplate.batchUpdate(sql, batch, batch.size(), (PreparedStatement ps, String[] columns) -> {
+            for (int i = 0; i < colIdx.length; i++) {
+                ps.setString(i + 1, getValueOrNull(columns, colIdx[i]));
+            }
+        });
     }
 
     /**

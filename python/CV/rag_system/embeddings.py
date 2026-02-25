@@ -12,13 +12,18 @@ class EmbeddingManager:
 
     _model: SentenceTransformer = None
 
-    def __init__(self, model_name: str = "Qwen/Qwen3-Embedding-0.6B"):
+    def __init__(self, model_name: str = "qwen3-embedding-0.6b"):
         self.model_name = model_name
         self.dimensions = 1024
+        resolved_model_name = (
+            "Qwen/Qwen3-Embedding-0.6B"
+            if model_name == "qwen3-embedding-0.6b"
+            else model_name
+        )
 
         if EmbeddingManager._model is None:
             logger.info(f"Qwen3 임베딩 모델 로딩: {model_name}")
-            EmbeddingManager._model = SentenceTransformer(model_name)
+            EmbeddingManager._model = SentenceTransformer(resolved_model_name)
             logger.info("Qwen3 임베딩 모델 로딩 완료")
 
         self.model = EmbeddingManager._model
