@@ -130,6 +130,7 @@ class OrchestratorAgent:
         self,
         email: str,
         question: str = "",
+        chat_room_id: Optional[int] = None,
         image: Optional[np.ndarray] = None,
         filename: str = "",
     ) -> Dict[str, Any]:
@@ -157,6 +158,7 @@ class OrchestratorAgent:
             return self._route_text(
                 email=email,
                 question=question,
+                chat_room_id=chat_room_id,
                 start_time=start_time,
             )
 
@@ -204,7 +206,8 @@ class OrchestratorAgent:
         self,
         email: str,
         question: str,
-        start_time: float,
+        chat_room_id: Optional[int] = None,
+        start_time: float = 0.0,
     ) -> Dict[str, Any]:
         """텍스트 입력 라우팅 (의도 분류 → 에이전트)"""
         intent = self._classify_intent(question)
@@ -216,6 +219,7 @@ class OrchestratorAgent:
             if intent.intent_type == "FLOORPLAN_SEARCH":
                 response = self.floorplan_agent.execute(
                     mode="text_search", query=question, email=email,
+                    chat_room_id=chat_room_id,
                 )
                 agent_used = "floorplan_search"
             else:
@@ -235,6 +239,7 @@ class OrchestratorAgent:
                 else:
                     response = self.floorplan_agent.execute(
                         mode="text_search", query=question, email=email,
+                        chat_room_id=chat_room_id,
                     )
                     agent_used = "floorplan_search"
                 logger.info(f"Fallback 에이전트 성공: {agent_used}")

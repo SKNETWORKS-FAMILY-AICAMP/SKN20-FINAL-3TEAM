@@ -27,10 +27,7 @@ class EmbeddingService:
         logger.info("임베딩 매니저 로딩 중...")
         try:
             self.config = RAGConfig()
-            self.embedding_manager = EmbeddingManager(
-                api_key=self.config.OPENAI_API_KEY,
-                model="text-embedding-3-small"
-            )
+            self.embedding_manager = EmbeddingManager()
             logger.info("임베딩 매니저 로딩 완료!")
         except Exception as e:
             logger.error(f"임베딩 매니저 로딩 실패: {e}")
