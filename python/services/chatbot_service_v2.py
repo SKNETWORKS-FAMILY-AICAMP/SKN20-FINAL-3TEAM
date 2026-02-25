@@ -610,7 +610,8 @@ class ChatbotService:
         try:
             self.config = RAGConfig()
             self.embedding_manager = EmbeddingManager(
-                model_name=self.config.EMBEDDING_MODEL
+                api_key=self.config.OPENAI_API_KEY,
+                model="text-embedding-3-small"
             )
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
             logger.info("[초기화] OpenAI + Embedding 준비 완료")

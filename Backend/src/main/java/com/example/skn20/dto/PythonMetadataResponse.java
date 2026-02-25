@@ -26,6 +26,6 @@ public class PythonMetadataResponse {
     // 분석 설명 텍스트
     private String document;
     
-    // 임베딩 벡터 전체 (1024차원, Qwen3-Embedding-0.6B)
+    // 임베딩 벡터 전체 (1536차원)
     private double[] embedding;
 }

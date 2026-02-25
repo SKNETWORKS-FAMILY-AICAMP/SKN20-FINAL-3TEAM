@@ -72,7 +72,7 @@ class PipelineConfig:
 
     # === RAG 임베딩 설정 (Phase 2) ===
     EMBEDDING_MODEL: str = "Qwen/Qwen3-Embedding-0.6B"
-    EMBEDDING_DIM: int = 1024
+    EMBEDDING_DIM: int = 768              # 768 또는 1024 (768 권장)
     EMBEDDING_BATCH_SIZE: int = 32
     EMBEDDING_MAX_LENGTH: int = 512
     TOP_K: int = 5
