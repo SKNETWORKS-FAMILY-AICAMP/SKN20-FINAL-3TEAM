@@ -370,14 +370,8 @@ ZONE_REGULATIONS = {
 class ChatbotService:
     """RAG 기반 챗봇 서비스 + PostgreSQL 대화 내역 활용 (V2: Reranker + 캐싱)"""
 
-    # PostgreSQL 연결 정보 (application.properties와 동일)
-    DB_CONFIG = {
-        "host": "localhost",
-        "port": 5432,
-        "database": "arae",
-        "user": "postgres",
-        "password": "1234"
-    }
+    # PostgreSQL 연결 정보 (RAGConfig에서 로드)
+    DB_CONFIG = None  # load_components()에서 RAGConfig 기반으로 설정
 
     # [V2 변경] Reranker 설정
     RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -612,6 +606,15 @@ class ChatbotService:
             self.embedding_manager = EmbeddingManager()
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
             logger.info("[초기화] OpenAI + Embedding 준비 완료")
+
+            # RAGConfig에서 DB 연결 정보 로드
+            self.DB_CONFIG = {
+                "host": self.config.POSTGRES_HOST,
+                "port": self.config.POSTGRES_PORT,
+                "database": self.config.POSTGRES_DB,
+                "user": self.config.POSTGRES_USER,
+                "password": self.config.POSTGRES_PASSWORD,
+            }
 
             # PostgreSQL 연결 (autocommit으로 트랜잭션 꼬임 방지)
             self.db_conn = psycopg2.connect(**self.DB_CONFIG)
