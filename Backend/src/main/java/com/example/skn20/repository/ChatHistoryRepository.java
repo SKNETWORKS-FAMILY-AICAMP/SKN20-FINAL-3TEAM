@@ -16,7 +16,10 @@ import com.example.skn20.entity.ChatRoom;
 public interface ChatHistoryRepository extends JpaRepository<ChatHistory, Long>{
 	void deleteAllByChatRoom(ChatRoom chatRoom);
 	List<ChatHistory> findAllByChatRoomOrderByIdAsc(ChatRoom chatRoom);
-	
+
 	@Query("SELECT COUNT(c) FROM ChatHistory c WHERE c.createdAt >= :since")
 	Long countRecentChats(@Param("since") LocalDateTime since);
+
+	@Query("SELECT ch FROM ChatHistory ch JOIN FETCH ch.chatRoom cr JOIN FETCH cr.user")
+	List<ChatHistory> findAllWithChatRoomAndUser();
 }

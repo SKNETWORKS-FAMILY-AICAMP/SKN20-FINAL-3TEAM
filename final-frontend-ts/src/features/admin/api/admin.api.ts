@@ -10,6 +10,8 @@ import type {
   ChatHistoryDetail,
   SearchFloorPlanRequest,
   FloorPlanDetailRequest,
+  PageResponse,
+  ActivityLogParams,
 } from '../types/admin.types';
 
 const ADMIN_BASE = '/api/admin';
@@ -28,9 +30,9 @@ export const getAdminStats = async (): Promise<AdminStats> => {
 // 활동 로그 API
 // ============================================
 
-// 활동 로그 조회 (도면 업로드 + 챗봇 사용)
-export const getActivityLogs = async (): Promise<ActivityLog[]> => {
-  const response = await apiClient.get<ActivityLog[]>(`${ADMIN_BASE}/logs`);
+// 활동 로그 조회 (서버 사이드 페이징 + 필터링)
+export const getActivityLogs = async (params: ActivityLogParams = {}): Promise<PageResponse<ActivityLog>> => {
+  const response = await apiClient.get<PageResponse<ActivityLog>>(`${ADMIN_BASE}/logs`, { params });
   return response.data;
 };
 
@@ -44,15 +46,17 @@ export const getChatHistoryDetail = async (id: number): Promise<ChatHistoryDetai
 // 도면 관련 API
 // ============================================
 
-// 전체 도면 목록 조회
-export const getFloorPlans = async (): Promise<AdminFloorPlan[]> => {
-  const response = await apiClient.get<AdminFloorPlan[]>(`${ADMIN_BASE}/floorplans`);
+// 전체 도면 목록 조회 (서버 사이드 페이징)
+export const getFloorPlans = async (page: number = 0, size: number = 8): Promise<PageResponse<AdminFloorPlan>> => {
+  const response = await apiClient.get<PageResponse<AdminFloorPlan>>(`${ADMIN_BASE}/floorplans`, {
+    params: { page, size }
+  });
   return response.data;
 };
 
-// 도면 검색 (다양한 조건)
-export const searchFloorPlans = async (params: SearchFloorPlanRequest): Promise<AdminFloorPlan[]> => {
-  const response = await apiClient.post<AdminFloorPlan[]>(
+// 도면 검색 (서버 사이드 페이징 + 필터링)
+export const searchFloorPlans = async (params: SearchFloorPlanRequest): Promise<PageResponse<AdminFloorPlan>> => {
+  const response = await apiClient.post<PageResponse<AdminFloorPlan>>(
     `${ADMIN_BASE}/searchfloorplan`,
     null,
     { params }

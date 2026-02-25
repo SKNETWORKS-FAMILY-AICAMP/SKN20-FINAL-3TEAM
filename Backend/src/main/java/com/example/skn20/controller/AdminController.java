@@ -30,12 +30,22 @@ public class AdminController {
     }
 
     /**
-     * 활동 로그 조회 (도면 + 챗봇)
-     * GET /api/admin/logs
+     * 활동 로그 조회 - 서버 사이드 페이징 + 필터링
+     * GET /api/admin/logs?page=0&size=8&type=USER&search=...&startDate=...&endDate=...
      */
     @GetMapping("/logs")
-    public ResponseEntity<List<ActivityLogResponse>> getActivityLogs() {
-        List<ActivityLogResponse> logs = adminService.getActivityLogs();
+    public ResponseEntity<PageResponse<ActivityLogResponse>> getActivityLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "8") int size,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+
+        LocalDate start = (startDate != null && !startDate.isEmpty()) ? LocalDate.parse(startDate) : null;
+        LocalDate end = (endDate != null && !endDate.isEmpty()) ? LocalDate.parse(endDate) : null;
+
+        PageResponse<ActivityLogResponse> logs = adminService.getActivityLogsPaged(page, size, type, search, start, end);
         return ResponseEntity.ok(logs);
     }
 
@@ -50,33 +60,37 @@ public class AdminController {
     }
 
     /**
-     * 전체 도면 목록 조회
-     * GET /api/admin/floorplans
+     * 전체 도면 목록 조회 - 서버 사이드 페이징
+     * GET /api/admin/floorplans?page=0&size=8
      */
     @GetMapping("/floorplans")
-    public ResponseEntity<List<AdminFloorPlanResponse>> getAllFloorPlans() {
-        List<AdminFloorPlanResponse> floorPlans = adminService.getAllFloorPlans();
+    public ResponseEntity<PageResponse<AdminFloorPlanResponse>> getAllFloorPlans(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "8") int size) {
+        PageResponse<AdminFloorPlanResponse> floorPlans = adminService.getAllFloorPlansPaged(page, size);
         return ResponseEntity.ok(floorPlans);
     }
 
     /**
-     * 도면 검색
-     * POST /api/admin/searchfloorplan 
+     * 도면 검색 - 서버 사이드 페이징 + 필터링
+     * POST /api/admin/searchfloorplan?page=0&size=8&name=...
      */
     @PostMapping("/searchfloorplan")
-    public ResponseEntity<List<AdminFloorPlanResponse>> searchFloorPlans(
+    public ResponseEntity<PageResponse<AdminFloorPlanResponse>> searchFloorPlans(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String uploaderEmail,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) Integer minRooms,
-            @RequestParam(required = false) Integer maxRooms) {
-        
+            @RequestParam(required = false) Integer maxRooms,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "8") int size) {
+
         LocalDate start = (startDate != null && !startDate.isEmpty()) ? LocalDate.parse(startDate) : null;
         LocalDate end = (endDate != null && !endDate.isEmpty()) ? LocalDate.parse(endDate) : null;
-        
-        List<AdminFloorPlanResponse> floorPlans = adminService.searchFloorPlans(
-            name, uploaderEmail, start, end, minRooms, maxRooms);
+
+        PageResponse<AdminFloorPlanResponse> floorPlans = adminService.searchFloorPlansPaged(
+            name, uploaderEmail, start, end, minRooms, maxRooms, page, size);
         return ResponseEntity.ok(floorPlans);
     }
 
@@ -116,12 +130,12 @@ public class AdminController {
     public ResponseEntity<String> deleteEntities(
             @RequestParam String type,
             @RequestBody List<Long> ids) {
-        
+
         if ("floorplan".equalsIgnoreCase(type)) {
             String result = adminService.deleteFloorPlans(ids);
             return ResponseEntity.ok(result);
         }
-        
+
         return ResponseEntity.badRequest().body("지원하지 않는 타입입니다.");
     }
 }
