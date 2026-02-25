@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -9,8 +10,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 import psycopg2
 from openai import OpenAI
-
-from CV.rag_system.embeddings import EmbeddingManager
 
 
 @dataclass
@@ -167,12 +166,16 @@ class ArchitecturalHybridRAG:
     FLOORPLAN_BLOCK_HEADER_RE = re.compile(
         r"(?m)^\s*(?:#{1,6}\s*)?\[도면\s*#\d+\]\s*(?P<document_id>[^\n]+?)\s*$"
     )
+    LOCAL_EMBEDDING_MODEL_MAP = {
+        "qwen3-embedding-0.6b": "Qwen/Qwen3-Embedding-0.6B",
+        "qwen/qwen3-embedding-0.6b": "Qwen/Qwen3-Embedding-0.6B",
+    }
 
     def __init__(
         self,
         db_config,
         openai_api_key,
-        embedding_model: str = "Qwen/Qwen3-Embedding-0.6B",
+        embedding_model: str = "qwen3-embedding-0.6b",
         embedding_dimensions: int = 1024,
         vector_weight: float = 0.8,
         text_weight: float = 0.2,
@@ -192,7 +195,10 @@ class ArchitecturalHybridRAG:
         self.client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
-        self.embedding_manager = EmbeddingManager(model_name=embedding_model)
+        self._local_embedding_model_name = self._resolve_local_embedding_model_name(
+            embedding_model
+        )
+        self._local_embedding_model = None
         self.vector_weight, self.text_weight = self._normalize_hybrid_weights(
             vector_weight, text_weight
         )
@@ -225,6 +231,76 @@ class ArchitecturalHybridRAG:
         except Exception:
             payload = str(fields)
         self.logger.log(level, "event=%s data=%s", event, payload)
+
+    @classmethod
+    def _resolve_local_embedding_model_name(cls, model_name: str) -> Optional[str]:
+        normalized = str(model_name or "").strip().lower()
+        if not normalized:
+            return None
+        return cls.LOCAL_EMBEDDING_MODEL_MAP.get(normalized)
+
+    @staticmethod
+    def _resolve_hf_token() -> str:
+        for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+            value = os.getenv(key)
+            if value:
+                stripped = value.strip()
+                if stripped:
+                    return stripped
+        return ""
+
+    def _ensure_local_embedding_model(self):
+        if self._local_embedding_model is not None:
+            return self._local_embedding_model
+        if not self._local_embedding_model_name:
+            raise ValueError("Local embedding model is not configured.")
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "sentence-transformers is required for qwen local embedding mode."
+            ) from exc
+
+        self._log_event(
+            event="local_embedding_model_load_start",
+            level=logging.INFO,
+            model=self._local_embedding_model_name,
+        )
+        hf_token = self._resolve_hf_token()
+        init_kwargs = {}
+        if hf_token:
+            os.environ.setdefault("HF_TOKEN", hf_token)
+            init_kwargs["token"] = hf_token
+        self._local_embedding_model = SentenceTransformer(
+            self._local_embedding_model_name, **init_kwargs
+        )
+        self._log_event(
+            event="local_embedding_model_load_done",
+            level=logging.INFO,
+            model=self._local_embedding_model_name,
+        )
+        return self._local_embedding_model
+
+    def _embed_text(self, text: str) -> list[float]:
+        if self._local_embedding_model_name:
+            model = self._ensure_local_embedding_model()
+            encoded = model.encode(text, normalize_embeddings=True)
+            embedding = encoded.tolist() if hasattr(encoded, "tolist") else list(encoded)
+        else:
+            embedding_resp = self.client.embeddings.create(
+                model=self.embedding_model,
+                input=text,
+                dimensions=self.embedding_dimensions,
+            )
+            embedding = embedding_resp.data[0].embedding
+
+        if len(embedding) != self.embedding_dimensions:
+            raise ValueError(
+                "Embedding dimension mismatch: "
+                f"expected={self.embedding_dimensions}, actual={len(embedding)}, "
+                f"model={self.embedding_model}"
+            )
+        return embedding
 
     @staticmethod
     def _compress_compound_space_label(label: str) -> str:
@@ -263,7 +339,8 @@ class ArchitecturalHybridRAG:
             sep = match.group("sep")
             body = match.group("body")
             compacted = self._compress_compound_space_label(label)
-            return f"{prefix}{compacted}{sep}{body}"
+            normalized_label = self._normalize_space_label_for_output(compacted)
+            return f"{prefix}{normalized_label}{sep}{body}"
 
         return re.sub(
             r"(?m)^(?P<prefix>\s*■\s*)(?P<label>[^:\n]+?)(?P<sep>\s*:\s*)(?P<body>.*)$",
@@ -404,6 +481,11 @@ class ArchitecturalHybridRAG:
             r"\1현관/기타: ",
             normalized,
         )
+        normalized = re.sub(
+            r"(?mi)^(\s*(?:[-•]\s*)?)(?:elev\.?\s*홀|elev\.?\s*hall|elevator\s*hall|엘리베이터\s*홀)\s*:\s*",
+            r"\1엘리베이터홀: ",
+            normalized,
+        )
         return normalized
 
     @staticmethod
@@ -537,14 +619,29 @@ class ArchitecturalHybridRAG:
         text = re.sub(r"좋음입니다(?P<tail>[.!?]?)", r"좋습니다\g<tail>", text)
         return text
 
+    def _normalize_requested_tone_phrasing(self, answer: str) -> str:
+        text = str(answer or "")
+        if not text:
+            return text
+        text = re.sub(
+            r"정보가\s*부족해\s*판단이\s*어렵습니다\.?",
+            "정보가 부족합니다.",
+            text,
+        )
+        text = re.sub(
+            r"기능을\s*확정하기\s*어렵습니다\.?",
+            "기능을 확정할 수 없습니다.",
+            text,
+        )
+        return text
+
     def _normalize_floorplan_block_breaks(self, answer: str) -> str:
         text = str(answer or "")
         if not text:
             return text
-        # Ensure each "[도면 #N]" or "### [도면 #N]" marker starts on a new line.
         text = re.sub(r"(?<!^)(?<!\n)\s*((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\1", text)
-        # Keep one blank line before each marker for readability.
         text = re.sub(r"(?m)([^\n])\n((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\1\n\n\2", text)
+
         return re.sub(r"\n{3,}((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\n\1", text)
 
     def _normalize_generated_answer(self, answer: str) -> str:
@@ -554,12 +651,14 @@ class ArchitecturalHybridRAG:
             self._normalize_meta_expressions(
                 self._normalize_summary_signal_sentence(
                     self._normalize_signal_tone_phrasing(
+                    self._normalize_requested_tone_phrasing(
                     self._normalize_layout_tone_style(
                         self._normalize_space_bullet_labels(
                             self._normalize_technical_parenthetical_phrasing(
                                 self._normalize_space_section_labels(answer)
                             )
                         )
+                    )
                     )
                     )
                 )
@@ -639,6 +738,22 @@ class ArchitecturalHybridRAG:
             missing_fields.append("non_empty_answer")
 
         normalized_mode = mode.strip().lower()
+        safe_default_answer = self._build_safe_default_answer(
+            mode=normalized_mode,
+            expected_document_id=expected_document_id,
+        )
+        if text.strip() == str(safe_default_answer or "").strip():
+            has_document_id_token = True
+            has_metadata_summary = True
+            has_layout_summary = True
+            return AnswerValidationResult(
+                ok=is_non_empty,
+                has_document_id_token=has_document_id_token,
+                has_metadata_summary=has_metadata_summary,
+                has_layout_summary=has_layout_summary,
+                missing_fields=missing_fields,
+            )
+
         if normalized_mode == "no_match":
             has_metadata_summary = bool(self.NO_MATCH_COUNT_LINE_RE.search(text))
             has_document_id_token = True
@@ -669,11 +784,8 @@ class ArchitecturalHybridRAG:
             missing_fields.append("layout_summary")
 
         if normalized_mode == "document_id":
-            # 모든 모드에서 "검색된 도면 id" 토큰 검증은 수행하지 않는다.
             has_document_id_token = True
         elif normalized_mode == "general":
-            # General mode follows the multi-floorplan format:
-            # "조건을 만족하는 도면 총 개수" + repeated "[도면 #N] {document_id}" blocks.
             has_document_id_token = True
             if not re.search(
                 r"(?m)^\s*조건을\s*만족하는\s*도면\s*총\s*개수\s*:\s*\d+\s*$",
@@ -682,7 +794,6 @@ class ArchitecturalHybridRAG:
             ):
                 missing_fields.append("general_total_count_line")
 
-            # Each floorplan marker must start on a new line, not be attached to prior text.
             for _line in text.splitlines():
                 _stripped = _line.strip()
                 if re.search(r"\[\s*도면\s*#\d+\]", _stripped):
@@ -772,40 +883,15 @@ class ArchitecturalHybridRAG:
         if normalized_mode == "document_id":
             document_id = (expected_document_id or "정보 생성 불가").strip() or "정보 생성 불가"
             return (
-                f"1. 검색된 도면 id: {document_id}\n\n"
-                "2. 도면 기본 정보 📊\n"
-                "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
-                "3. 도면 공간 구성 설명 🧩\n"
-                "■ 종합 등급: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 부적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 핵심 설계 평가\n"
-                "• 채광 및 쾌적성: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 가족 융화: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 수납: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 주요 공간별 상세 분석\n"
-                "[공간 정보] 응답 형식 검증 실패로 설명 생성 불가"
+                f"응답 형식 검증에 실패했습니다. 잠시 후 다시 시도하세요."
             )
         if normalized_mode == "general":
             return (
-                "1. 검색된 도면 id: 정보 생성 불가\n\n"
-                "2. 도면 기본 정보 📊\n"
-                "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
-                "3. 도면 공간 구성 설명 🧩\n"
-                "■ 종합 등급: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 부적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 핵심 설계 평가\n"
-                "• 채광 및 쾌적성: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 가족 융화: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 수납: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 주요 공간별 상세 분석\n"
-                "[공간 정보] 응답 형식 검증 실패로 설명 생성 불가"
+                "응답 형식 검증에 실패했습니다. 잠시 후 다시 시도하세요."
             )
         if normalized_mode == "no_match":
             return (
                 "조건을 만족하는 도면 총 개수: 0\n"
-                "검색된 도면 id: 없음\n"
                 "요청 조건과 일치하는 도면이 존재하지 않습니다."
             )
         raise ValueError(f"Unsupported validation mode: {mode}")
@@ -1447,10 +1533,17 @@ class ArchitecturalHybridRAG:
         if not raw:
             return ""
         compact = re.sub(r"\s+", "", raw)
+        compact_ascii = re.sub(r"[._/\-]+", "", compact).lower()
         if re.fullmatch(r"주방(?:및)?식당|주방/식당", compact):
             return "주방/식당"
         if re.fullmatch(r"현관(?:및)?기타(?:공간)?|현관/기타(?:공간)?", compact):
             return "현관/기타"
+        if compact == "엘리베이터홀" or compact_ascii in {
+            "elev홀",
+            "elevhall",
+            "elevatorhall",
+        }:
+            return "엘리베이터홀"
         return raw
 
     def _extract_space_labels_from_document(self, document: str) -> list[str]:
@@ -1682,10 +1775,10 @@ class ArchitecturalHybridRAG:
         if storage_priority and ratio_proximity is not None:
             rescored_docs.sort(key=lambda item: (-item[1], item[2], -item[0]))
         elif storage_priority:
-            # 수납 선호 질의는 수납 우수(2) > 보통(1) > 미확인(0) > 미흡(-1) 순을 우선한다.
+            # 수납 선호 질의: 수납 우수(2) > 보통(1) > 미확인(0) > 미흡(-1)
             rescored_docs.sort(key=lambda item: (item[1], item[0]), reverse=True)
         elif ratio_proximity is not None:
-            # 비율 조건 질의는 기준값에 더 가까운 도면을 우선 노출한다.
+            # 비율 조건 질의: 기준값에 더 가까운 도면을 우선 노출
             rescored_docs.sort(key=lambda item: (item[2], -item[0]))
         else:
             rescored_docs.sort(key=lambda item: item[0], reverse=True)
@@ -1810,7 +1903,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
 * 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
 * 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
 * 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족해 판단이 어렵습니다"처럼 간결하게 표현한다.
+* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
 * 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
 * `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
 * 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.
@@ -1855,7 +1948,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=0.0,
+                temperature=0.1,
             )
             return (response.choices[0].message.content or "").strip()
 
@@ -1899,7 +1992,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         semantic_query = f"{documents} {raw_query}".strip() or raw_query or documents
         text_query = str(documents).strip() or str(raw_query).strip()
 
-        embedding = self.embedding_manager.embed_text(semantic_query)
+        embedding = self._embed_text(semantic_query)
         embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
 
         where_sql, filter_params = self._build_filter_where_parts(filters)
@@ -2032,7 +2125,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         CV 분석에서 생성된 embedding 벡터를 직접 사용하여 DB에서 유사 도면을 찾는다.
 
         Args:
-            embedding: 1024-dim embedding vector (text-embedding-3-small)
+            embedding: 1024-dim embedding vector (qwen3-embedding-0.6b)
             filters: 메트릭 기반 필터 (structure_type, room_count 등). None이면 필터 없이 검색.
             top_k: 반환할 최대 도면 수
         Returns:
@@ -2414,7 +2507,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
 * 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
 * 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
 * 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족해 판단이 어렵습니다"처럼 간결하게 표현한다.
+* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
 * 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
 * `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
 * 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.
