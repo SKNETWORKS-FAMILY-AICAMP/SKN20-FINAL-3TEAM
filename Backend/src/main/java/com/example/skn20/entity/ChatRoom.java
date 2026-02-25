@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -33,7 +33,7 @@ public class ChatRoom {
     
     @Column(name = "created_at", nullable = false)
     @CreationTimestamp
-    private LocalDate createdAt; // 생성 일자
+    private LocalDateTime createdAt; // 생성 일자
 
     @OneToMany
     @JoinColumn(name = "chathistory_id", nullable = true)

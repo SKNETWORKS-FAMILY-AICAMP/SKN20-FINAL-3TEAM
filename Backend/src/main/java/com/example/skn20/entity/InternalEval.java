@@ -30,6 +30,6 @@ public class InternalEval {
     
     // 임베딩 값 (VECTOR 자료형)
     // 512는 evaluation_docs_export.json의 임베딩 차원입니다.
-    @Column(name = "embedding", columnDefinition = "vector(512)")
+    @Column(name = "embedding", columnDefinition = "vector(1024)")
     private float[] embedding;
 }

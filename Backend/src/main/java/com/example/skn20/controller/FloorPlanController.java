@@ -4,13 +4,19 @@ import com.example.skn20.classes.UD;
 import com.example.skn20.dto.FloorplanPreviewResponse;
 import com.example.skn20.dto.FloorplanSaveRequest;
 import com.example.skn20.dto.FloorplanSaveResponse;
+import com.example.skn20.dto.MyFloorPlanResponse;
+import com.example.skn20.entity.FloorPlan;
 import com.example.skn20.entity.User;
 import com.example.skn20.service.FloorPlanService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/floorplan")
@@ -62,6 +68,71 @@ public class FloorPlanController {
 			return ResponseEntity.ok(response);
 		} catch (Exception e) {
 			return ResponseEntity.status(500).body("저장 중 오류 발생: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * [Step 3] 내 도면 분석 내역 조회
+	 */
+	@GetMapping("/my")
+	public ResponseEntity<?> getMyFloorPlans(@AuthenticationPrincipal UD principalDetails) {
+		if (principalDetails == null) {
+			return ResponseEntity.status(401).body("인증이 필요합니다.");
+		}
+		try {
+			User user = principalDetails.getUser();
+			List<MyFloorPlanResponse> list = floorPlanService.getMyFloorPlans(user.getId());
+			return ResponseEntity.ok(list);
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body("도면 내역 조회 실패: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * [Step 4] 도면 상세 조회 (본인 도면만)
+	 */
+	@GetMapping("/{id}/detail")
+	public ResponseEntity<?> getFloorPlanDetail(
+			@PathVariable Long id,
+			@AuthenticationPrincipal UD principalDetails
+	) {
+		if (principalDetails == null) {
+			return ResponseEntity.status(401).body("인증이 필요합니다.");
+		}
+		try {
+			User user = principalDetails.getUser();
+			FloorPlan fp = floorPlanService.getFloorPlanDetail(id, user.getId());
+			Map<String, Object> result = new HashMap<>();
+			result.put("id", fp.getId());
+			result.put("name", fp.getName());
+			result.put("createdAt", fp.getCreatedAt());
+			result.put("imageUrl", fp.getImageUrl());  // S3 URL 직접 반환
+			result.put("assessmentJson", fp.getAssessmentJson());
+			return ResponseEntity.ok(result);
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body("도면 상세 조회 실패: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * [Step 5] 도면 이미지 URL 반환 → S3로 리다이렉트
+	 */
+	@GetMapping("/{id}/image")
+	public ResponseEntity<?> getFloorPlanImage(
+			@PathVariable Long id,
+			@AuthenticationPrincipal UD principalDetails
+	) {
+		if (principalDetails == null) {
+			return ResponseEntity.status(401).body("인증이 필요합니다.");
+		}
+		try {
+			User user = principalDetails.getUser();
+			String imageUrl = floorPlanService.getFloorPlanImageUrl(id, user.getId());
+			return ResponseEntity.status(HttpStatus.FOUND)
+					.header(HttpHeaders.LOCATION, imageUrl)
+					.build();
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body("이미지 조회 실패: " + e.getMessage());
 		}
 	}
 }

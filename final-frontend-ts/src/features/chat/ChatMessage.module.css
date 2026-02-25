@@ -25,6 +25,178 @@
   border-radius: 0.5rem;
   font-size: 0.9375rem;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.bubbleUser {
+  white-space: pre-wrap;
+}
+
+/* 도면 썸네일 카드 그리드 */
+.imageGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.thumbnailCard {
+  display: flex;
+  flex-direction: column;
+  width: 150px;
+  background: #FFFFFF;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid #E5E7EB;
+}
+
+.thumbnailCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.thumbnail {
+  width: 150px;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.deletedImagePlaceholder {
+  width: 150px;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: #F3F4F6;
+  color: #9CA3AF;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.thumbnailLabel {
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #374151;
+  text-align: center;
+  line-height: 1.3;
+  word-break: keep-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 1px solid #F3F4F6;
+}
+
+/* 유저 업로드 이미지 (클릭/그림자 없음) */
+.uploadedImageWrap {
+  display: inline-block;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.uploadedImage {
+  max-width: 200px;
+  max-height: 160px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Markdown 스타일 */
+.mdH2 {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.2rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.mdH3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin: 0.4rem 0 0.15rem;
+}
+
+.mdP {
+  margin: 0.15rem 0;
+}
+
+.mdP:first-child {
+  margin-top: 0;
+}
+
+.mdP:last-child {
+  margin-bottom: 0;
+}
+
+.mdStrong {
+  font-weight: 700;
+}
+
+.mdUl,
+.mdOl {
+  margin: 0.15rem 0;
+  padding-left: 1.25rem;
+}
+
+.mdLi {
+  margin: 0.1rem 0;
+}
+
+.mdLiP {
+  margin: 0;
+}
+
+.linkCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: #FFFFFF;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  max-width: 100%;
+}
+
+.linkCard:hover {
+  border-color: #93C5FD;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.1);
+}
+
+.linkInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.linkTitle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #2563EB;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkDomain {
+  font-size: 0.6875rem;
+  color: #9CA3AF;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkIcon {
+  flex-shrink: 0;
+  color: #9CA3AF;
 }

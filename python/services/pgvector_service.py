@@ -40,7 +40,7 @@ class PgVectorService:
         사내 평가 문서 검색 (PostgreSQL pgvector)
 
         Args:
-            query_embedding: 쿼리 임베딩 벡터 (512-dim)
+            query_embedding: 쿼리 임베딩 벡터 (1024-dim)
             k: 반환할 결과 수
 
         Returns:

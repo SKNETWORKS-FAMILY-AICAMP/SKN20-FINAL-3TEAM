@@ -82,9 +82,15 @@ class CVService:
             save_visualization=save_visualization
         )
         
-        # 임시 파일 정리
+        # 임시 입력 파일 정리
         temp_path.unlink(missing_ok=True)
-        
+        # temp_input 디렉터리가 비어있으면 삭제
+        try:
+            if temp_dir.exists() and not any(temp_dir.iterdir()):
+                temp_dir.rmdir()
+        except Exception:
+            pass
+
         logger.info("이미지 분석 완료!")
         return results
     

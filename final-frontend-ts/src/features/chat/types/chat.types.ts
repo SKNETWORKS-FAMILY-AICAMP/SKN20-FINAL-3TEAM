@@ -18,6 +18,7 @@ export interface ChatHistory {
   id: number;
   question: string;
   answer: string;
+  imageUrls: string | null;  // JSON 문자열 (예: '["/api/admin/floorplan/1/image"]')
   createdAt: string;
 }
 
@@ -25,12 +26,15 @@ export interface ChatHistory {
 export interface ChatRequest {
   chatRoomId: number | null;
   question: string;
+  image?: File;  // 도면 이미지 (PNG/JPG)
 }
 
 // 채팅 응답
 export interface ChatResponse {
   answer: string;
   chatRoomId: number;
+  summaryTitle?: string;
+  image_urls?: string[];  // 도면 이미지 상대경로 (예: "/api/admin/floorplan/123/image")
 }
 
 // 채팅방 이름 수정 요청
@@ -53,12 +57,20 @@ export interface RoomHistoryRequest {
 // UI Component Types
 // ============================================
 
+// 도면 이미지 정보
+export interface ChatImage {
+  url: string;
+  name: string;
+  description: string;
+}
+
 // 채팅 메시지 타입 (UI용)
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  images?: ChatImage[];   // 도면 이미지 배열 (optional)
 }
 
 // 채팅 세션 타입 (UI용 - ChatRoom 기반)

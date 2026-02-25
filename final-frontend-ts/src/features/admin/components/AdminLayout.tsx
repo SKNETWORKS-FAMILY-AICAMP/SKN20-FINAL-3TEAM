@@ -6,10 +6,8 @@ import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FiGrid,
-  FiUsers,
   FiFolder,
   FiFileText,
-  FiSettings,
   FiLogOut,
   FiArrowLeft,
   FiShield
@@ -24,10 +22,8 @@ interface AdminLayoutProps {
 // 사이드바 메뉴 아이템
 const menuItems = [
   { path: '/admin', icon: FiGrid, label: '대시보드', exact: true },
-  { path: '/admin/users', icon: FiUsers, label: '사용자 관리' },
   { path: '/admin/floor-plans', icon: FiFolder, label: '도면 DB' },
   { path: '/admin/logs', icon: FiFileText, label: '활동 로그' },
-  { path: '/admin/settings', icon: FiSettings, label: '설정' },
 ];
 
 export function AdminLayout({ children }: AdminLayoutProps) {
