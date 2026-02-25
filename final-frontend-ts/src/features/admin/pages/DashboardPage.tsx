@@ -3,54 +3,58 @@
 // ============================================
 
 import { useState, useEffect } from 'react';
-import { FiUsers, FiFolder, FiBarChart2, FiActivity } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import { FiUsers, FiFolder, FiBarChart2, FiMessageSquare, FiTrendingUp, FiFileText, FiList } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
-import { getAdminStats } from '../api/admin.api';
-import type { AdminStats } from '../types/admin.types';
+import { getAdminStats, getFloorPlans } from '../api/admin.api';
+import type { AdminStats, AdminFloorPlan } from '../types/admin.types';
 import styles from './AdminPages.module.css';
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [recentPlans, setRecentPlans] = useState<AdminFloorPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 통계 로드
   useEffect(() => {
-    const loadStats = async () => {
+    const loadData = async () => {
       try {
         setIsLoading(true);
-        const data = await getAdminStats();
-        setStats(data);
+        const [statsData, plansData] = await Promise.all([
+          getAdminStats(),
+          getFloorPlans()
+        ]);
+        setStats(statsData);
+        setRecentPlans(plansData.slice(0, 6));
       } catch (error) {
-        console.error('통계 로드 실패:', error);
-        // 백엔드 연결 안 되면 더미 데이터 사용
-        setStats({
-          userCount: 1234,
-          floorPlanCount: 567,
-          recentFloorPlan: 89,
-        });
+        console.error('데이터 로드 실패:', error);
       } finally {
         setIsLoading(false);
       }
     };
-    loadStats();
+    loadData();
   }, []);
 
-  // 통계 카드 데이터
   const statsCards = [
     { label: '총 사용자', value: stats?.userCount?.toLocaleString() || '-', icon: FiUsers, color: '#3B82F6' },
-    { label: '도면 수', value: stats?.floorPlanCount?.toLocaleString() || '-', icon: FiFolder, color: '#10B981' },
+    { label: '도면 자산', value: stats?.floorPlanCount?.toLocaleString() || '-', icon: FiFolder, color: '#10B981' },
     { label: '최근 7일 등록', value: stats?.recentFloorPlan?.toLocaleString() || '-', icon: FiBarChart2, color: '#F59E0B' },
-    { label: '활성 세션', value: '-', icon: FiActivity, color: '#8B5CF6' },
+    { label: '총 채팅', value: stats?.totalChatCount?.toLocaleString() || '-', icon: FiMessageSquare, color: '#8B5CF6' },
+    { label: '최근 7일 채팅', value: stats?.recentChatCount?.toLocaleString() || '-', icon: FiTrendingUp, color: '#EC4899' },
+    { label: '채팅방 수', value: stats?.chatRoomCount?.toLocaleString() || '-', icon: FiMessageSquare, color: '#06B6D4' },
   ];
 
-  // 더미 최근 활동 (추후 API 연동 가능)
-  const recentActivity = [
-    { user: 'user1@example.com', action: '도면 업로드', time: '5분 전' },
-    { user: 'user2@example.com', action: '회원가입', time: '12분 전' },
-    { user: 'user3@example.com', action: '분석 요청', time: '25분 전' },
-    { user: 'user4@example.com', action: '도면 업로드', time: '1시간 전' },
-    { user: 'user5@example.com', action: '로그인', time: '2시간 전' },
-  ];
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return '오늘';
+    if (diffDays === 1) return '어제';
+    if (diffDays < 7) return `${diffDays}일 전`;
+    return date.toLocaleDateString('ko-KR');
+  };
 
   return (
     <AdminLayout>
@@ -74,43 +78,96 @@ export function DashboardPage() {
           ))}
         </div>
 
-        {/* 컨텐츠 그리드 */}
-        <div className={styles.contentGrid}>
-          {/* 최근 활동 */}
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>최근 활동</h3>
-            <div className={styles.activityList}>
-              {recentActivity.map((activity, index) => (
-                <div key={index} className={styles.activityItem}>
-                  <span className={styles.activityUser}>{activity.user}</span>
-                  <span className={styles.activityAction}>{activity.action}</span>
-                  <span className={styles.activityTime}>{activity.time}</span>
-                </div>
-              ))}
-            </div>
+        {/* 하단 섹션: 최근 등록 도면 & 빠른 이동 */}
+        <div className={styles.dashboardBottom}>
+          {/* 최근 등록 도면 갤러리 */}
+          <div className={styles.recentActivity}>
+            <h3 className={styles.sectionTitle}>최근 등록 도면</h3>
+            {isLoading ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#9CA3AF' }}>
+                로딩 중...
+              </div>
+            ) : recentPlans.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#9CA3AF' }}>
+                등록된 도면이 없습니다
+              </div>
+            ) : (
+              <div className={styles.recentPlanGrid}>
+                {recentPlans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className={styles.recentPlanCard}
+                    onClick={() => navigate(`/admin/floor-plans?search=${encodeURIComponent(plan.name || '')}`)}
+                  >
+                    <div className={styles.recentPlanImage}>
+                      {plan.imageUrl ? (
+                        <img
+                          src={plan.imageUrl}
+                          alt={plan.name}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).parentElement!.classList.add(styles.recentPlanNoImage);
+                          }}
+                        />
+                      ) : (
+                        <div className={styles.recentPlanNoImage}>
+                          <FiFolder size={20} />
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.recentPlanInfo}>
+                      <span className={styles.recentPlanName}>{plan.name || '제목 없음'}</span>
+                      <span className={styles.recentPlanMeta}>{plan.user?.email || '-'}</span>
+                      <span className={styles.recentPlanMeta}>{formatDate(plan.createdAt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 시스템 상태 */}
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>시스템 상태</h3>
-            <div className={styles.systemStatus}>
-              <div className={styles.statusItem}>
-                <span>API 서버</span>
-                <span className={styles.statusOnline}>● 정상</span>
-              </div>
-              <div className={styles.statusItem}>
-                <span>데이터베이스</span>
-                <span className={styles.statusOnline}>● 정상</span>
-              </div>
-              <div className={styles.statusItem}>
-                <span>AI 모델</span>
-                <span className={styles.statusOnline}>● 정상</span>
-              </div>
-              <div className={styles.statusItem}>
-                <span>스토리지</span>
-                <span className={styles.statusWarning}>● 78% 사용중</span>
-              </div>
+          {/* 빠른 이동 + 이번 주 요약 */}
+          <div className={styles.systemStatus}>
+            <h3 className={styles.sectionTitle}>빠른 이동</h3>
+            <div className={styles.quickLinkList}>
+              <button className={styles.quickLinkBtn} onClick={() => navigate('/admin/floor-plans')}>
+                <div className={styles.quickLinkIcon} style={{ backgroundColor: '#EFF6FF', color: '#3B82F6' }}>
+                  <FiFileText size={20} />
+                </div>
+                <div className={styles.quickLinkText}>
+                  <span className={styles.quickLinkLabel}>도면 DB 관리</span>
+                  <span className={styles.quickLinkDesc}>도면 자산 검색, 상세보기, 삭제</span>
+                </div>
+              </button>
+              <button className={styles.quickLinkBtn} onClick={() => navigate('/admin/logs')}>
+                <div className={styles.quickLinkIcon} style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+                  <FiList size={20} />
+                </div>
+                <div className={styles.quickLinkText}>
+                  <span className={styles.quickLinkLabel}>활동 로그</span>
+                  <span className={styles.quickLinkDesc}>회원가입, 도면 업로드, 챗봇 내역</span>
+                </div>
+              </button>
             </div>
+
+            {/* 이번 주 요약 */}
+            {stats && (
+              <div className={styles.weeklySummary}>
+                <h4 className={styles.weeklySummaryTitle}>이번 주 요약</h4>
+                <div className={styles.weeklySummaryItem}>
+                  <span>신규 도면</span>
+                  <strong>{stats.recentFloorPlan}건</strong>
+                </div>
+                <div className={styles.weeklySummaryItem}>
+                  <span>챗봇 질문</span>
+                  <strong>{stats.recentChatCount}건</strong>
+                </div>
+                <div className={styles.weeklySummaryItem}>
+                  <span>총 도면 자산</span>
+                  <strong>{stats.floorPlanCount}건</strong>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

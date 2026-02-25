@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiEdit, FiFolder, FiSave, FiX, FiZoomIn } from 'react-icons/fi';
+import { FiFolder, FiSave, FiX, FiZoomIn } from 'react-icons/fi';
+import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import { AiOutlineLoading3Quarters, AiOutlineHome } from 'react-icons/ai';
 import { BiErrorCircle } from 'react-icons/bi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -15,7 +15,6 @@ import JsonInspector from './components/JsonInspector';
 import styles from './FileUploadPage.module.css';
 
 const FileUploadPage: React.FC = () => {
-  const navigate = useNavigate();
   const { colors } = useTheme();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -30,6 +29,7 @@ const FileUploadPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [saveName, setSaveName] = useState('');
 
   // 이미지 확대 모달 상태
   const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
@@ -204,7 +204,7 @@ const FileUploadPage: React.FC = () => {
         }
 
         // LLM 분석 데이터 파싱 (llmAnalysisJson 필드에서)
-        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llm_analysis_json;
+        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llmAnalysisJson;
         if (llmAnalysisJson) {
           try {
             // 원본 JSON 문자열 저장 (저장 API용)
@@ -284,6 +284,9 @@ const FileUploadPage: React.FC = () => {
       setToastMessage('저장에 필요한 데이터가 없습니다.');
       return;
     }
+    // 기본 이름: 분석 결과 이름 또는 파일명 (확장자 제거)
+    const defaultName = analysisResult.name || selectedFile.name.replace(/\.[^/.]+$/, '');
+    setSaveName(defaultName);
     setShowSaveConfirm(true);
   };
 
@@ -294,7 +297,7 @@ const FileUploadPage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile!);
-      formData.append('name', analysisResult!.name || selectedFile!.name);
+      formData.append('name', saveName.trim() || selectedFile!.name);
       formData.append('assessmentJson', llmAnalysisJsonRaw);
 
       await saveFloorPlan(formData);
@@ -369,8 +372,8 @@ const FileUploadPage: React.FC = () => {
   const renderStatusBadge = () => {
     const statusConfig = {
       idle: { text: '대기중', bg: colors.border, color: colors.textSecondary },
-      analyzing: { text: '분석중...', bg: '#FCD34D', color: '#92400E' },
-      completed: { text: '완료', bg: '#10B981', color: '#FFFFFF' },
+      analyzing: { text: '분석중...', bg: '#F97316', color: '#FFFFFF' },
+      completed: { text: '완료', bg: '#3B82F6', color: '#FFFFFF' },
       error: { text: '오류', bg: '#EF4444', color: '#FFFFFF' },
     };
     const config = statusConfig[analysisStatus];
@@ -407,24 +410,7 @@ const FileUploadPage: React.FC = () => {
 
   return (
     <div className={styles.container} style={{ backgroundColor: colors.background }}>
-      <div
-        className={styles.iconSidebar}
-        style={{ backgroundColor: colors.sidebarBg, borderRight: `1px solid ${colors.border}` }}
-      >
-        <div onClick={() => navigate('/main')} title="채팅" className={styles.iconBtn}>
-          <FiMessageSquare size={20} />
-        </div>
-        <div
-          title="도면 등록"
-          className={styles.iconBtn}
-          style={{
-            backgroundColor: '#FEF3C7',
-            borderLeft: `3px solid ${colors.primary}`,
-          }}
-        >
-          <FiEdit size={20} />
-        </div>
-      </div>
+      <AppSidebar />
 
       <div className={styles.mainContent}>
         {/* 좌측 패널 */}
@@ -704,95 +690,104 @@ const FileUploadPage: React.FC = () => {
             )}
           </div>
 
-          {analysisStatus === 'completed' && (
-            <div
-              className={styles.aiSummaryBox}
-              style={{
-                backgroundColor: '#F0FDF4',
-                border: '1px solid #86EFAC',
-              }}
-            >
-              <div className={styles.aiSummaryHeader}>
-                <RiRobot2Line size={18} style={{ color: '#10B981' }} />
-                <span className={styles.aiSummaryTitle} style={{ color: colors.textPrimary }}>AI 요약</span>
-              </div>
+          <div
+            className={styles.aiSummaryBox}
+            style={{
+              backgroundColor: analysisStatus === 'completed' ? '#EFF6FF' : '#FFFFFF',
+              border: `1px solid ${analysisStatus === 'completed' ? '#93C5FD' : colors.border}`,
+            }}
+          >
+            {analysisStatus === 'completed' ? (
+              <>
+                <div className={styles.aiSummaryHeader}>
+                  <RiRobot2Line size={18} style={{ color: '#3B82F6' }} />
+                  <span className={styles.aiSummaryTitle} style={{ color: '#3B82F6' }}>AI 요약</span>
+                </div>
 
-              {/* 기본 요약 */}
-              <p className={styles.aiSummaryText} style={{ color: colors.textSecondary, marginBottom: '1rem' }}>
-                {aiSummary}
-              </p>
+                {/* 기본 요약 */}
+                <p className={styles.aiSummaryText} style={{ color: colors.textSecondary, marginBottom: '1rem' }}>
+                  {aiSummary}
+                </p>
 
-              {/* Compliance 상세 정보 */}
-              {llmAnalysis?.compliance && (
-                <div className={styles.complianceSection}>
-                  {/* 종합 등급 */}
-                  <div className={styles.complianceGrade}>
-                    <span className={styles.complianceGradeLabel}>종합 등급</span>
-                    <span
-                      className={styles.complianceGradeBadge}
-                      style={{
-                        backgroundColor: llmAnalysis.compliance.overall_grade === '불합격' ? '#FEE2E2' :
-                          llmAnalysis.compliance.overall_grade === '미흡' ? '#FEF3C7' :
-                          llmAnalysis.compliance.overall_grade === '보통' ? '#E0E7FF' :
-                          '#D1FAE5',
-                        color: llmAnalysis.compliance.overall_grade === '불합격' ? '#DC2626' :
-                          llmAnalysis.compliance.overall_grade === '미흡' ? '#D97706' :
-                          llmAnalysis.compliance.overall_grade === '보통' ? '#4F46E5' :
-                          '#059669',
-                      }}
-                    >
-                      {llmAnalysis.compliance.overall_grade}
-                    </span>
-                  </div>
+                {/* Compliance 상세 정보 */}
+                {llmAnalysis?.compliance && (
+                  <div className={styles.complianceSection}>
+                    {/* 종합 등급 */}
+                    <div className={styles.complianceGrade}>
+                      <span className={styles.complianceGradeLabel}>종합 등급</span>
+                      <span
+                        className={styles.complianceGradeBadge}
+                        style={{
+                          backgroundColor: llmAnalysis.compliance.overall_grade === '불합격' ? '#FEE2E2' :
+                            llmAnalysis.compliance.overall_grade === '미흡' ? '#FEF3C7' :
+                            llmAnalysis.compliance.overall_grade === '보통' ? '#E0E7FF' :
+                            '#D1FAE5',
+                          color: llmAnalysis.compliance.overall_grade === '불합격' ? '#DC2626' :
+                            llmAnalysis.compliance.overall_grade === '미흡' ? '#D97706' :
+                            llmAnalysis.compliance.overall_grade === '보통' ? '#4F46E5' :
+                            '#059669',
+                        }}
+                      >
+                        {llmAnalysis.compliance.overall_grade}
+                      </span>
+                    </div>
 
-                  {/* 적합 항목 */}
-                  {llmAnalysis.compliance.compliant_items?.length > 0 && (
-                    <div className={styles.complianceItems}>
-                      <span className={styles.complianceItemsLabel}>적합 항목</span>
-                      <div className={styles.complianceItemsTags}>
-                        {llmAnalysis.compliance.compliant_items.map((item, idx) => (
-                          <span key={idx} className={styles.complianceTagPass}>
-                            {item}
-                          </span>
+                    {/* 적합 항목 */}
+                    {llmAnalysis.compliance.compliant_items?.length > 0 && (
+                      <div className={styles.complianceItems}>
+                        <span className={styles.complianceItemsLabel}>적합 항목</span>
+                        <div className={styles.complianceItemsTags}>
+                          {llmAnalysis.compliance.compliant_items.map((item, idx) => (
+                            <span key={idx} className={styles.complianceTagPass}>
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 부적합 항목 */}
+                    {llmAnalysis.compliance.non_compliant_items?.length > 0 && (
+                      <div className={styles.nonCompliantSection}>
+                        <span className={styles.complianceItemsLabel}>부적합 항목</span>
+                        {llmAnalysis.compliance.non_compliant_items.map((item, idx) => (
+                          <div key={idx} className={styles.nonCompliantItem}>
+                            <div className={styles.nonCompliantHeader}>
+                              <span className={styles.nonCompliantCategory}>{item.category}</span>
+                              <span className={styles.nonCompliantTarget}>{item.item}</span>
+                            </div>
+                            <p className={styles.nonCompliantReason}>{item.reason}</p>
+                            <p className={styles.nonCompliantRecommendation}>
+                              <strong>권고:</strong> {item.recommendation}
+                            </p>
+                          </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* 부적합 항목 */}
-                  {llmAnalysis.compliance.non_compliant_items?.length > 0 && (
-                    <div className={styles.nonCompliantSection}>
-                      <span className={styles.complianceItemsLabel}>부적합 항목</span>
-                      {llmAnalysis.compliance.non_compliant_items.map((item, idx) => (
-                        <div key={idx} className={styles.nonCompliantItem}>
-                          <div className={styles.nonCompliantHeader}>
-                            <span className={styles.nonCompliantCategory}>{item.category}</span>
-                            <span className={styles.nonCompliantTarget}>{item.item}</span>
-                          </div>
-                          <p className={styles.nonCompliantReason}>{item.reason}</p>
-                          <p className={styles.nonCompliantRecommendation}>
-                            <strong>권고:</strong> {item.recommendation}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 개선 제안 */}
-                  {llmAnalysis.recommendations?.length > 0 && (
-                    <div className={styles.recommendationsSection}>
-                      <span className={styles.complianceItemsLabel}>개선 제안</span>
-                      <ul className={styles.recommendationsList}>
-                        {llmAnalysis.recommendations.map((rec, idx) => (
-                          <li key={idx}>{rec}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                    {/* 개선 제안 */}
+                    {(llmAnalysis.recommendations ?? []).length > 0 && (
+                      <div className={styles.recommendationsSection}>
+                        <span className={styles.complianceItemsLabel}>개선 제안</span>
+                        <ul className={styles.recommendationsList}>
+                          {(llmAnalysis.recommendations ?? []).map((rec, idx) => (
+                            <li key={idx}>{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className={styles.aiSummaryPlaceholder}>
+                <RiRobot2Line size={28} style={{ color: colors.border }} />
+                <p style={{ color: colors.textSecondary, fontSize: '0.85rem', margin: '0.5rem 0 0' }}>
+                  {analysisStatus === 'analyzing' ? 'AI가 도면을 분석하고 있습니다...' : 'AI 요약이 여기에 표시됩니다'}
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className={styles.buttonGroup}>
             <button
@@ -800,7 +795,7 @@ const FileUploadPage: React.FC = () => {
               disabled={analysisStatus !== 'completed' || isSaving}
               className={styles.actionBtn}
               style={{
-                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#10B981' : colors.border,
+                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#F97316' : colors.border,
                 color: analysisStatus === 'completed' && !isSaving ? '#FFFFFF' : colors.textSecondary,
                 cursor: analysisStatus === 'completed' && !isSaving ? 'pointer' : 'not-allowed',
               }}
@@ -822,7 +817,17 @@ const FileUploadPage: React.FC = () => {
               <FiSave size={32} color="#10B981" />
             </div>
             <h3 className={styles.confirmTitle}>저장하시겠습니까?</h3>
-            <p className={styles.confirmText}>분석 결과가 데이터베이스에 저장됩니다.</p>
+            <div className={styles.saveNameGroup}>
+              <label className={styles.saveNameLabel} style={{ color: colors.textSecondary }}>도면 이름</label>
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                className={styles.saveNameInput}
+                placeholder="도면 이름을 입력하세요"
+                autoFocus
+              />
+            </div>
             <div className={styles.confirmButtons}>
               <button
                 className={styles.confirmCancelBtn}

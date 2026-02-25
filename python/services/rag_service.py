@@ -98,17 +98,22 @@ class RAGService:
         Returns:
             13개 지표 딕셔너리
         """
+        # area_ratio 스케일 판단 (소수 0~1 vs 퍼센트 0~100)
+        valid_ratios = [s.area_ratio for s in analysis.spaces if s.area_ratio is not None]
+        is_decimal_scale = sum(valid_ratios) < 2.0 if valid_ratios else False
+        scale_factor = 100.0 if is_decimal_scale else 1.0
+
         # 거실 면적 비율 계산
         living_room = next((s for s in analysis.spaces if '거실' in s.space_name), None)
-        living_room_ratio = living_room.area_ratio if living_room and living_room.area_ratio else 0.0
-        
+        living_room_ratio = (living_room.area_ratio * scale_factor) if living_room and living_room.area_ratio else 0.0
+
         # 주방 면적 비율 계산
         kitchen = next((s for s in analysis.spaces if '주방' in s.space_name), None)
-        kitchen_ratio = kitchen.area_ratio if kitchen and kitchen.area_ratio else 0.0
-        
+        kitchen_ratio = (kitchen.area_ratio * scale_factor) if kitchen and kitchen.area_ratio else 0.0
+
         # 화장실 면적 비율 계산
         bathrooms = [s for s in analysis.spaces if '욕실' in s.space_name or '화장실' in s.space_name]
-        bathroom_ratio = sum(s.area_ratio for s in bathrooms if s.area_ratio) if bathrooms else 0.0
+        bathroom_ratio = sum(s.area_ratio * scale_factor for s in bathrooms if s.area_ratio) if bathrooms else 0.0
         
         # 기타공간/특화공간 유무 확인
         space_types = set([s.space_type for s in analysis.spaces])
@@ -119,10 +124,10 @@ class RAGService:
         compliance_grade = analysis.compliance.overall_grade if analysis.compliance else "미평가"
         
         return {
-            "windowless_ratio": round(analysis.windowless_ratio / 100.0, 4) if analysis.windowless_ratio > 1 else round(analysis.windowless_ratio, 4),
+            "windowless_count": sum(1 for s in analysis.spaces if not s.has_window),
             "has_special_space": has_special_space,
             "bay_count": analysis.bay_count,
-            "balcony_ratio": round(analysis.balcony_ratio / 100.0, 4) if analysis.balcony_ratio > 1 else round(analysis.balcony_ratio, 4),
+            "balcony_ratio": round(analysis.balcony_ratio, 4),
             "living_room_ratio": round(living_room_ratio, 4),
             "bathroom_ratio": round(bathroom_ratio, 4),
             "kitchen_ratio": round(kitchen_ratio, 4),

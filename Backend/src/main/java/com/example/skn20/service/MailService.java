@@ -115,38 +115,66 @@ public class MailService {
     }
 
     private String buildEmailBody(int number) {
+        String code = String.valueOf(number);
+        // 인증코드 각 자리를 개별 박스로 분리
+        StringBuilder codeBoxes = new StringBuilder();
+        for (char c : code.toCharArray()) {
+            codeBoxes.append("<td style='width:48px;height:56px;background-color:#FFF7ED;border:2px solid #FF8C42;border-radius:10px;font-size:28px;font-weight:700;color:#FF8C42;text-align:center;vertical-align:middle;font-family:monospace;'>");
+            codeBoxes.append(c);
+            codeBoxes.append("</td><td style='width:6px;'></td>");
+        }
+
         return "<!DOCTYPE html>"
              + "<html lang='ko'>"
              + "<head>"
-             + "    <meta charset='UTF-8'>"
-             + "    <meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-             + "    <style>"
-             + "        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #121212; color: #f0f0f0; }" // 기본 글씨색을 밝게
-             + "        .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #1c1c1c; border-radius: 8px; text-align: center; }"
-             + "        .header { font-size: 18px; font-weight: bold; margin-bottom: 20px; color: #ff4d4f; }"
-             + "        .content { font-size: 16px; line-height: 1.6; margin-bottom: 30px; color: #f0f0f0; }" // content 색상을 더 밝게
-             + "        .code { font-size: 48px; font-weight: bold; color: #ffffff; letter-spacing: 5px; background-color: #333; padding: 20px; border-radius: 8px; margin: 20px 0; }"
-             + "        .footer { font-size: 12px; color: #cccccc; margin-top: 30px; }" // 푸터 텍스트 색상도 좀 더 밝게
-             + "        .footer a { color: #cccccc; text-decoration: underline; }"
-             + "    </style>"
+             + "<meta charset='UTF-8'>"
+             + "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
              + "</head>"
-             + "<body>"
-             + "    <div class='container'>"
-             + "        <div class='header'>"
-             + "            이메일 인증"
-             + "        </div>"
-             + "        <div class='content'>"
-             + "            <p>회원님의 계정에 등록된 이메일 주소 확인을 위한 인증번호입니다.<br>"
-             + "            아래 인증번호를 복사하여 인증을 완료해 주세요.</p>"
-             + "            <div class='code'>" + number + "</div>"
-             + "            <p>개인정보 보호를 위해 인증번호는 <b>5분</b> 동안만 유효합니다.</p>"
-             + "        </div>"
-             + "        <div class='footer'>"
-             + "            발신 전용 이메일입니다. 궁금한 사항은 <a href='https://your-company-support.com'>고객지원</a>을 이용해 주세요."
-             + "        </div>"
-             + "    </div>"
-             + "</body>"
-             + "</html>";
+             + "<body style='margin:0;padding:0;background-color:#F3F4F6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>"
+             + "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background-color:#F3F4F6;padding:40px 20px;'>"
+             + "<tr><td align='center'>"
+             + "<table role='presentation' width='480' cellpadding='0' cellspacing='0' style='background-color:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);'>"
+
+             // 상단 오렌지 헤더
+             + "<tr><td style='background:linear-gradient(135deg,#FF8C42,#FF7A2E);padding:32px 40px;text-align:center;'>"
+             + "<h1 style='margin:0;font-size:28px;font-weight:800;color:#FFFFFF;letter-spacing:3px;'>ARAE</h1>"
+             + "<p style='margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);letter-spacing:1px;'>AI Floor Plan Analysis Platform</p>"
+             + "</td></tr>"
+
+             // 본문
+             + "<tr><td style='padding:36px 40px 20px;'>"
+             + "<h2 style='margin:0 0 8px;font-size:20px;font-weight:700;color:#1F2937;text-align:center;'>이메일 인증</h2>"
+             + "<p style='margin:0 0 28px;font-size:14px;color:#6B7280;line-height:1.7;text-align:center;'>"
+             + "회원님의 이메일 주소 확인을 위한 인증번호입니다.<br>"
+             + "아래 인증번호를 입력하여 인증을 완료해 주세요.</p>"
+
+             // 인증코드 박스
+             + "<table role='presentation' cellpadding='0' cellspacing='0' style='margin:0 auto 28px;'>"
+             + "<tr>" + codeBoxes.toString() + "</tr>"
+             + "</table>"
+
+             // 유효시간 안내
+             + "<table role='presentation' width='100%' cellpadding='0' cellspacing='0'>"
+             + "<tr><td style='background-color:#FFF7ED;border-radius:10px;padding:14px 20px;text-align:center;'>"
+             + "<span style='font-size:13px;color:#FF8C42;'>&#9202;</span>"
+             + "<span style='font-size:13px;color:#92400E;font-weight:500;'> 인증번호는 <b>5분</b> 동안만 유효합니다</span>"
+             + "</td></tr></table>"
+             + "</td></tr>"
+
+             // 구분선
+             + "<tr><td style='padding:0 40px;'>"
+             + "<hr style='border:none;border-top:1px solid #E5E7EB;margin:12px 0 0;'>"
+             + "</td></tr>"
+
+             // 푸터
+             + "<tr><td style='padding:20px 40px 32px;text-align:center;'>"
+             + "<p style='margin:0 0 4px;font-size:11px;color:#9CA3AF;'>본 메일은 ARAE 서비스에서 자동 발송된 메일입니다.</p>"
+             + "<p style='margin:0;font-size:11px;color:#9CA3AF;'>본인이 요청하지 않았다면 이 메일을 무시해 주세요.</p>"
+             + "</td></tr>"
+
+             + "</table>"
+             + "</td></tr></table>"
+             + "</body></html>";
     }
 
 }

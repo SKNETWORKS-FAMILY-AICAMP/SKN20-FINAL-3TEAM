@@ -1,5 +1,8 @@
 package com.example.skn20.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,8 +25,8 @@ public class FloorplanAnalysis {
     private FloorPlan floorPlan;
     
     // 분석 항목들
-    @Column(name = "windowless_ratio")
-    private Double windowlessRatio;
+    @Column(name = "windowless_count")
+    private Integer windowlessCount;
     
     @Column(name = "has_special_space")
     private Boolean hasSpecialSpace;
@@ -66,7 +69,7 @@ public class FloorplanAnalysis {
     private String analysisDescription;
     
     // 임베딩 값 (VECTOR 자료형) - PostgreSQL pgvector 사용
-    // 512는 text-embedding-3-small 모델 기준 (Python RAG 시스템과 일치)
-    @Column(name = "embedding", columnDefinition = "vector(512)")
-    private double[] embedding;
+    @JdbcTypeCode(SqlTypes.VECTOR) // 이 줄을 추가!
+    @Column(name = "embedding", columnDefinition = "vector(1024)")
+    private float[] embedding;
 }
