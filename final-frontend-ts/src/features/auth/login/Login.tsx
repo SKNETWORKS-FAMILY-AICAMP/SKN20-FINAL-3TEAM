@@ -6,18 +6,18 @@ import { useTheme } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { login as loginApi } from '@/features/auth/api/auth.api';
 import type { AuthView, LoginFormData } from '@/features/auth/types/auth.types';
-import { initialLoginData } from '@/features/auth/types/auth.types';
 import styles from './Login.module.css';
 
 interface LoginProps {
-  onViewChange: (view: AuthView) => void;
+  onViewChange: (view: AuthView, email?: string) => void;
+  initialEmail?: string;
 }
 
-const Login: React.FC<LoginProps> = ({ onViewChange }) => {
+const Login: React.FC<LoginProps> = ({ onViewChange, initialEmail }) => {
   const navigate = useNavigate();
   const { colors } = useTheme();
   const { login } = useAuth();
-  const [formData, setFormData] = useState<LoginFormData>(initialLoginData);
+  const [formData, setFormData] = useState<LoginFormData>({ email: initialEmail || '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -31,6 +31,7 @@ const Login: React.FC<LoginProps> = ({ onViewChange }) => {
       const response = await loginApi({
         email: formData.email,
         password: formData.password,
+        rememberMe,
       });
 
       // AuthContext에 로그인 정보 저장 (rememberMe 전달)
@@ -59,7 +60,7 @@ const Login: React.FC<LoginProps> = ({ onViewChange }) => {
         <Input
           label="이메일"
           type="email"
-          placeholder="example@email.com"
+          placeholder="이메일을 입력하세요"
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           required

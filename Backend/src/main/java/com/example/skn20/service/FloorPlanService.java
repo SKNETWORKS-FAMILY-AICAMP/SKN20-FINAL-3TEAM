@@ -3,6 +3,7 @@ package com.example.skn20.service;
 import com.example.skn20.dto.FloorplanPreviewResponse;
 import com.example.skn20.dto.FloorplanSaveRequest;
 import com.example.skn20.dto.FloorplanSaveResponse;
+import com.example.skn20.dto.MyFloorPlanResponse;
 import com.example.skn20.dto.PythonAnalysisResponse;
 import com.example.skn20.dto.PythonMetadataResponse;
 import com.example.skn20.entity.FloorPlan;
@@ -21,7 +22,9 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class FloorPlanService {
 	private final FloorPlanRepository floorPlanRepository;
 	private final FloorplanSummaryRepository summaryRepository;
 	private final RestTemplate restTemplate;
+	private final S3Service s3Service;
 
 	@Value("${python.server.url:http://localhost:8000}")
 	private String pythonServerUrl;
@@ -141,7 +145,7 @@ public class FloorPlanService {
 				.imageUrl(savedImagePath)  // 저장된 이미지 경로
 				.assessmentJson(request.getAssessmentJson())  // 3번 저장
 				.user(user)
-				.createdAt(LocalDate.now())
+				.createdAt(LocalDateTime.now())
 				.build();
 
 		FloorPlan savedPlan = floorPlanRepository.save(floorPlan);
@@ -188,32 +192,56 @@ public class FloorPlanService {
 	}
 	
 	/**
-	 * 이미지 파일을 resources/image/floorplan/ 경로에 저장
-	 * 파일명: userId_timestamp_originalFilename
+	 * 이미지 파일을 S3에 업로드하고 URL 반환
+	 * S3 키: floorplan/userId_timestamp_originalFilename
 	 */
 	private String saveImageFile(MultipartFile file, Long userId) throws Exception {
-		// 저장 디렉토리 경로 (절대 경로 사용)
-		String uploadDir = System.getProperty("user.dir") + "/src/main/resources/image/floorplan/";
-		java.io.File directory = new java.io.File(uploadDir);
-
-		// 디렉토리가 없으면 생성
-		if (!directory.exists()) {
-			boolean created = directory.mkdirs();
-			System.out.println("[FloorPlanService] 디렉토리 생성: " + uploadDir + " -> " + created);
-		}
-
-		// 고유한 파일명 생성 (userId_timestamp_originalFilename)
 		String timestamp = String.valueOf(System.currentTimeMillis());
 		String originalFilename = file.getOriginalFilename();
-		String savedFilename = userId + "_" + timestamp + "_" + originalFilename;
+		String s3Key = "floorplan/" + userId + "_" + timestamp + "_" + originalFilename;
 
-		// 파일 저장
-		String filePath = uploadDir + savedFilename;
-		java.io.File destFile = new java.io.File(filePath);
-		System.out.println("[FloorPlanService] 파일 저장 경로: " + destFile.getAbsolutePath());
-		file.transferTo(destFile.getAbsoluteFile());
+		String contentType = file.getContentType() != null ? file.getContentType() : "image/png";
+		String s3Url = s3Service.upload(s3Key, file.getBytes(), contentType);
 
-		// DB에 저장할 경로 반환 (상대 경로)
-		return "/image/floorplan/" + savedFilename;
+		System.out.println("[FloorPlanService] S3 업로드 완료: " + s3Url);
+		return s3Url;
+	}
+
+	/**
+	 * 사용자의 도면 분석 내역 조회 (최대 10개)
+	 */
+	public List<MyFloorPlanResponse> getMyFloorPlans(Long userId) {
+		return floorPlanRepository.findTop10ByUserIdOrderByCreatedAtDesc(userId)
+				.stream()
+				.map(fp -> MyFloorPlanResponse.builder()
+						.id(fp.getId())
+						.name(fp.getName())
+						.createdAt(fp.getCreatedAt())
+						.build())
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * 도면 상세 조회 (본인 도면만)
+	 */
+	public FloorPlan getFloorPlanDetail(Long floorPlanId, Long userId) {
+		FloorPlan fp = floorPlanRepository.findById(floorPlanId)
+				.orElseThrow(() -> new RuntimeException("도면을 찾을 수 없습니다."));
+		if (!fp.getUser().getId().equals(userId)) {
+			throw new RuntimeException("접근 권한이 없습니다.");
+		}
+		return fp;
+	}
+
+	/**
+	 * 도면 이미지 URL 반환 (S3 URL)
+	 */
+	public String getFloorPlanImageUrl(Long floorPlanId, Long userId) {
+		FloorPlan fp = getFloorPlanDetail(floorPlanId, userId);
+		String imageUrl = fp.getImageUrl();
+		if (imageUrl == null || imageUrl.isEmpty()) {
+			throw new RuntimeException("이미지 URL이 없습니다.");
+		}
+		return imageUrl;
 	}
 }

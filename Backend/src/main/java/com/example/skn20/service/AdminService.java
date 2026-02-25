@@ -4,15 +4,12 @@ import com.example.skn20.dto.*;
 import com.example.skn20.entity.*;
 import com.example.skn20.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StreamUtils;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -27,6 +24,7 @@ public class AdminService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatHistoryRepository chatHistoryRepository;
     private final FloorplanAnalysisRepository floorplanAnalysisRepository;
+    private final S3Service s3Service;
 
     /**
      * 대시보드 통계 조회
@@ -34,7 +32,7 @@ public class AdminService {
     public AdminStatsResponse getAdminStats() {
         Long userCount = userRepository.count();
         Long floorPlanCount = floorPlanRepository.count();
-        LocalDate sevenDaysAgo = LocalDate.now().minusDays(7);
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
         Long recentFloorPlan = floorPlanRepository.countRecentFloorPlans(sevenDaysAgo);
         
         // 챗봇 통계
@@ -104,7 +102,7 @@ public class AdminService {
                     .userEmail(ch.getChatRoom().getUser().getEmail())
                     .action("챗봇 질문")
                     .details("[" + ch.getChatRoom().getName() + "] " + preview)
-                    .createdAt(ch.getCreatedAt().toLocalDate())
+                    .createdAt(ch.getCreatedAt())
                     .build());
         }
 
@@ -135,7 +133,7 @@ public class AdminService {
      * 전체 도면 목록 조회
      */
     public List<AdminFloorPlanResponse> getAllFloorPlans() {
-        List<FloorPlan> floorPlans = floorPlanRepository.findAll();
+        List<FloorPlan> floorPlans = floorPlanRepository.findAllByOrderByCreatedAtDesc();
         return floorPlans.stream()
                 .map(this::convertToAdminFloorPlanResponse)
                 .collect(Collectors.toList());
@@ -152,28 +150,28 @@ public class AdminService {
             Integer minRooms,
             Integer maxRooms) {
         
-        List<FloorPlan> floorPlans = floorPlanRepository.findAll();
+        List<FloorPlan> floorPlans = floorPlanRepository.findAllByOrderByCreatedAtDesc();
 
         // 필터링
         return floorPlans.stream()
                 .filter(fp -> {
-                    // 이름 검색
+                    // 이름 검색 (대소문자 무시)
                     if (name != null && !name.isEmpty()) {
-                        if (fp.getName() == null || !fp.getName().contains(name)) {
+                        if (fp.getName() == null || !fp.getName().toLowerCase().contains(name.toLowerCase())) {
                             return false;
                         }
                     }
-                    // 업로더 이메일 검색
+                    // 업로더 이메일 검색 (대소문자 무시)
                     if (uploaderEmail != null && !uploaderEmail.isEmpty()) {
-                        if (!fp.getUser().getEmail().contains(uploaderEmail)) {
+                        if (!fp.getUser().getEmail().toLowerCase().contains(uploaderEmail.toLowerCase())) {
                             return false;
                         }
                     }
                     // 날짜 범위
-                    if (startDate != null && fp.getCreatedAt().isBefore(startDate)) {
+                    if (startDate != null && fp.getCreatedAt().isBefore(startDate.atStartOfDay())) {
                         return false;
                     }
-                    if (endDate != null && fp.getCreatedAt().isAfter(endDate)) {
+                    if (endDate != null && fp.getCreatedAt().isAfter(endDate.atTime(LocalTime.MAX))) {
                         return false;
                     }
                     // 방 개수 필터
@@ -201,9 +199,19 @@ public class AdminService {
     @Transactional
     public String deleteFloorPlans(List<Long> ids) {
         for (Long id : ids) {
-            if (floorPlanRepository.existsById(id)) {
-                floorPlanRepository.deleteById(id);
-            }
+            floorPlanRepository.findById(id).ifPresent(fp -> {
+                // S3 이미지 삭제 (URL에서 key 추출)
+                String imageUrl = fp.getImageUrl();
+                if (imageUrl != null && imageUrl.contains(".amazonaws.com/")) {
+                    String s3Key = imageUrl.substring(imageUrl.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+                    try {
+                        s3Service.delete(s3Key);
+                    } catch (Exception e) {
+                        // S3 삭제 실패해도 DB 삭제는 진행
+                    }
+                }
+                floorPlanRepository.delete(fp);
+            });
         }
         return ids.size() + "개의 도면이 삭제되었습니다.";
     }
@@ -218,9 +226,9 @@ public class AdminService {
     }
 
     /**
-     * 도면 이미지 파일 로드
+     * 도면 이미지 S3 URL 반환
      */
-    public byte[] getFloorPlanImage(Long floorplanid) throws IOException {
+    public String getFloorPlanImageUrl(Long floorplanid) {
         FloorPlan fp = floorPlanRepository.findById(floorplanid)
                 .orElseThrow(() -> new RuntimeException("도면을 찾을 수 없습니다."));
 
@@ -229,16 +237,7 @@ public class AdminService {
             throw new RuntimeException("이미지 URL이 없습니다.");
         }
 
-        // /image/floorplan/xxx.png → src/main/resources/image/floorplan/xxx.png (저장 경로와 동일)
-        String resourcePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
-        String absolutePath = System.getProperty("user.dir") + "/src/main/resources/" + resourcePath;
-
-        java.io.File file = new java.io.File(absolutePath);
-        if (!file.exists()) {
-            throw new RuntimeException("이미지 파일을 찾을 수 없습니다: " + absolutePath);
-        }
-
-        return java.nio.file.Files.readAllBytes(file.toPath());
+        return imageUrl;
     }
 
     /**
@@ -260,6 +259,7 @@ public class AdminService {
                         .build())
                 .createdAt(fp.getCreatedAt())
                 .roomCount(roomCount)
+                .assessmentJson(fp.getAssessmentJson())
                 .build();
     }
 }

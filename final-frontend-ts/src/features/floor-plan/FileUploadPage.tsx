@@ -29,6 +29,7 @@ const FileUploadPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [topologyGraphUrl, setTopologyGraphUrl] = useState<string | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [saveName, setSaveName] = useState('');
 
   // 이미지 확대 모달 상태
   const [zoomModalImage, setZoomModalImage] = useState<string | null>(null);
@@ -203,7 +204,7 @@ const FileUploadPage: React.FC = () => {
         }
 
         // LLM 분석 데이터 파싱 (llmAnalysisJson 필드에서)
-        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llm_analysis_json;
+        const llmAnalysisJson = apiResult.llmAnalysisJson || apiResult.llmAnalysisJson;
         if (llmAnalysisJson) {
           try {
             // 원본 JSON 문자열 저장 (저장 API용)
@@ -283,6 +284,9 @@ const FileUploadPage: React.FC = () => {
       setToastMessage('저장에 필요한 데이터가 없습니다.');
       return;
     }
+    // 기본 이름: 분석 결과 이름 또는 파일명 (확장자 제거)
+    const defaultName = analysisResult.name || selectedFile.name.replace(/\.[^/.]+$/, '');
+    setSaveName(defaultName);
     setShowSaveConfirm(true);
   };
 
@@ -293,7 +297,7 @@ const FileUploadPage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile!);
-      formData.append('name', analysisResult!.name || selectedFile!.name);
+      formData.append('name', saveName.trim() || selectedFile!.name);
       formData.append('assessmentJson', llmAnalysisJsonRaw);
 
       await saveFloorPlan(formData);
@@ -368,8 +372,8 @@ const FileUploadPage: React.FC = () => {
   const renderStatusBadge = () => {
     const statusConfig = {
       idle: { text: '대기중', bg: colors.border, color: colors.textSecondary },
-      analyzing: { text: '분석중...', bg: '#FCD34D', color: '#92400E' },
-      completed: { text: '완료', bg: '#10B981', color: '#FFFFFF' },
+      analyzing: { text: '분석중...', bg: '#F97316', color: '#FFFFFF' },
+      completed: { text: '완료', bg: '#3B82F6', color: '#FFFFFF' },
       error: { text: '오류', bg: '#EF4444', color: '#FFFFFF' },
     };
     const config = statusConfig[analysisStatus];
@@ -689,15 +693,15 @@ const FileUploadPage: React.FC = () => {
           <div
             className={styles.aiSummaryBox}
             style={{
-              backgroundColor: analysisStatus === 'completed' ? '#F0FDF4' : '#FFFFFF',
-              border: `1px solid ${analysisStatus === 'completed' ? '#86EFAC' : colors.border}`,
+              backgroundColor: analysisStatus === 'completed' ? '#EFF6FF' : '#FFFFFF',
+              border: `1px solid ${analysisStatus === 'completed' ? '#93C5FD' : colors.border}`,
             }}
           >
             {analysisStatus === 'completed' ? (
               <>
                 <div className={styles.aiSummaryHeader}>
-                  <RiRobot2Line size={18} style={{ color: '#10B981' }} />
-                  <span className={styles.aiSummaryTitle} style={{ color: colors.textPrimary }}>AI 요약</span>
+                  <RiRobot2Line size={18} style={{ color: '#3B82F6' }} />
+                  <span className={styles.aiSummaryTitle} style={{ color: '#3B82F6' }}>AI 요약</span>
                 </div>
 
                 {/* 기본 요약 */}
@@ -762,11 +766,11 @@ const FileUploadPage: React.FC = () => {
                     )}
 
                     {/* 개선 제안 */}
-                    {llmAnalysis.recommendations?.length > 0 && (
+                    {(llmAnalysis.recommendations ?? []).length > 0 && (
                       <div className={styles.recommendationsSection}>
                         <span className={styles.complianceItemsLabel}>개선 제안</span>
                         <ul className={styles.recommendationsList}>
-                          {llmAnalysis.recommendations.map((rec, idx) => (
+                          {(llmAnalysis.recommendations ?? []).map((rec, idx) => (
                             <li key={idx}>{rec}</li>
                           ))}
                         </ul>
@@ -791,7 +795,7 @@ const FileUploadPage: React.FC = () => {
               disabled={analysisStatus !== 'completed' || isSaving}
               className={styles.actionBtn}
               style={{
-                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#10B981' : colors.border,
+                backgroundColor: analysisStatus === 'completed' && !isSaving ? '#F97316' : colors.border,
                 color: analysisStatus === 'completed' && !isSaving ? '#FFFFFF' : colors.textSecondary,
                 cursor: analysisStatus === 'completed' && !isSaving ? 'pointer' : 'not-allowed',
               }}
@@ -813,7 +817,17 @@ const FileUploadPage: React.FC = () => {
               <FiSave size={32} color="#10B981" />
             </div>
             <h3 className={styles.confirmTitle}>저장하시겠습니까?</h3>
-            <p className={styles.confirmText}>분석 결과가 데이터베이스에 저장됩니다.</p>
+            <div className={styles.saveNameGroup}>
+              <label className={styles.saveNameLabel} style={{ color: colors.textSecondary }}>도면 이름</label>
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                className={styles.saveNameInput}
+                placeholder="도면 이름을 입력하세요"
+                autoFocus
+              />
+            </div>
             <div className={styles.confirmButtons}>
               <button
                 className={styles.confirmCancelBtn}

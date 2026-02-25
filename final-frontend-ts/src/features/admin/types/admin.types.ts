@@ -18,6 +18,7 @@ export interface AdminFloorPlan {
   };
   createdAt: string;
   roomCount?: number;
+  assessmentJson?: string;
   rooms?: AdminRoom[];
   objs?: AdminObject[];
   strs?: AdminStructure[];

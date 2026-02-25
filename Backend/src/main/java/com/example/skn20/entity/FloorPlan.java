@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "floorplan")
@@ -24,7 +24,7 @@ public class FloorPlan {
     private User user; // 사용자 정보
 
     @Column(name = "created_at", nullable = false)
-    private LocalDate createdAt; // 생성 일자
+    private LocalDateTime createdAt; // 생성 일자
     
     @Column(length = 255)
     private String name;

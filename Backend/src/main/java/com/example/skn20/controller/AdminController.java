@@ -5,7 +5,6 @@ import com.example.skn20.service.AdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -93,16 +92,16 @@ public class AdminController {
     }
 
     /**
-     * 도면 이미지 반환
+     * 도면 이미지 반환 → S3 URL로 리다이렉트
      * GET /api/admin/floorplan/{id}/image
      */
     @GetMapping("/floorplan/{id}/image")
-    public ResponseEntity<byte[]> getFloorPlanImage(@PathVariable Long id) {
+    public ResponseEntity<?> getFloorPlanImage(@PathVariable Long id) {
         try {
-            byte[] imageBytes = adminService.getFloorPlanImage(id);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.IMAGE_PNG);
-            return new ResponseEntity<>(imageBytes, headers, HttpStatus.OK);
+            String imageUrl = adminService.getFloorPlanImageUrl(id);
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, imageUrl)
+                    .build();
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }

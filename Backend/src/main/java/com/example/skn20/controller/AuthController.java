@@ -14,7 +14,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -62,13 +61,14 @@ public class AuthController {
 
     // 로그인
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestParam String email, @RequestParam String password) {
+    public ResponseEntity<?> login(@RequestParam String email, @RequestParam String password,
+                                   @RequestParam(defaultValue = "false") boolean rememberMe) {
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(email, password));
 
             UD userDetails = (UD) authentication.getPrincipal();
-            String jwt = jwtUtil.generateToken(userDetails);
+            String jwt = jwtUtil.generateToken(userDetails, rememberMe);
 
             User user = userService.findByEmail(userDetails.getEmail());
 
@@ -83,6 +83,27 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ApiResponse(false, "이메일 또는 비밀번호가 올바르지 않습니다."));
+        }
+    }
+
+    // 토큰 갱신 (만료 임박 시 자동 호출)
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@AuthenticationPrincipal UD userDetails,
+                                          @RequestHeader("Authorization") String authHeader) {
+        try {
+            if (userDetails == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiResponse(false, "인증이 필요합니다."));
+            }
+            String oldToken = authHeader.replace("Bearer ", "");
+            String newToken = jwtUtil.refreshToken(oldToken, userDetails);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", newToken);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ApiResponse(false, "토큰 갱신에 실패했습니다."));
         }
     }
 
