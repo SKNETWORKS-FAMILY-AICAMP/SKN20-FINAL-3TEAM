@@ -63,6 +63,7 @@ class FloorplanSearchAgent(BaseAgent):
             return self._execute_text_search(
                 query=kwargs["query"],
                 email=kwargs["email"],
+                chat_room_id=kwargs.get("chat_room_id"),
             )
         elif mode == "image":
             return self._execute_image_analysis(
@@ -77,10 +78,10 @@ class FloorplanSearchAgent(BaseAgent):
 
     # ===== text_search 모드 =====
 
-    def _execute_text_search(self, query: str, email: str) -> dict:
+    def _execute_text_search(self, query: str, email: str, chat_room_id: int = None) -> dict:
         """기존 ArchitecturalHybridRAG.run() 호출"""
         logger.info(f"[text_search] 질의: {query}")
-        result = self._rag.run(query, email=email)
+        result = self._rag.run(query, email=email, chat_room_id=chat_room_id)
         return {
             "summaryTitle": query[:30] + "..." if len(query) > 30 else query,
             "answer": result.get("answer", "답변을 생성하지 못했습니다."),
