@@ -168,16 +168,30 @@ class OrchestratorAgent:
         start_time: float,
     ) -> Dict[str, Any]:
         """이미지 입력 라우팅"""
-        logger.info("[image] CV 분석 + 도면 검색 에이전트 호출")
+        logger.info("=" * 60)
+        logger.info("[이미지 모드] CV 분석 + 유사 도면 검색 시작: %s", filename)
+        logger.info("=" * 60)
 
+        logger.info("[Step 1] CV 분석 에이전트 호출...")
         cv_result = self.cv_agent.execute(
             image=image, filename=filename, mode="full",
         )
+        cv_ms = int((time.perf_counter() - start_time) * 1000)
+        logger.info("[Step 1] CV 분석 완료 (%dms)", cv_ms)
+
+        logger.info("[Step 2] 도면 검색 에이전트 호출 (image_search)...")
+        search_start = time.perf_counter()
         response = self.floorplan_agent.execute(
-            mode="image", cv_result=cv_result,
+            mode="image_search", cv_result=cv_result,
         )
+        search_ms = int((time.perf_counter() - search_start) * 1000)
+        logger.info("[Step 2] 유사 도면 검색 완료 (%dms)", search_ms)
 
         elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+        logger.info(
+            "[완료] 이미지 분석 + 유사 검색 전체 소요: %dms (CV: %dms, 검색: %dms)",
+            elapsed_ms, cv_ms, search_ms,
+        )
         return {
             "intent_type": "FLOORPLAN_IMAGE",
             "confidence": 1.0,

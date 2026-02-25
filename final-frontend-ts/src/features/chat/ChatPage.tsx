@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IoSend, IoImageOutline, IoCloseCircle } from 'react-icons/io5';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { BASE_URL } from '@/shared/api/axios';
 import Logo from '@/shared/components/Logo/Logo';
-import ChatSidebar from './ChatSidebar';
+import AppSidebar from '@/shared/components/AppSidebar/AppSidebar';
 import ChatMessage from './ChatMessage';
 import {
   getChatRooms,
@@ -22,13 +23,60 @@ import type {
 import styles from './ChatPage.module.css';
 
 // ============================================
+// 로딩 메시지 (시간 구간별 랜덤)
+// ============================================
+const LOADING_MESSAGES: { maxSeconds: number; messages: string[] }[] = [
+  {
+    maxSeconds: 10,
+    messages: [
+      '요청하신 내용을 분석하고 있어요. 잠시만 기다려 주세요!',
+      '관련 자료를 꼼꼼하게 살펴보고 있습니다.',
+      '최적의 답변을 드리기 위해 데이터를 확인 중이에요.',
+      'AI가 열심히 일하고 있어요. 곧 결과를 보여드릴게요!',
+    ],
+  },
+  {
+    maxSeconds: 30,
+    messages: [
+      '더 정확한 결과를 위해 심층 분석 중이에요.',
+      '자료를 하나하나 대조하며 확인하고 있습니다.',
+      '꼼꼼하게 확인하고 있어요. 조금만 기다려 주세요!',
+      '답변을 정리하고 있습니다. 거의 다 됐어요!',
+    ],
+  },
+  {
+    maxSeconds: Infinity,
+    messages: [
+      '내용이 많아 시간이 조금 걸리고 있어요. 곧 완료됩니다!',
+      '최상의 결과를 위해 마지막 검증을 진행하고 있어요.',
+      '거의 완료되었습니다. 잠시만요!',
+      '마무리 중이에요. 조금만 더 기다려 주세요!',
+    ],
+  },
+];
+
+const getLoadingMessage = (elapsedSeconds: number): string => {
+  const bracket = LOADING_MESSAGES.find((b) => elapsedSeconds < b.maxSeconds)!;
+  return bracket.messages[Math.floor(Math.random() * bracket.messages.length)];
+};
+
+// ============================================
 // 도면 답변 파싱: 요약 + 개별 설명 분리
 // ============================================
 const parseFloorplanAnswer = (answer: string) => {
-  // [도면 #N] 기준으로 분리
-  const firstMarker = answer.search(/\[도면 #\d+\]/);
+  // "### [도면 #N]" 또는 "[도면 #N]" 기준으로 분리
+  const markerRegex = /(?:#{1,6}\s*)?\[도면 #\d+\]/;
+  const splitRegex = /(?:#{1,6}\s*)?\[도면 #\d+\]/;
+  const firstMarker = answer.search(markerRegex);
+
+  // [도면 #N] 마커가 없는 경우 (단일 도면 검색 응답)
+  // → 전체 답변을 첫 번째 도면의 description으로 사용
+  if (firstMarker === -1) {
+    return { summary: '', descriptions: [answer.trim()] };
+  }
+
   const summary = firstMarker > 0 ? answer.substring(0, firstMarker).trim() : '';
-  const parts = answer.split(/\[도면 #\d+\]/);
+  const parts = answer.split(splitRegex);
   // parts[0] = 요약, parts[1~] = 각 도면 설명
   const descriptions = parts.slice(1).map((part) =>
     part.replace(/^---\s*/gm, '').replace(/\s*---\s*$/gm, '').trim()
@@ -65,13 +113,67 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
     if (item.imageUrls) {
       try {
         const urls: string[] = JSON.parse(item.imageUrls);
-        const { summary, descriptions } = parseFloorplanAnswer(item.answer);
-        images = urls.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
-          name: `도면 #${idx + 1}`,
-          description: descriptions[idx] || '',
-        }));
-        displayContent = summary || `검색된 도면 ${urls.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+        const hasFloorplanMarkers = /(?:#{1,6}\s*)?\[도면 #\d+\]/.test(item.answer);
+
+        if (hasFloorplanMarkers) {
+          // 텍스트 검색 모드
+          const { summary, descriptions } = parseFloorplanAnswer(item.answer);
+          images = urls.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `도면 #${idx + 1}`,
+              description: descriptions[idx] || '',
+            };
+          });
+          const shownCount = urls.length;
+          const totalMatch = summary.match(/(\d+)/);
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          if (totalCount > shownCount) {
+            displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else {
+            displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          }
+        } else {
+          // 이미지 분석 모드: [유사 도면 #N] 마커 파싱
+          // 마커 형식: "### [유사 도면 #1] APT_FP_OBJ_123" (### prefix + document_id suffix)
+          const similarDetectRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\]/;
+          const similarSplitRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\][^\n]*/;
+          const firstSimilarIdx = item.answer.search(similarDetectRegex);
+
+          let analysisPart = item.answer;
+          let similarDescriptions: string[] = [];
+
+          if (firstSimilarIdx !== -1) {
+            analysisPart = item.answer.substring(0, firstSimilarIdx).trim();
+            const similarPart = item.answer.substring(firstSimilarIdx);
+            const parts = similarPart.split(similarSplitRegex);
+            similarDescriptions = parts.slice(1).map((p) => p.trim());
+          }
+
+          const totalMatch = analysisPart.match(/유사 도면 (\d+)개\s*$/);
+          const shownCount = urls.length;
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          analysisPart = analysisPart.replace(/\n*유사 도면 \d+개\s*$/, '').trim();
+
+          displayContent = analysisPart;
+          if (totalCount > shownCount) {
+            displayContent += `\n\n유사한 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else if (shownCount > 0) {
+            displayContent += `\n\n유사한 도면 ${shownCount}개를 찾았습니다.`;
+          }
+
+          images = urls.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `유사 도면 #${idx + 1}`,
+              description: similarDescriptions[idx] || '',
+            };
+          });
+        }
       } catch (e) {
         console.error('imageUrls 파싱 실패:', e);
       }
@@ -95,6 +197,7 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
 // ============================================
 const ChatPage: React.FC = () => {
   const { colors } = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // 상태
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -104,6 +207,7 @@ const ChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -151,8 +255,16 @@ const ChatPage: React.FC = () => {
   // 초기 로드
   // ============================================
   useEffect(() => {
-    loadChatRooms();
-  }, [loadChatRooms]);
+    const init = async () => {
+      await loadChatRooms();
+      const roomIdParam = searchParams.get('roomId');
+      if (roomIdParam) {
+        setCurrentRoomId(Number(roomIdParam));
+        setSearchParams({}, { replace: true });
+      }
+    };
+    init();
+  }, []);
 
   // ============================================
   // 방 선택 시 기록 로드
@@ -176,13 +288,42 @@ const ChatPage: React.FC = () => {
   // ============================================
   // 스크롤
   // ============================================
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const prevMessageCountRef = useRef(0);
+
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: instant ? 'instant' : 'smooth',
+    });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const prevCount = prevMessageCountRef.current;
+    const currCount = messages.length;
+    // 메시지가 1~2개만 늘었으면 smooth, 그 외(채팅방 전환/초기로드)는 instant
+    const isNewMessage = prevCount > 0 && currCount - prevCount <= 2;
+    scrollToBottom(!isNewMessage);
+    prevMessageCountRef.current = currCount;
   }, [messages]);
+
+  // ============================================
+  // 로딩 메시지 타이머
+  // ============================================
+  useEffect(() => {
+    if (!isSending) {
+      setLoadingMessage('');
+      return;
+    }
+
+    const startTime = Date.now();
+    setLoadingMessage(getLoadingMessage(0));
+
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      setLoadingMessage(getLoadingMessage(elapsed));
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isSending]);
 
   // ============================================
   // 새 채팅
@@ -353,13 +494,69 @@ const ChatPage: React.FC = () => {
       let displayContent = response.answer;
 
       if (hasFloorplans) {
-        const { summary, descriptions } = parseFloorplanAnswer(response.answer);
-        floorplanImages = response.image_urls!.map((url, idx) => ({
-          url: `${BASE_URL}${url}`,
-          name: `도면 #${idx + 1}`,
-          description: descriptions[idx] || '',
-        }));
-        displayContent = summary || `검색된 도면 ${response.image_urls!.length}건입니다. 도면을 클릭하면 상세 설명을 확인할 수 있습니다.`;
+        const hasFloorplanMarkers = /(?:#{1,6}\s*)?\[도면 #\d+\]/.test(response.answer);
+
+        if (hasFloorplanMarkers) {
+          // 텍스트 검색 모드: [도면 #N] 마커 기반 파싱
+          const { summary, descriptions } = parseFloorplanAnswer(response.answer);
+          floorplanImages = response.image_urls!.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `도면 #${idx + 1}`,
+              description: descriptions[idx] || '',
+            };
+          });
+          const shownCount = response.image_urls!.length;
+          const totalMatch = summary.match(/(\d+)/);
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          if (totalCount > shownCount) {
+            displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else {
+            displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          }
+        } else {
+          // 이미지 분석 모드: [유사 도면 #N] 마커 파싱
+          // 마커 형식: "### [유사 도면 #1] APT_FP_OBJ_123" (### prefix + document_id suffix)
+          const similarDetectRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\]/;
+          const similarSplitRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\][^\n]*/;
+          const firstSimilarIdx = response.answer.search(similarDetectRegex);
+
+          let analysisPart = response.answer;
+          let similarDescriptions: string[] = [];
+
+          if (firstSimilarIdx !== -1) {
+            analysisPart = response.answer.substring(0, firstSimilarIdx).trim();
+            const similarPart = response.answer.substring(firstSimilarIdx);
+            const parts = similarPart.split(similarSplitRegex);
+            similarDescriptions = parts.slice(1).map((p) => p.trim());
+          }
+
+          // "유사 도면 N개" 줄에서 총 개수 추출 후 제거
+          const totalMatch = analysisPart.match(/유사 도면 (\d+)개\s*$/);
+          const shownCount = response.image_urls!.length;
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          analysisPart = analysisPart.replace(/\n*유사 도면 \d+개\s*$/, '').trim();
+
+          // displayContent: 분석 텍스트 + 유사 도면 안내 문구
+          displayContent = analysisPart;
+          if (totalCount > shownCount) {
+            displayContent += `\n\n유사한 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else if (shownCount > 0) {
+            displayContent += `\n\n유사한 도면 ${shownCount}개를 찾았습니다.`;
+          }
+
+          floorplanImages = response.image_urls!.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `유사 도면 #${idx + 1}`,
+              description: similarDescriptions[idx] || '',
+            };
+          });
+        }
       }
 
       const aiMessage: ChatMessageType = {
@@ -419,7 +616,7 @@ const ChatPage: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <ChatSidebar
+      <AppSidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
         onSessionClick={handleSessionClick}
@@ -439,11 +636,23 @@ const ChatPage: React.FC = () => {
             <div className={styles.emptyState}>
               <Logo size={140} />
               <h2 className={styles.emptyTitle} style={{ color: colors.textPrimary }}>
-                원하는 도면, 말로 찾으세요
+                무엇이든 물어보세요
               </h2>
-              <p className={styles.emptySubtitle} style={{ color: colors.textSecondary }}>
-                "방 3개, 화장실 2개" 입력하면 즉시 추천
-              </p>
+              <div className={styles.emptyExamples}>
+                <p className={styles.emptyExampleLabel} style={{ color: colors.textSecondary }}>사용 예시</p>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "방 3개, 화장실 2개짜리 도면 찾아줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "(도면이미지 첨부) 이 도면 분석해줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "서울특별시 도봉구 방학동 645-28 필지 정보 알려줘"
+                </div>
+                <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
+                  💬 "경기도 수원시 팔달구에서 공장 건축 가능해?"
+                </div>
+              </div>
             </div>
           ) : (
             <div>
@@ -456,7 +665,7 @@ const ChatPage: React.FC = () => {
                     <span className={styles.thinkingDots}>
                       <span>.</span><span>.</span><span>.</span>
                     </span>
-                    <span>답변 작성 중</span>
+                    <span>{loadingMessage}</span>
                   </div>
                 </div>
               )}

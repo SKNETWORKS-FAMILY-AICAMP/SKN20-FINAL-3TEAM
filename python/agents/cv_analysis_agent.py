@@ -5,6 +5,7 @@ CV 도면 분석 에이전트
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -92,9 +93,9 @@ class CVAnalysisAgent(BaseAgent):
             else llm_analysis.dict()
         )
 
-        # 3-1. llm_analysis.json 파일 저장
+        # 3-1. llm_analysis.json 파일 저장 (임시)
+        output_dir = self._cv_service.pipeline.config.OUTPUT_PATH / Path(filename).stem
         try:
-            output_dir = self._cv_service.pipeline.config.OUTPUT_PATH / Path(filename).stem
             output_dir.mkdir(parents=True, exist_ok=True)
             llm_analysis_path = output_dir / "llm_analysis.json"
             with open(llm_analysis_path, "w", encoding="utf-8") as f:
@@ -105,6 +106,7 @@ class CVAnalysisAgent(BaseAgent):
 
         # ===== preview: 여기서 종료 =====
         if mode == "preview":
+            self._cleanup_temp_files(output_dir)
             return CVAnalysisResult(
                 topology_data=topology_data,
                 topology_image_base64=topology_image_base64,
@@ -128,6 +130,9 @@ class CVAnalysisAgent(BaseAgent):
         logger.info("[full] 임베딩 생성...")
         embedding = self._embedding_service.generate_embedding(document)
 
+        # 7. 임시 파일 정리 (base64/메모리 추출 완료 후)
+        self._cleanup_temp_files(output_dir)
+
         logger.info(f"[full] CV 분석 완료: {filename}")
         return CVAnalysisResult(
             topology_data=topology_data,
@@ -137,6 +142,21 @@ class CVAnalysisAgent(BaseAgent):
             document=document,
             embedding=embedding,
         )
+
+    @staticmethod
+    def _cleanup_temp_files(output_dir: Path):
+        """분석 완료 후 임시 출력 파일 정리"""
+        try:
+            if output_dir.exists():
+                shutil.rmtree(output_dir)
+                logger.info(f"임시 출력 폴더 정리 완료: {output_dir}")
+            # temp_output 디렉터리가 비어있으면 삭제
+            parent = output_dir.parent
+            if parent.exists() and parent.name in ("temp_output",) and not any(parent.iterdir()):
+                parent.rmdir()
+                logger.info(f"빈 임시 디렉터리 삭제: {parent}")
+        except Exception as e:
+            logger.warning(f"임시 파일 정리 중 오류 (무시): {e}")
 
     def is_loaded(self) -> bool:
         return self._cv_service is not None

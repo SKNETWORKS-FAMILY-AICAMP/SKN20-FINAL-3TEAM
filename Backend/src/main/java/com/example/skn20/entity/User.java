@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -40,10 +40,10 @@ public class User {
 
     @Column(name = "create_at", updatable = false)
     @CreationTimestamp
-    private LocalDate create_at; // 첫 가입 일자
+    private LocalDateTime create_at; // 첫 가입 일자
 
     @Column(name = "update_at")
-    private LocalDate update_at; // 정보 수정 일자
+    private LocalDateTime update_at; // 정보 수정 일자
 
 }
 

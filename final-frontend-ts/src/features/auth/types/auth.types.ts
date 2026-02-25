@@ -66,6 +66,7 @@ export const initialPasswordResetData: PasswordResetFormData = {
 export interface LoginRequest {
   email: string;
   password: string;
+  rememberMe?: boolean;
 }
 
 export interface SignupRequest {
@@ -127,6 +128,7 @@ export interface UserInfoResponse {
   name: string;
   phonenumber: number;
   role: string;
+  create_at?: string;
 }
 
 export interface ProfileUpdateResponse {

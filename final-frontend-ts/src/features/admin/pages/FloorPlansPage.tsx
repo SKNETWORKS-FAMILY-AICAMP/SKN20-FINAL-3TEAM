@@ -3,14 +3,15 @@
 // ============================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { FiSearch, FiTrash2, FiX, FiFilter, FiChevronDown, FiChevronUp, FiZoomIn, FiZoomOut, FiMaximize2 } from 'react-icons/fi';
+import { useSearchParams } from 'react-router-dom';
+import { FiX, FiFilter, FiChevronDown, FiChevronUp, FiZoomIn, FiZoomOut, FiMaximize2, FiSearch } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
 import { getFloorPlans, searchFloorPlans, getFloorPlanDetail, deleteEntities } from '../api/admin.api';
 import type { AdminFloorPlan, SearchFloorPlanRequest } from '../types/admin.types';
-import { BASE_URL } from '@/shared/api/axios';
 import styles from './AdminPages.module.css';
 
 export function FloorPlansPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [floorPlans, setFloorPlans] = useState<AdminFloorPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -35,6 +36,9 @@ export function FloorPlansPage() {
 
   // 상세 모달 상태
   const [detailPlan, setDetailPlan] = useState<AdminFloorPlan | null>(null);
+
+  // 삭제 확인 모달 상태
+  const [confirmModal, setConfirmModal] = useState<{ ids: number[]; message: string } | null>(null);
 
   // 이미지 확대/축소 상태
   const [imageScale, setImageScale] = useState(1);
@@ -77,10 +81,33 @@ export function FloorPlansPage() {
   }, []);
 
   useEffect(() => {
-    loadFloorPlans();
-  }, [loadFloorPlans]);
+    const initSearch = searchParams.get('search');
+    if (initSearch) {
+      setSearchTerm(initSearch);
+      // 도면 목록 로드 후 필터링
+      (async () => {
+        try {
+          setIsLoading(true);
+          const data = await getFloorPlans();
+          const filtered = data.filter(p =>
+            p.name?.toLowerCase().includes(initSearch.toLowerCase())
+          );
+          setFloorPlans(filtered);
+          setCurrentPage(1);
+        } catch (error) {
+          console.error('검색 실패:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+      // 쿼리 파라미터 제거 (뒤로가기 시 재검색 방지)
+      setSearchParams({}, { replace: true });
+    } else {
+      loadFloorPlans();
+    }
+  }, []);
 
-  // 기본 검색
+  // 기본 검색 (대소문자 무시)
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
       loadFloorPlans();
@@ -88,8 +115,12 @@ export function FloorPlansPage() {
     }
     try {
       setIsLoading(true);
-      const data = await searchFloorPlans({ name: searchTerm });
-      setFloorPlans(data);
+      const data = await searchFloorPlans({ name: searchTerm.trim() });
+      // 대소문자 무시 필터링
+      const filtered = data.filter(p =>
+        p.name?.toLowerCase().includes(searchTerm.trim().toLowerCase())
+      );
+      setFloorPlans(filtered);
       setCurrentPage(1);
     } catch (error) {
       console.error('검색 실패:', error);
@@ -210,29 +241,26 @@ export function FloorPlansPage() {
     setIsDragging(false);
   };
 
-  // 단일 삭제
-  const handleDelete = async (planId: number) => {
-    if (!window.confirm('정말 삭제하시겠습니까?')) return;
-    try {
-      await deleteEntities('floorplan', [planId]);
-      alert('삭제되었습니다.');
-      loadFloorPlans();
-    } catch (error) {
-      console.error('삭제 실패:', error);
-      alert('삭제에 실패했습니다.');
-    }
+  // 단일 삭제 - 확인 모달 열기
+  const handleDelete = (planId: number) => {
+    setConfirmModal({ ids: [planId], message: '이 도면을 삭제하면 S3에 저장된 이미지도 함께 삭제되며, 이전 채팅에서 해당 이미지를 불러올 수 없게 됩니다.' });
   };
 
-  // 선택 삭제
-  const handleDeleteSelected = async () => {
+  // 선택 삭제 - 확인 모달 열기
+  const handleDeleteSelected = () => {
     if (selectedIds.length === 0) {
       alert('삭제할 도면을 선택하세요.');
       return;
     }
-    if (!window.confirm(`${selectedIds.length}개의 도면을 삭제하시겠습니까?`)) return;
+    setConfirmModal({ ids: selectedIds, message: `${selectedIds.length}개의 도면을 삭제하면 S3에 저장된 이미지도 함께 삭제되며, 이전 채팅에서 해당 이미지를 불러올 수 없게 됩니다.` });
+  };
+
+  // 삭제 실행
+  const executeDelete = async () => {
+    if (!confirmModal) return;
     try {
-      await deleteEntities('floorplan', selectedIds);
-      alert('삭제되었습니다.');
+      await deleteEntities('floorplan', confirmModal.ids);
+      setConfirmModal(null);
       setSelectedIds([]);
       loadFloorPlans();
     } catch (error) {
@@ -279,7 +307,8 @@ export function FloorPlansPage() {
             onKeyPress={handleSearchKeyPress}
             className={styles.searchInput}
           />
-          <button className={styles.searchBtn} onClick={handleSearch}>검색</button>
+          <button className={styles.searchBtn} onClick={handleSearch}><FiSearch /> 검색</button>
+          <button className={styles.searchResetBtn} onClick={resetFilters}>초기화</button>
           <button
             className={styles.filterToggleBtn}
             onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
@@ -328,26 +357,6 @@ export function FloorPlansPage() {
                   onChange={(e) => setAdvancedFilters({ ...advancedFilters, endDate: e.target.value })}
                 />
               </div>
-              <div className={styles.filterGroup}>
-                <label>최소 공간 수</label>
-                <input
-                  type="number"
-                  placeholder="최소"
-                  min={0}
-                  value={advancedFilters.minRooms || ''}
-                  onChange={(e) => setAdvancedFilters({ ...advancedFilters, minRooms: e.target.value ? parseInt(e.target.value) : undefined })}
-                />
-              </div>
-              <div className={styles.filterGroup}>
-                <label>최대 공간 수</label>
-                <input
-                  type="number"
-                  placeholder="최대"
-                  min={0}
-                  value={advancedFilters.maxRooms || ''}
-                  onChange={(e) => setAdvancedFilters({ ...advancedFilters, maxRooms: e.target.value ? parseInt(e.target.value) : undefined })}
-                />
-              </div>
             </div>
             <div className={styles.filterActions}>
               <button className={styles.resetBtn} onClick={resetFilters}>초기화</button>
@@ -394,14 +403,14 @@ export function FloorPlansPage() {
                       </div>
                     </td>
                     <td>{plan.user?.email || '-'}</td>
-                    <td>{plan.createdAt?.split('T')[0]}</td>
+                    <td>{plan.createdAt ? (() => { const d = new Date(plan.createdAt); return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')}`; })() : '-'}</td>
                     <td>
                       <div className={styles.actions}>
-                        <button className={styles.actionBtn} title="보기" onClick={() => handleViewDetail(plan.id)}>
-                          <FiSearch />
+                        <button className={styles.actionBtn} onClick={() => handleViewDetail(plan.id)}>
+                          상세보기
                         </button>
-                        <button className={styles.actionBtn} title="삭제" onClick={() => handleDelete(plan.id)}>
-                          <FiTrash2 />
+                        <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} onClick={() => handleDelete(plan.id)}>
+                          삭제
                         </button>
                       </div>
                     </td>
@@ -415,8 +424,8 @@ export function FloorPlansPage() {
         <div className={styles.pagination}>
           <span className={styles.pageInfo}>총 {floorPlans.length}개 도면 (페이지 {currentPage}/{totalPages})</span>
           <div className={styles.pageButtons}>
-            <button 
-              className={styles.pageBtn} 
+            <button
+              className={styles.pageBtn}
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
             >
@@ -451,8 +460,8 @@ export function FloorPlansPage() {
                   </button>
                 );
               })}
-            <button 
-              className={styles.pageBtn} 
+            <button
+              className={styles.pageBtn}
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
             >
@@ -462,10 +471,10 @@ export function FloorPlansPage() {
         </div>
       </div>
 
-      {/* 도면 이미지 모달 */}
+      {/* 도면 상세 모달 */}
       {detailPlan && (
         <div className={styles.modalOverlay} onClick={() => setDetailPlan(null)}>
-          <div className={styles.imageModal} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.detailModal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3>{detailPlan.name}</h3>
               <div className={styles.imageControls}>
@@ -484,51 +493,96 @@ export function FloorPlansPage() {
                 <FiX />
               </button>
             </div>
-            <div 
-              ref={imageContainerRef}
-              className={styles.imageModalBody}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              style={{ cursor: imageScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
-            >
-              {detailPlan.imageUrl ? (
-                <img 
-                  src={`${BASE_URL}/api/admin/floorplan/${detailPlan.id}/image`} 
-                  alt={detailPlan.name}
-                  style={{ 
-                    transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
-                    transition: isDragging ? 'none' : 'transform 0.2s ease',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    display: 'block',
-                    userSelect: 'none',
-                    pointerEvents: 'none'
-                  }}
-                  onError={(e) => {
-                    console.error('이미지 로드 실패:', detailPlan.imageUrl);
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    const container = (e.target as HTMLImageElement).parentElement;
-                    if (container) {
-                      container.innerHTML = `
-                        <div style="text-align: center; padding: 40px; color: #999;">
-                          <p>이미지를 불러올 수 없습니다.</p>
-                          <p style="font-size: 12px; margin-top: 10px;">${detailPlan.imageUrl}</p>
-                        </div>
-                      `;
-                    }
-                  }}
-                  onLoad={() => {
-                    console.log('이미지 로드 성공:', detailPlan.imageUrl);
-                  }}
-                />
-              ) : (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                  <p>이미지 URL이 없습니다.</p>
+            <div className={styles.detailModalBody}>
+              {/* 좌측: 이미지 */}
+              <div
+                ref={imageContainerRef}
+                className={styles.detailImageSection}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                style={{ cursor: imageScale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+              >
+                {detailPlan.imageUrl ? (
+                  <img
+                    src={detailPlan.imageUrl}
+                    alt={detailPlan.name}
+                    style={{
+                      transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
+                      transition: isDragging ? 'none' : 'transform 0.2s ease',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                      userSelect: 'none',
+                      pointerEvents: 'none'
+                    }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const container = (e.target as HTMLImageElement).parentElement;
+                      if (container) {
+                        container.innerHTML = `
+                          <div style="text-align: center; padding: 40px; color: #999;">
+                            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🗑️</div>
+                            <p>이미지가 삭제되었거나 불러올 수 없습니다.</p>
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+                    <p>이미지 URL이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* 우측: 상세 정보 */}
+              <div className={styles.detailInfoSection}>
+                <div className={styles.detailInfoItem}>
+                  <span className={styles.detailLabel}>업로더</span>
+                  <span className={styles.detailValue}>{detailPlan.user?.name} ({detailPlan.user?.email})</span>
                 </div>
-              )}
+                <div className={styles.detailInfoItem}>
+                  <span className={styles.detailLabel}>업로드일</span>
+                  <span className={styles.detailValue}>
+                    {detailPlan.createdAt ? (() => { const d = new Date(detailPlan.createdAt); return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; })() : '-'}
+                  </span>
+                </div>
+                {detailPlan.assessmentJson && (
+                  <div className={styles.detailAssessment}>
+                    <span className={styles.detailLabel}>분석 결과</span>
+                    <pre className={styles.detailJsonContent}>
+                      {(() => {
+                        try {
+                          return JSON.stringify(JSON.parse(detailPlan.assessmentJson), null, 2);
+                        } catch {
+                          return detailPlan.assessmentJson;
+                        }
+                      })()}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 삭제 확인 모달 */}
+      {confirmModal && (
+        <div className={styles.modalOverlay} onClick={() => setConfirmModal(null)}>
+          <div className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.confirmModalHeader}>
+              <span className={styles.confirmModalIcon}>⚠️</span>
+              <h3>삭제 확인</h3>
+            </div>
+            <p className={styles.confirmModalMessage}>{confirmModal.message}</p>
+            <p className={styles.confirmModalWarning}>이 작업은 되돌릴 수 없습니다.</p>
+            <div className={styles.confirmModalActions}>
+              <button className={styles.resetBtn} onClick={() => setConfirmModal(null)}>취소</button>
+              <button className={styles.dangerBtn} onClick={executeDelete}>삭제</button>
             </div>
           </div>
         </div>
