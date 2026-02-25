@@ -58,6 +58,25 @@ def _load_env_candidates() -> None:
             loaded.add(resolved)
 
 
+def _resolve_hf_token_from_env() -> str:
+    for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+        value = os.getenv(key)
+        if value:
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return ""
+
+
+def _configure_hf_token(token: str | None) -> None:
+    resolved = (token or "").strip()
+    if not resolved:
+        return
+    os.environ["HF_TOKEN"] = resolved
+    os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", resolved)
+    os.environ.setdefault("HUGGINGFACEHUB_API_TOKEN", resolved)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Test runner for python/floorplan/pipeline.py"
@@ -81,8 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="OpenAI API key (or set OPENAI_API_KEY)",
     )
     parser.add_argument(
+        "--hf-token",
+        default=_resolve_hf_token_from_env(),
+        help="Hugging Face token (or set HF_TOKEN)",
+    )
+    parser.add_argument(
         "--embedding-model",
-        default=_env("EMBEDDING_MODEL", "text-embedding-3-small"),
+        default=_env("EMBEDDING_MODEL", "qwen3-embedding-0.6b"),
     )
     parser.add_argument(
         "--embedding-dimensions",
@@ -126,6 +150,7 @@ def build_rag(args: argparse.Namespace):
 
     if not args.openai_api_key:
         raise ValueError("OPENAI_API_KEY is required. Pass --openai-api-key or set env.")
+    _configure_hf_token(getattr(args, "hf_token", None))
 
     db_config = {
         "host": args.db_host,
