@@ -39,7 +39,6 @@ class ArchitecturalHybridRAG:
     ]
 
     FILTER_ALIASES = {
-        # Backward compatibility for older analyzer outputs.
         "ventilation_grade": "ventilation_quality",
     }
 
@@ -123,6 +122,7 @@ class ArchitecturalHybridRAG:
         r"(%|퍼센트|비율|ratio|이상|이하|초과|미만|동일)",
         re.IGNORECASE,
     )
+    SEMANTIC_COUNT_SIMILARITY_THRESHOLD = 0.55
     STORAGE_RATIO_QUERY_TARGET_RE = re.compile(
         r"(수납(?:\s*공간)?|storage|드레스룸|팬트리)",
         re.IGNORECASE,
@@ -193,6 +193,22 @@ class ArchitecturalHybridRAG:
     )
     BALCONY_NEGATIVE_HINT_RE = re.compile(
         r"(활용도\s*낮|활용\s*어려|연결.*불편|채광.*부족|좁|없음)",
+        re.IGNORECASE,
+    )
+    LIGHTING_SENTENCE_POSITIVE_RE = re.compile(
+        r"(채광|일조|창|창호).{0,45}(우수|양호|좋|밝|풍부|충분|유리|확보)|(우수|양호|좋|밝|풍부|충분|유리|확보).{0,45}(채광|일조|창|창호)",
+        re.IGNORECASE,
+    )
+    LIGHTING_SENTENCE_NEGATIVE_RE = re.compile(
+        r"(채광|일조|창|창호).{0,45}(미흡|부족|어둡|불리|나쁘|없음|없다|미확인)|(미흡|부족|어둡|불리|나쁘|없음|없다|미확인).{0,45}(채광|일조|창|창호)",
+        re.IGNORECASE,
+    )
+    LIGHTING_WINDOW_POSITIVE_RE = re.compile(
+        r"(창|창호).{0,30}(확보|충분|풍부|넓).{0,30}(채광|일조)",
+        re.IGNORECASE,
+    )
+    LIGHTING_WINDOW_NEGATIVE_RE = re.compile(
+        r"(창|창호).{0,30}(없|부족|미확인|불리).{0,30}(채광|일조)",
         re.IGNORECASE,
     )
     MORE_RESULTS_COUNT_REQUEST_RE = re.compile(
@@ -1675,17 +1691,96 @@ class ArchitecturalHybridRAG:
     def _extract_document_ratio_constraints_from_query(
         self, query: str
     ) -> list[tuple[str, list[dict[str, Any]]]]:
-        constraints: list[tuple[str, list[dict[str, Any]]]] = []
+        constraints_by_target: dict[str, list[dict[str, Any]]] = {}
         windowless_bounds = self._extract_windowless_ratio_bounds_from_query(query)
         if windowless_bounds:
-            constraints.append(("windowless", windowless_bounds))
+            constraints_by_target["windowless"] = windowless_bounds
         storage_bounds = self._extract_storage_ratio_bounds_from_query(query)
         if storage_bounds:
-            constraints.append(("storage", storage_bounds))
+            constraints_by_target["storage"] = storage_bounds
         ldk_bounds = self._extract_ldk_ratio_bounds_from_query(query)
         if ldk_bounds:
-            constraints.append(("ldk", ldk_bounds))
-        return constraints
+            constraints_by_target["ldk"] = ldk_bounds
+        if not constraints_by_target:
+            return []
+
+        ordered_targets = self._order_document_ratio_targets_by_query(
+            query=query,
+            present_targets=list(constraints_by_target.keys()),
+        )
+        return [(target, constraints_by_target[target]) for target in ordered_targets]
+
+    def _order_document_ratio_targets_by_query(
+        self, query: str, present_targets: list[str]
+    ) -> list[str]:
+        if not present_targets:
+            return []
+
+        text = self._normalize_windowless_aliases(str(query or ""))
+        if not text:
+            return present_targets
+
+        target_pattern_map: dict[str, re.Pattern[str]] = {
+            "windowless": re.compile(r"무창\s*공간", re.IGNORECASE),
+            "storage": self.STORAGE_RATIO_QUERY_TARGET_RE,
+            "ldk": self.LDK_RATIO_QUERY_TARGET_RE,
+        }
+
+        scored: list[tuple[int, int, str]] = []
+        for default_idx, target in enumerate(present_targets):
+            pattern = target_pattern_map.get(target)
+            if pattern is None:
+                scored.append((10**9, default_idx, target))
+                continue
+            match = pattern.search(text)
+            start = match.start() if match else 10**9
+            scored.append((start, default_idx, target))
+
+        scored.sort(key=lambda item: (item[0], item[1]))
+        return [target for _, _, target in scored]
+
+    def _document_ratio_match_vector(
+        self,
+        document: str,
+        constraints: list[tuple[str, list[dict[str, Any]]]],
+    ) -> list[int]:
+        if not constraints:
+            return []
+        text = str(document or "")
+        vector: list[int] = []
+        for target, bounds in constraints:
+            if target == "windowless":
+                values = self._extract_windowless_ratio_values_from_document(text)
+            elif target == "storage":
+                values = self._extract_storage_ratio_values_from_document(text)
+            elif target == "ldk":
+                values = self._extract_ldk_ratio_values_from_document(text)
+            else:
+                values = []
+            vector.append(1 if self._ratio_values_match_bounds(values, bounds) else 0)
+        return vector
+
+    def _rank_rows_by_document_ratio_constraints(
+        self,
+        rows: list[tuple[Any, ...]],
+        constraints: list[tuple[str, list[dict[str, Any]]]],
+    ) -> list[tuple[Any, ...]]:
+        if not constraints or not rows:
+            return rows
+        ranked_rows: list[tuple[int, tuple[int, ...], float, int, tuple[Any, ...]]] = []
+        for idx, row in enumerate(rows):
+            doc_text = str(row[2] if row and len(row) > 2 else "")
+            match_vector = tuple(self._document_ratio_match_vector(doc_text, constraints))
+            match_count = sum(match_vector)
+            if match_count <= 0:
+                continue
+            similarity = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
+            ranked_rows.append((match_count, match_vector, similarity, idx, row))
+        ranked_rows.sort(
+            key=lambda item: (item[0], *item[1], item[2], -item[3]),
+            reverse=True,
+        )
+        return [row for _, _, _, _, row in ranked_rows]
 
     def _extract_ratio_values_from_document_by_keyword(
         self, document: str, keyword_re: re.Pattern[str]
@@ -1829,22 +1924,7 @@ class ArchitecturalHybridRAG:
         document: str,
         constraints: list[tuple[str, list[dict[str, Any]]]],
     ) -> int:
-        if not constraints:
-            return 0
-        text = str(document or "")
-        matched = 0
-        for target, bounds in constraints:
-            if target == "windowless":
-                values = self._extract_windowless_ratio_values_from_document(text)
-            elif target == "storage":
-                values = self._extract_storage_ratio_values_from_document(text)
-            elif target == "ldk":
-                values = self._extract_ldk_ratio_values_from_document(text)
-            else:
-                continue
-            if self._ratio_values_match_bounds(values, bounds):
-                matched += 1
-        return matched
+        return sum(self._document_ratio_match_vector(document, constraints))
 
     def _count_matches_by_document_ratio_constraints(
         self,
@@ -1938,6 +2018,30 @@ class ArchitecturalHybridRAG:
                 joined = " OR ".join(f'"{term}"' for term in unique_terms)
                 base = f"({base}) OR ({joined})"
 
+        if preferences.get("lighting") == "positive":
+            lighting_terms = [
+                "채광 우수",
+                "채광 양호",
+                "일조 양호",
+                "채광이 좋",
+                "밝은",
+                "창이 확보",
+                "주요 거주공간 창 확보",
+            ]
+            joined = " OR ".join(f'"{term}"' for term in lighting_terms)
+            base = f"({base}) OR ({joined})"
+        elif preferences.get("lighting") == "negative":
+            lighting_terms = [
+                "채광 미흡",
+                "채광 부족",
+                "일조 불리",
+                "채광이 어둡",
+                "창 부족",
+                "창 미확인",
+            ]
+            joined = " OR ".join(f'"{term}"' for term in lighting_terms)
+            base = f"({base}) OR ({joined})"
+
         if not re.search(r"(발코니|베란다)", text, flags=re.IGNORECASE):
             return base
 
@@ -1959,6 +2063,33 @@ class ArchitecturalHybridRAG:
         joined = " OR ".join(f'"{term}"' for term in intent_terms)
         return f"({base}) OR ({joined})"
 
+    def _extract_lighting_signal_from_document(
+        self, document: str
+    ) -> Optional[tuple[str, str]]:
+        text = str(document or "")
+        if not text.strip():
+            return None
+
+        clauses = [
+            re.sub(r"\s+", " ", clause).strip()
+            for clause in re.split(r"[.\n]", text)
+            if clause and clause.strip()
+        ]
+        for clause in clauses:
+            if not re.search(r"(채광|일조|창|창호)", clause, flags=re.IGNORECASE):
+                continue
+            positive = bool(self.LIGHTING_SENTENCE_POSITIVE_RE.search(clause))
+            negative = bool(self.LIGHTING_SENTENCE_NEGATIVE_RE.search(clause))
+            if positive and not negative:
+                return "양호", clause
+            if negative and not positive:
+                return "미흡", clause
+            if self.LIGHTING_WINDOW_POSITIVE_RE.search(clause):
+                return "양호", clause
+            if self.LIGHTING_WINDOW_NEGATIVE_RE.search(clause):
+                return "미흡", clause
+        return None
+
     def _extract_document_signals(self, document: str) -> list[dict[str, str]]:
         text = str(document or "")
         if not text.strip():
@@ -1969,7 +2100,6 @@ class ArchitecturalHybridRAG:
             match_value: Optional[str] = None
             match_source: Optional[str] = None
             for alias in aliases:
-                # Accept variants such as "수납은(는) ...", "수납 공간: ...", "storage = ...".
                 pattern = (
                     rf"{re.escape(alias)}"
                     r"\s*(?:은\(는\)|은|는|이|가|:|=)\s*([^\n.,]+)"
@@ -1979,6 +2109,10 @@ class ArchitecturalHybridRAG:
                     match_value = re.sub(r"\s+", " ", match.group(1)).strip()
                     match_source = re.sub(r"\s+", " ", match.group(0)).strip()
                     break
+            if not match_value and canonical_key == "lighting":
+                inferred = self._extract_lighting_signal_from_document(text)
+                if inferred:
+                    match_value, match_source = inferred
             if match_value:
                 normalized_value = self._normalize_signal_value_for_display(
                     canonical_key, match_value
@@ -2152,9 +2286,6 @@ class ArchitecturalHybridRAG:
         if total_negative_hits > 0 and total_positive_hits == 0:
             return "negative"
 
-        # Mixed-signals case:
-        # prioritize the leading judgment sentence and treat uncertainty language
-        # as non-failing context rather than immediate disqualification.
         score = (
             (primary_positive_hits * 2)
             + total_positive_hits
@@ -2418,19 +2549,7 @@ class ArchitecturalHybridRAG:
     ) -> list[tuple[Any, ...]]:
         doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(query)
         if doc_ratio_constraints and docs:
-            ranked_docs: list[tuple[int, float, tuple[Any, ...]]] = []
-            for row in docs:
-                document_text = str(row[2] if len(row) > 2 else "")
-                match_count = self._document_ratio_match_count(
-                    document_text,
-                    doc_ratio_constraints,
-                )
-                if match_count <= 0:
-                    continue
-                base_score = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
-                ranked_docs.append((match_count, base_score, row))
-            ranked_docs.sort(key=lambda item: (item[0], item[1]), reverse=True)
-            return [row for _, _, row in ranked_docs]
+            return self._rank_rows_by_document_ratio_constraints(docs, doc_ratio_constraints)
 
         preferences = self._extract_query_signal_preferences(query)
         ratio_proximity = self._extract_ratio_proximity_target(query, filters or {})
@@ -2759,60 +2878,50 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         effective_top_k = (
             max(requested_top_k, 5000) if doc_ratio_constraints else requested_top_k
         )
+        # 설명형 질의(필터/비율 제약 없음)는 임베딩 유사도만으로 검색한다.
+        use_text_scoring = bool(text_query) and bool(filters or doc_ratio_constraints)
+        vector_weight = self.vector_weight if use_text_scoring else 1.0
+        text_weight = self.text_weight if use_text_scoring else 0.0
+        if text_query and not use_text_scoring:
+            self._log_event(
+                event="retrieve_embedding_only_mode",
+                level=logging.INFO,
+                reason="descriptive_query_without_structured_constraints",
+                text_query=text_query[:120],
+                filter_count=len(filters),
+            )
 
         embedding = self._embed_text(semantic_query)
         embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
 
         where_sql, filter_params = self._build_filter_where_parts(filters)
-        params = [
-            embedding_vector,
-            text_query,
-            *filter_params,
-            self.vector_weight,
-            self.text_weight,
-            effective_top_k,
-            max(0, int(offset)),
-        ]
 
-        sql = f"""
-            WITH scored AS (
-                SELECT f.id AS floorplan_id, f.name AS document_id,
-                fa.analysis_description AS document,
-                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
-                fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
-                fa.has_special_space, fa.has_etc_space,
-                (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
-                ts_rank_cd(
-                    to_tsvector('simple', COALESCE(fa.analysis_description, '')),
-                    websearch_to_tsquery('simple', %s)
-                ) AS text_score
-                FROM floorplan_analysis fa
-                JOIN floorplan f ON fa.floorplan_id = f.id
-                WHERE {where_sql}
-            )
-            SELECT floorplan_id, document_id, document,
-            windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-            structure_type, bay_count, room_count, bathroom_count,
-            compliance_grade, ventilation_quality, has_special_space, has_etc_space,
-            (%s * vector_similarity + %s * text_score) AS similarity
-            FROM scored
-            ORDER BY similarity DESC
-            LIMIT %s
-            OFFSET %s
-        """
-
-        def _exec_hybrid(w_sql, w_params, use_text=True):
+        def _exec_hybrid(
+            w_sql,
+            w_params,
+            use_text=True,
+            current_vector_weight: Optional[float] = None,
+            current_text_weight: Optional[float] = None,
+        ):
             """하이브리드 검색 SQL 실행 헬퍼"""
+            v_weight = (
+                self.vector_weight
+                if current_vector_weight is None
+                else float(current_vector_weight)
+            )
+            t_weight = (
+                self.text_weight
+                if current_text_weight is None
+                else float(current_text_weight)
+            )
             if use_text:
                 p = [embedding_vector, text_query, *w_params,
-                     self.vector_weight, self.text_weight, effective_top_k, max(0, int(offset))]
+                     v_weight, t_weight, effective_top_k, max(0, int(offset))]
                 ts_expr = "ts_rank_cd(to_tsvector('simple', COALESCE(fa.analysis_description, '')), websearch_to_tsquery('simple', %s))"
             else:
                 p = [embedding_vector, *w_params,
-                     self.vector_weight, self.text_weight, effective_top_k, max(0, int(offset))]
+                     v_weight, t_weight, effective_top_k, max(0, int(offset))]
                 ts_expr = "0.0::double precision"
-            text_placeholder = "%s, " if use_text else ""
             q = f"""
                 WITH scored AS (
                     SELECT f.id AS floorplan_id, f.name AS document_id,
@@ -2842,7 +2951,13 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 return cur.fetchall()
 
         try:
-            results = _exec_hybrid(where_sql, filter_params, use_text=True)
+            results = _exec_hybrid(
+                where_sql,
+                filter_params,
+                use_text=use_text_scoring,
+                current_vector_weight=vector_weight,
+                current_text_weight=text_weight,
+            )
 
             # 폴백: 결과 0 → 점진적 필터 완화 (평가성 → 비율/부울 → 구조 순 제거)
             if not results and filters:
@@ -2857,25 +2972,23 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                         remaining=list(relaxed.keys()),
                     )
                     fb_where, fb_params = self._build_filter_where_parts(relaxed)
-                    results = _exec_hybrid(fb_where, fb_params, use_text=True)
+                    results = _exec_hybrid(
+                        fb_where,
+                        fb_params,
+                        use_text=use_text_scoring,
+                        current_vector_weight=vector_weight,
+                        current_text_weight=text_weight,
+                    )
                     if results:
                         break
 
             if doc_ratio_constraints:
                 # 문서 기반 비율 질의(무창/수납/LDK):
-                # 제약 만족 개수(3→2→1) 우선, 동률은 유사도 순으로 정렬
-                ranked_results: list[tuple[int, float, tuple[Any, ...]]] = []
-                for row in results:
-                    doc_text = str(row[2] if row and len(row) > 2 else "")
-                    match_count = self._document_ratio_match_count(
-                        doc_text, doc_ratio_constraints
-                    )
-                    if match_count <= 0:
-                        continue
-                    similarity = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
-                    ranked_results.append((match_count, similarity, row))
-                ranked_results.sort(key=lambda item: (item[0], item[1]), reverse=True)
-                results = [row for _, _, row in ranked_results]
+                # 제약 만족 개수 우선 + 사용자 입력 순서 기준 조건벡터 + 유사도 순
+                results = self._rank_rows_by_document_ratio_constraints(
+                    results,
+                    doc_ratio_constraints,
+                )
 
             return results[:requested_top_k]
         except Exception as exc:
@@ -2896,18 +3009,10 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     # 필터 전체 제거 후 최종 시도
                     fallback_results = _exec_hybrid("TRUE", [], use_text=False)
                 if doc_ratio_constraints:
-                    ranked_results: list[tuple[int, float, tuple[Any, ...]]] = []
-                    for row in fallback_results:
-                        doc_text = str(row[2] if row and len(row) > 2 else "")
-                        match_count = self._document_ratio_match_count(
-                            doc_text, doc_ratio_constraints
-                        )
-                        if match_count <= 0:
-                            continue
-                        similarity = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
-                        ranked_results.append((match_count, similarity, row))
-                    ranked_results.sort(key=lambda item: (item[0], item[1]), reverse=True)
-                    fallback_results = [row for _, _, row in ranked_results]
+                    fallback_results = self._rank_rows_by_document_ratio_constraints(
+                        fallback_results,
+                        doc_ratio_constraints,
+                    )
                 return fallback_results[:requested_top_k]
             raise
 
@@ -2957,7 +3062,6 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
             self.conn.rollback()
             results = []
 
-        # Progressive filter relaxation: 필터 적용 시 결과가 부족하면 필터 없이 재검색
         if len(results) < top_k and filters:
             fallback_params = [embedding_vector, top_k]
             fallback_sql = """
@@ -3021,13 +3125,19 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         self.logger.info("[search_by_description] 최종 필터: %s", filters)
         self.logger.info("[search_by_description] documents: %s", documents[:100] if documents else "(없음)")
 
-        total_count = self._count_matches(filters, documents)
-        self.logger.info("[search_by_description] 매칭 도면: %d개", total_count)
+        count_context = self._count_matches_context(filters, documents)
+        total_count = int(count_context.get("display_count", 0) or 0)
+        retrieve_count = int(count_context.get("retrieve_count", 0) or 0)
+        self.logger.info(
+            "[search_by_description] 매칭 도면: display=%d retrieve=%d",
+            total_count,
+            retrieve_count,
+        )
 
-        if total_count <= 0:
+        if retrieve_count <= 0:
             return {"docs": [], "query_json": query_json, "total_count": 0}
 
-        retrieve_k = min(max(total_count, top_k), 50)
+        retrieve_k = min(max(retrieve_count, top_k), 50)
         docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
 
         docs = self._rerank_by_query_signal_preferences(
@@ -3133,35 +3243,118 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 candidates.append(current.copy())
         return candidates
 
-    def _count_matches(self, filters: dict[str, Any], documents: str = "") -> int:
-        where_sql, params = self._build_filter_where_parts(filters)
+    def _count_matches_by_semantic_similarity(
+        self,
+        query_text: str,
+        filters: dict[str, Any],
+        threshold: Optional[float] = None,
+    ) -> int:
+        normalized_query = str(query_text or "").strip()
+        if not normalized_query:
+            return 0
 
+        where_sql, params = self._build_filter_where_parts(filters)
+        embedding = self._embed_text(normalized_query)
+        embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
+        similarity_threshold = (
+            float(threshold)
+            if threshold is not None
+            else float(self.SEMANTIC_COUNT_SIMILARITY_THRESHOLD)
+        )
+        sql = (
+            "SELECT COUNT(*) "
+            "FROM floorplan_analysis fa "
+            "JOIN floorplan f ON fa.floorplan_id = f.id "
+            f"WHERE {where_sql} "
+            "AND (1 - (fa.embedding <=> %s::vector)) >= %s"
+        )
+        with self.conn.cursor() as cur:
+            cur.execute(sql, [*params, embedding_vector, similarity_threshold])
+            return int(cur.fetchone()[0])
+
+    def _count_matches_context(
+        self, filters: dict[str, Any], documents: str = ""
+    ) -> dict[str, int]:
         normalized_documents = str(documents or "").strip()
         doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(
             normalized_documents
         )
         if doc_ratio_constraints:
-            # 문서 기반 비율 질의(무창/수납/LDK):
-            # 최소 1개 제약 만족 도면을 카운트(정렬은 retrieve 단계에서 3→2→1 우선)
+            strict_required = max(1, len(doc_ratio_constraints))
+            strict_count = self._count_matches_by_document_ratio_constraints(
+                filters=filters,
+                constraints=doc_ratio_constraints,
+                min_match_count=strict_required,
+            )
+            partial_count = strict_count
+            if strict_count <= 0:
+                partial_count = self._count_matches_by_document_ratio_constraints(
+                    filters=filters,
+                    constraints=doc_ratio_constraints,
+                    min_match_count=1,
+                )
+            retrieve_count = strict_count if strict_count > 0 else partial_count
             self._log_event(
-                event="count_matches_document_ratio_enforced",
+                event="count_matches_document_ratio_context",
                 level=logging.INFO,
                 text_query=normalized_documents,
                 ratio_targets=[name for name, _ in doc_ratio_constraints],
+                strict_required=strict_required,
+                strict_count=strict_count,
+                partial_count=partial_count,
+                retrieve_count=retrieve_count,
                 filter_count=len(filters),
             )
-            return self._count_matches_by_document_ratio_constraints(
-                filters=filters,
-                constraints=doc_ratio_constraints,
-                min_match_count=1,
-            )
+            return {
+                "display_count": int(strict_count),
+                "retrieve_count": int(retrieve_count),
+                "strict_count": int(strict_count),
+                "partial_count": int(partial_count),
+            }
 
-        if normalized_documents:
+        where_sql, params = self._build_filter_where_parts(filters)
+
+        # 설명형 질의(필터 없음): 임베딩 유사도 기반 카운트
+        if normalized_documents and not filters:
+            try:
+                semantic_count = self._count_matches_by_semantic_similarity(
+                    query_text=normalized_documents,
+                    filters=filters,
+                )
+                self._log_event(
+                    event="count_matches_semantic_only",
+                    level=logging.INFO,
+                    text_query=normalized_documents,
+                    similarity_threshold=self.SEMANTIC_COUNT_SIMILARITY_THRESHOLD,
+                    semantic_count=semantic_count,
+                )
+                return {
+                    "display_count": int(semantic_count),
+                    "retrieve_count": int(semantic_count),
+                    "strict_count": int(semantic_count),
+                    "partial_count": int(semantic_count),
+                }
+            except Exception as exc:
+                self.conn.rollback()
+                self._log_event(
+                    event="count_matches_semantic_only_fallback",
+                    level=logging.WARNING,
+                    reason="semantic_count_error",
+                    text_query=normalized_documents,
+                    error=str(exc),
+                )
+                where_sql = (
+                    f"{where_sql} AND "
+                    "to_tsvector('simple', COALESCE(fa.analysis_description, '')) @@ websearch_to_tsquery('simple', %s)"
+                )
+                params = [*params, normalized_documents]
+        elif normalized_documents and filters:
             where_sql = (
                 f"{where_sql} AND "
                 "to_tsvector('simple', COALESCE(fa.analysis_description, '')) @@ websearch_to_tsquery('simple', %s)"
             )
             params = [*params, normalized_documents]
+
         base_sql = "SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {}"
 
         def _exec_count(w_sql, w_params):
@@ -3173,7 +3366,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
             matched_count = _exec_count(where_sql, params)
 
             # 폴백 1: 텍스트 검색 제거 (필터만)
-            if matched_count == 0 and normalized_documents and filters:
+            if matched_count == 0 and normalized_documents:
                 self._log_event(
                     event="count_matches_zero_text_fallback",
                     level=logging.INFO,
@@ -3201,7 +3394,12 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     if matched_count > 0:
                         break
 
-            return matched_count
+            return {
+                "display_count": int(matched_count),
+                "retrieve_count": int(matched_count),
+                "strict_count": int(matched_count),
+                "partial_count": int(matched_count),
+            }
         except Exception as exc:
             self.conn.rollback()
             if normalized_documents:
@@ -3213,8 +3411,18 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     error=str(exc),
                 )
                 fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                return _exec_count(fallback_where_sql, fallback_params)
+                fallback_count = _exec_count(fallback_where_sql, fallback_params)
+                return {
+                    "display_count": int(fallback_count),
+                    "retrieve_count": int(fallback_count),
+                    "strict_count": int(fallback_count),
+                    "partial_count": int(fallback_count),
+                }
             raise
+
+    def _count_matches(self, filters: dict[str, Any], documents: str = "") -> int:
+        context = self._count_matches_context(filters=filters, documents=documents)
+        return int(context.get("retrieve_count", 0) or 0)
 
     def _generate_answer(
         self,
@@ -3570,18 +3778,21 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
 
         query_json = self._analyze_query(base_query)
         try:
-            total_match_count = self._count_matches(
+            count_context = self._count_matches_context(
                 query_json.get("filters", {}) or {},
                 query_json.get("documents", "") or "",
             )
+            total_match_count = int(count_context.get("display_count", 0) or 0)
+            retrieve_match_count = int(count_context.get("retrieve_count", 0) or 0)
         except Exception:
             total_match_count = total_shown
+            retrieve_match_count = total_shown
 
         context = {
             "type": "more_context",
             "query_text": base_query,
             "query_json": query_json,
-            "total_match_count": max(total_shown, int(total_match_count)),
+            "total_match_count": int(total_match_count),
             "current_offset": int(total_shown),
             "returned_floorplan_ids": [],
             "returned_floorplan_names": returned_doc_names,
@@ -3591,6 +3802,8 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
             event="chat_history_more_context_loaded",
             chat_room_id=chat_room_id,
             base_query=base_query[:120],
+            total_match_count=int(total_match_count),
+            retrieve_match_count=int(retrieve_match_count),
             current_offset=int(total_shown),
             loaded_doc_count=len(returned_doc_names),
         )
@@ -3848,17 +4061,20 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
             )
 
             count_start = time.perf_counter()
-            total_match_count = self._count_matches(
+            count_context = self._count_matches_context(
                 query_json.get("filters", {}) or {},
                 query_json.get("documents", "") or "",
             )
+            total_match_count = int(count_context.get("display_count", 0) or 0)
+            retrieve_match_count = int(count_context.get("retrieve_count", 0) or 0)
             self._log_event(
                 event="count_complete",
                 query_id=query_id,
                 latency_ms=int((time.perf_counter() - count_start) * 1000),
                 total_match_count=total_match_count,
+                retrieve_match_count=retrieve_match_count,
             )
-            if total_match_count <= 0:
+            if retrieve_match_count <= 0:
                 self._reset_more_results_state()
                 answer = self._generate_validated_no_match_answer(total_match_count=0)
                 self._log_event(
@@ -3877,7 +4093,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     }
                 )
                 return {"answer": answer, "floorplan_ids": []}
-            retrieve_k = min(max(total_match_count, 3), 50)
+            retrieve_k = min(max(retrieve_match_count, 3), 50)
 
             retrieve_start = time.perf_counter()
             docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
