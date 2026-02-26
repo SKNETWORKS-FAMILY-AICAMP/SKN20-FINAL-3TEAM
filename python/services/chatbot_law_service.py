@@ -1,5 +1,5 @@
 """
-chatbot_service_v2.py - RAG 성능 개선 버전
+chatbot_law_service.py - 법규/조례 검색 RAG 서비스
 
 변경사항:
 1. [Reranker] Cross-encoder 기반 재정렬 추가
@@ -24,7 +24,7 @@ from openai import OpenAI
 
 from CV.rag_system.config import RAGConfig
 from CV.rag_system.embeddings import EmbeddingManager
-from services.pgvector_service import pgvector_service
+from services.internal_eval_service import pgvector_service
 
 logger = logging.getLogger("ChatbotService")
 

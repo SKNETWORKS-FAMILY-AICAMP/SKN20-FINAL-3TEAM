@@ -45,7 +45,7 @@ class FloorplanSearchAgent(BaseAgent):
         import psycopg2
         self._db_conn = psycopg2.connect(**db_config)
 
-        from floorplan.pipeline import ArchitecturalHybridRAG
+        from services.floorplan_text_search_service import ArchitecturalHybridRAG
         self._rag = ArchitecturalHybridRAG(
             db_config=db_config,
             openai_api_key=self._config.OPENAI_API_KEY,
@@ -108,7 +108,7 @@ class FloorplanSearchAgent(BaseAgent):
 
     def _execute_image_search(self, cv_result: CVAnalysisResult) -> dict:
         """CV 분석 결과 → 분석 텍스트 + 유사 도면 검색 (image_search 모듈 사용)"""
-        from floorplan.image_search import search_similar
+        from services.floorplan_image_search_service import search_similar
 
         logger.info("=" * 50)
         logger.info("[image_search] 이미지 분석 + 유사 도면 검색 시작")

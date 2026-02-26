@@ -11,7 +11,7 @@ from CV.rag_system.embeddings import EmbeddingManager
 from CV.rag_system.llm_client import OpenAIClient
 from CV.rag_system.schemas import FloorPlanAnalysis
 from CV.rag_system.prompts import SYSTEM_PROMPT, build_analysis_prompt
-from services.pgvector_service import pgvector_service
+from services.internal_eval_service import pgvector_service
 
 logger = logging.getLogger("RAGService")
 

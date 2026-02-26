@@ -23,7 +23,7 @@ from agents.orchestrator import OrchestratorAgent
 from agents.cv_analysis_agent import CVAnalysisAgent
 
 # /generate-metadata 에서만 직접 사용
-from services.rag_service import rag_service
+from services.floorplan_analysis_service import rag_service
 from services.embedding_service import embedding_service
 
 from api_utils.image_utils import image_to_base64
