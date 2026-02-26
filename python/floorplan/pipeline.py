@@ -2386,8 +2386,124 @@ class ArchitecturalHybridRAG:
         inserted = f"\n• {label} 항목: {value}"
         return f"{text[:insert_at]}{inserted}{text[insert_at:]}"
 
+    @staticmethod
+    def _format_percent_value(value: float) -> str:
+        numeric = float(value)
+        if numeric.is_integer():
+            return str(int(numeric))
+        return f"{numeric:.2f}".rstrip("0").rstrip(".")
+
+    def _build_ratio_mentions_for_candidate(
+        self, query: str, candidate: Optional[dict[str, Any]]
+    ) -> list[tuple[str, str, str]]:
+        if not candidate:
+            return []
+        constraints = self._extract_document_ratio_constraints_from_query(str(query or ""))
+        if not constraints:
+            return []
+
+        document = str(candidate.get("document", "") or "")
+        if not document.strip():
+            return []
+
+        mentions: list[tuple[str, str, str]] = []
+        for target, bounds in constraints:
+            values: list[float] = []
+            label = ""
+            keyword = ""
+            if target == "windowless":
+                values = self._extract_windowless_ratio_values_from_document(document)
+                label = "채광"
+                keyword = "무창 공간 비율"
+            elif target == "storage":
+                values = self._extract_storage_ratio_values_from_document(document)
+                label = "수납"
+                keyword = "수납 공간 비율"
+            elif target == "ldk":
+                values = self._extract_ldk_ratio_values_from_document(document)
+                label = "가족 융화"
+                keyword = "LDK 비율"
+            if not values or not label or not keyword:
+                continue
+
+            actual = values[0]
+            status_text = ""
+            condition_text = ""
+            if len(bounds) == 1:
+                op = self._normalize_ratio_operator(bounds[0].get("op"))
+                target_val = self._parse_float(bounds[0].get("val"))
+                if op is not None and target_val is not None:
+                    is_ok = self._is_ratio_bound_satisfied(float(actual), op, float(target_val))
+                    status_text = "충족" if is_ok else "미충족"
+                    target_percent = self._format_percent_value(float(target_val))
+                    condition_text = f"{target_percent}% {op} 기준"
+
+            percent = self._format_percent_value(float(actual))
+            if status_text and condition_text:
+                sentence = f"{keyword}이 {percent}%로 {condition_text}을 {status_text}합니다."
+            else:
+                sentence = f"{keyword}이 {percent}%로 확인됩니다."
+            mentions.append((label, keyword, sentence))
+        return mentions
+
+    def _inject_ratio_mentions_into_layout(
+        self,
+        layout_text: str,
+        query: str,
+        candidate: Optional[dict[str, Any]],
+    ) -> str:
+        text = str(layout_text or "")
+        if not text.strip():
+            return text
+
+        mentions = self._build_ratio_mentions_for_candidate(query=query, candidate=candidate)
+        if not mentions:
+            return text
+
+        core_block_re = re.compile(
+            r"(?ms)(?P<header>^\s*■\s*(?:\*\*)?\s*핵심\s*설계\s*평가\s*(?:\*\*)?\s*\n)"
+            r"(?P<body>.*?)(?=^\s*■\s*(?:\*\*)?\s*주요\s*공간별\s*상세\s*분석\s*(?:\*\*)?\s*$|\Z)"
+        )
+        match = core_block_re.search(text)
+        if not match:
+            return text
+
+        header = match.group("header")
+        body = match.group("body").rstrip("\n")
+        original_full = f"{header}{body}"
+        updated_body = body
+
+        for label, keyword, sentence in mentions:
+            # 이미 해당 비율 문구가 있으면 추가하지 않는다.
+            if keyword in original_full or keyword in updated_body:
+                continue
+            line_pattern = re.compile(
+                rf"(?m)^(?P<prefix>\s*\[{re.escape(label)}\]\s*)(?P<content>.+?)\s*$"
+            )
+            line_match = line_pattern.search(updated_body)
+            if line_match:
+                prefix = line_match.group("prefix")
+                content = line_match.group("content").strip()
+                new_line = f"{prefix}{content} {sentence}"
+                updated_body = (
+                    updated_body[: line_match.start()]
+                    + new_line
+                    + updated_body[line_match.end() :]
+                )
+            else:
+                if updated_body.strip():
+                    updated_body = f"{updated_body}\n[{label}] {sentence}"
+                else:
+                    updated_body = f"[{label}] {sentence}"
+
+        replaced = f"{header}{updated_body}\n"
+        return f"{text[:match.start()]}{replaced}{text[match.end():]}"
+
     def _enforce_compliance_items_for_single_answer(
-        self, answer: str, candidate: Optional[dict[str, Any]]
+        self,
+        answer: str,
+        candidate: Optional[dict[str, Any]],
+        query: str = "",
     ) -> str:
         text = str(answer or "")
         if not text or not candidate:
@@ -2398,10 +2514,14 @@ class ArchitecturalHybridRAG:
         unfit_text = self._format_compliance_items_for_output(unfit_items)
         updated = self._replace_or_insert_compliance_item_line(text, "적합", fit_text)
         updated = self._replace_or_insert_compliance_item_line(updated, "부적합", unfit_text)
+        updated = self._inject_ratio_mentions_into_layout(updated, query=query, candidate=candidate)
         return updated
 
     def _enforce_compliance_items_for_general_answer(
-        self, answer: str, candidates: list[dict[str, Any]]
+        self,
+        answer: str,
+        candidates: list[dict[str, Any]],
+        query: str = "",
     ) -> str:
         text = str(answer or "")
         if not text.strip() or not candidates:
@@ -2435,6 +2555,11 @@ class ArchitecturalHybridRAG:
             body = match.group("body")
             body = self._replace_or_insert_compliance_item_line(body, "적합", fit_text)
             body = self._replace_or_insert_compliance_item_line(body, "부적합", unfit_text)
+            body = self._inject_ratio_mentions_into_layout(
+                body,
+                query=query,
+                candidate=candidate,
+            )
             return f"{match.group('header')}{body}"
 
         return block_pattern.sub(_replace_block, text)
@@ -3617,7 +3742,11 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
             return (response.choices[0].message.content or "").strip()
 
         answer = self._run_validated_generation(mode="general", generate_fn=_call_llm)
-        return self._enforce_compliance_items_for_general_answer(answer, candidates)
+        return self._enforce_compliance_items_for_general_answer(
+            answer,
+            candidates,
+            query=query,
+        )
 
     def _generate_no_match_answer(self, total_match_count: int = 0) -> str:
         return (
