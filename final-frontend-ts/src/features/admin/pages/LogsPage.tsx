@@ -2,11 +2,11 @@
 // LogsPage - Activity Logs
 // ============================================
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FiX } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
 import { getActivityLogs, getChatHistoryDetail } from '../api/admin.api';
-import type { ActivityLog, ChatHistoryDetail } from '../types/admin.types';
+import type { ActivityLog, ChatHistoryDetail, ActivityLogParams } from '../types/admin.types';
 import styles from './AdminPages.module.css';
 
 export function LogsPage() {
@@ -20,64 +20,78 @@ export function LogsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'USER' | 'FLOORPLAN' | 'CHAT'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 페이지네이션 상태
-  const [currentPage, setCurrentPage] = useState(1);
+  // 서버 사이드 페이징 상태 (0-based)
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const itemsPerPage = 8;
 
-  // 로그 로드
+  // 디바운스 타이머 ref
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 초기 로드 완료 여부
+  const isInitialMount = useRef(true);
+
+  // 로그 로드 (서버 사이드 페이징 + 필터링)
+  const loadLogs = useCallback(async (page: number = 0) => {
+    try {
+      setIsLoading(true);
+      const params: ActivityLogParams = {
+        page,
+        size: itemsPerPage,
+      };
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      if (typeFilter !== 'all') params.type = typeFilter;
+      if (searchTerm.trim()) params.search = searchTerm.trim();
+
+      const data = await getActivityLogs(params);
+      setLogs(data.content);
+      setCurrentPage(data.currentPage);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+    } catch (error) {
+      console.error('활동 로그 로드 실패:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [startDate, endDate, typeFilter, searchTerm]);
+
+  // 초기 로드
   useEffect(() => {
-    const loadLogs = async () => {
-      try {
-        setIsLoading(true);
-        const data = await getActivityLogs();
-        setLogs(data);
-      } catch (error) {
-        console.error('활동 로그 로드 실패:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadLogs();
+    loadLogs(0);
   }, []);
 
-  // 필터링된 로그
-  const filteredLogs = useMemo(() => {
-    const filtered = logs.filter((log) => {
-      // 날짜 필터
-      if (startDate && log.createdAt < startDate) return false;
-      if (endDate && log.createdAt > endDate) return false;
+  // 날짜/타입 필터 변경 시 첫 페이지로 재로드 (초기 로드 제외)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    loadLogs(0);
+  }, [startDate, endDate, typeFilter]);
 
-      // 타입 필터
-      if (typeFilter !== 'all' && log.type !== typeFilter) return false;
+  // 검색어 디바운스 (300ms)
+  useEffect(() => {
+    if (isInitialMount.current) return;
 
-      // 검색어 필터
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        return (
-          log.userName?.toLowerCase().includes(search) ||
-          log.userEmail?.toLowerCase().includes(search) ||
-          log.action?.toLowerCase().includes(search) ||
-          log.details?.toLowerCase().includes(search)
-        );
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
+      loadLogs(0);
+    }, 300);
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
       }
+    };
+  }, [searchTerm]);
 
-      return true;
-    });
-    
-    // 필터 변경 시 첫 페이지로 이동
-    setCurrentPage(1);
-    return filtered;
-  }, [logs, startDate, endDate, typeFilter, searchTerm]);
-
-  // 현재 페이지의 로그
-  const currentLogs = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredLogs.slice(startIndex, endIndex);
-  }, [filteredLogs, currentPage, itemsPerPage]);
-
-  // 전체 페이지 수
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+  // 페이지 변경
+  const handlePageChange = (newPage: number) => {
+    loadLogs(newPage);
+  };
 
   const getTypeLabel = (type: string) => {
     switch (type) {
@@ -107,6 +121,9 @@ export function LogsPage() {
       alert('대화 내용을 불러올 수 없습니다.');
     }
   };
+
+  // 표시용 페이지 번호 (1-based)
+  const displayPage = currentPage + 1;
 
   return (
     <AdminLayout>
@@ -153,7 +170,7 @@ export function LogsPage() {
         <div className={styles.tableCard}>
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>로딩 중...</div>
-          ) : filteredLogs.length === 0 ? (
+          ) : totalElements === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
               활동 로그가 없습니다.
             </div>
@@ -170,7 +187,7 @@ export function LogsPage() {
                 </tr>
               </thead>
               <tbody>
-                {currentLogs.map((log) => (
+                {logs.map((log) => (
                   <tr key={`${log.type}-${log.id}`}>
                     <td className={styles.timestamp}>{(() => { const d = new Date(log.createdAt); return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; })()}</td>
                     <td>
@@ -186,7 +203,7 @@ export function LogsPage() {
                     <td className={styles.details}>{log.details}</td>
                     <td>
                       {log.type === 'CHAT' && (
-                        <button 
+                        <button
                           className={styles.viewBtn}
                           onClick={() => handleViewChatDetail(log.id)}
                         >
@@ -203,19 +220,19 @@ export function LogsPage() {
 
         {/* 페이지네이션 */}
         <div className={styles.pagination}>
-          <span className={styles.pageInfo}>총 {filteredLogs.length}개 로그 (페이지 {currentPage}/{totalPages})</span>
+          <span className={styles.pageInfo}>총 {totalElements}개 로그 (페이지 {displayPage}/{totalPages || 1})</span>
           <div className={styles.pageButtons}>
-            <button 
-              className={styles.pageBtn} 
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
+            <button
+              className={styles.pageBtn}
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 0}
             >
               이전
             </button>
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter(page => {
                 // 현재 페이지 주변 5개만 표시
-                return page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2);
+                return page === 1 || page === totalPages || (page >= displayPage - 2 && page <= displayPage + 2);
               })
               .map((page, index, array) => {
                 // ... 표시
@@ -224,8 +241,8 @@ export function LogsPage() {
                     <span key={`ellipsis-${page}`} className={styles.pageEllipsis}>...</span>,
                     <button
                       key={page}
-                      className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
-                      onClick={() => setCurrentPage(page)}
+                      className={`${styles.pageBtn} ${displayPage === page ? styles.activePage : ''}`}
+                      onClick={() => handlePageChange(page - 1)}
                     >
                       {page}
                     </button>
@@ -234,17 +251,17 @@ export function LogsPage() {
                 return (
                   <button
                     key={page}
-                    className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
-                    onClick={() => setCurrentPage(page)}
+                    className={`${styles.pageBtn} ${displayPage === page ? styles.activePage : ''}`}
+                    onClick={() => handlePageChange(page - 1)}
                   >
                     {page}
                   </button>
                 );
               })}
-            <button 
-              className={styles.pageBtn} 
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
+            <button
+              className={styles.pageBtn}
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages - 1}
             >
               다음
             </button>
@@ -269,13 +286,13 @@ export function LogsPage() {
               </div>
               <div className={styles.formGroup}>
                 <label>질문</label>
-                <textarea 
-                  value={chatDetail.question || '질문 없음'} 
-                  disabled 
+                <textarea
+                  value={chatDetail.question || '질문 없음'}
+                  disabled
                   rows={5}
-                  style={{ 
-                    width: '100%', 
-                    padding: '10px', 
+                  style={{
+                    width: '100%',
+                    padding: '10px',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
                     backgroundColor: 'var(--hover-bg)',
@@ -288,13 +305,13 @@ export function LogsPage() {
               </div>
               <div className={styles.formGroup}>
                 <label>답변</label>
-                <textarea 
-                  value={chatDetail.answer || '답변 없음'} 
-                  disabled 
+                <textarea
+                  value={chatDetail.answer || '답변 없음'}
+                  disabled
                   rows={10}
-                  style={{ 
-                    width: '100%', 
-                    padding: '10px', 
+                  style={{
+                    width: '100%',
+                    padding: '10px',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
                     backgroundColor: 'var(--hover-bg)',
@@ -316,4 +333,3 @@ export function LogsPage() {
     </AdminLayout>
   );
 }
-

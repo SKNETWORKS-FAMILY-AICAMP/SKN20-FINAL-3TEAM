@@ -125,3 +125,5 @@ final-frontend-ts/public/result/
 nul
 */node_modules*/**
 Backend/src/main/resources/application.properties.example
+python/eval_regulation.py
+python/eval_results/regulation_eval_20260226_100132.md

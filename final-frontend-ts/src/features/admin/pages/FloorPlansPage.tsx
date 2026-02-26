@@ -2,7 +2,7 @@
 // FloorPlansPage - Floor Plan Database Management
 // ============================================
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FiX, FiFilter, FiChevronDown, FiChevronUp, FiZoomIn, FiZoomOut, FiMaximize2, FiSearch } from 'react-icons/fi';
 import { AdminLayout } from '../components/AdminLayout';
@@ -30,9 +30,14 @@ export function FloorPlansPage() {
     maxRooms: undefined,
   });
 
-  // 페이지네이션 상태
-  const [currentPage, setCurrentPage] = useState(1);
+  // 서버 사이드 페이징 상태 (0-based)
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const itemsPerPage = 8;
+
+  // 검색 활성 여부 추적
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   // 상세 모달 상태
   const [detailPlan, setDetailPlan] = useState<AdminFloorPlan | null>(null);
@@ -67,12 +72,16 @@ export function FloorPlansPage() {
     };
   }, [detailPlan]);
 
-  // 도면 목록 로드
-  const loadFloorPlans = useCallback(async () => {
+  // 도면 목록 로드 (서버 사이드 페이징)
+  const loadFloorPlans = useCallback(async (page: number = 0) => {
     try {
       setIsLoading(true);
-      const data = await getFloorPlans();
-      setFloorPlans(data);
+      const data = await getFloorPlans(page, itemsPerPage);
+      setFloorPlans(data.content);
+      setCurrentPage(data.currentPage);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+      setIsSearchActive(false);
     } catch (error) {
       console.error('도면 목록 로드 실패:', error);
     } finally {
@@ -84,16 +93,16 @@ export function FloorPlansPage() {
     const initSearch = searchParams.get('search');
     if (initSearch) {
       setSearchTerm(initSearch);
-      // 도면 목록 로드 후 필터링
+      // 서버 사이드 검색
       (async () => {
         try {
           setIsLoading(true);
-          const data = await getFloorPlans();
-          const filtered = data.filter(p =>
-            p.name?.toLowerCase().includes(initSearch.toLowerCase())
-          );
-          setFloorPlans(filtered);
-          setCurrentPage(1);
+          const data = await searchFloorPlans({ name: initSearch, page: 0, size: itemsPerPage });
+          setFloorPlans(data.content);
+          setCurrentPage(data.currentPage);
+          setTotalPages(data.totalPages);
+          setTotalElements(data.totalElements);
+          setIsSearchActive(true);
         } catch (error) {
           console.error('검색 실패:', error);
         } finally {
@@ -107,7 +116,7 @@ export function FloorPlansPage() {
     }
   }, []);
 
-  // 기본 검색 (대소문자 무시)
+  // 기본 검색
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
       loadFloorPlans();
@@ -115,13 +124,12 @@ export function FloorPlansPage() {
     }
     try {
       setIsLoading(true);
-      const data = await searchFloorPlans({ name: searchTerm.trim() });
-      // 대소문자 무시 필터링
-      const filtered = data.filter(p =>
-        p.name?.toLowerCase().includes(searchTerm.trim().toLowerCase())
-      );
-      setFloorPlans(filtered);
-      setCurrentPage(1);
+      const data = await searchFloorPlans({ name: searchTerm.trim(), page: 0, size: itemsPerPage });
+      setFloorPlans(data.content);
+      setCurrentPage(data.currentPage);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+      setIsSearchActive(true);
     } catch (error) {
       console.error('검색 실패:', error);
     } finally {
@@ -135,10 +143,10 @@ export function FloorPlansPage() {
     }
   };
 
-  // 고급 검색
-  const handleAdvancedSearch = async () => {
+  // 고급 검색 (서버 사이드 페이징)
+  const handleAdvancedSearch = async (page: number = 0) => {
     // 빈 값 필터링
-    const params: SearchFloorPlanRequest = {};
+    const params: SearchFloorPlanRequest = { page, size: itemsPerPage };
     if (advancedFilters.name?.trim()) params.name = advancedFilters.name;
     if (advancedFilters.uploaderEmail?.trim()) params.uploaderEmail = advancedFilters.uploaderEmail;
     if (advancedFilters.startDate) params.startDate = advancedFilters.startDate;
@@ -146,8 +154,9 @@ export function FloorPlansPage() {
     if (advancedFilters.minRooms !== undefined && advancedFilters.minRooms > 0) params.minRooms = advancedFilters.minRooms;
     if (advancedFilters.maxRooms !== undefined && advancedFilters.maxRooms > 0) params.maxRooms = advancedFilters.maxRooms;
 
-    // 모든 필터가 비어있으면 전체 목록 로드
-    if (Object.keys(params).length === 0) {
+    // page/size 외 모든 필터가 비어있으면 전체 목록 로드
+    const hasFilter = params.name || params.uploaderEmail || params.startDate || params.endDate || params.minRooms || params.maxRooms;
+    if (!hasFilter) {
       loadFloorPlans();
       return;
     }
@@ -155,8 +164,11 @@ export function FloorPlansPage() {
     try {
       setIsLoading(true);
       const data = await searchFloorPlans(params);
-      setFloorPlans(data);
-      setCurrentPage(1);
+      setFloorPlans(data.content);
+      setCurrentPage(data.currentPage);
+      setTotalPages(data.totalPages);
+      setTotalElements(data.totalElements);
+      setIsSearchActive(true);
     } catch (error) {
       console.error('고급 검색 실패:', error);
     } finally {
@@ -175,19 +187,39 @@ export function FloorPlansPage() {
       maxRooms: undefined,
     });
     setSearchTerm('');
-    setCurrentPage(1);
-    loadFloorPlans();
+    setIsSearchActive(false);
+    loadFloorPlans(0);
   };
 
-  // 현재 페이지의 도면
-  const currentFloorPlans = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return floorPlans.slice(startIndex, endIndex);
-  }, [floorPlans, currentPage, itemsPerPage]);
-
-  // 전체 페이지 수
-  const totalPages = Math.ceil(floorPlans.length / itemsPerPage);
+  // 페이지 변경 핸들러
+  const handlePageChange = (newPage: number) => {
+    setSelectedIds([]);
+    if (isSearchActive) {
+      // 검색 중이면 검색 조건 유지하며 페이지만 변경
+      if (searchTerm.trim() && !showAdvancedSearch) {
+        // 기본 검색
+        (async () => {
+          try {
+            setIsLoading(true);
+            const data = await searchFloorPlans({ name: searchTerm.trim(), page: newPage, size: itemsPerPage });
+            setFloorPlans(data.content);
+            setCurrentPage(data.currentPage);
+            setTotalPages(data.totalPages);
+            setTotalElements(data.totalElements);
+          } catch (error) {
+            console.error('검색 실패:', error);
+          } finally {
+            setIsLoading(false);
+          }
+        })();
+      } else {
+        // 고급 검색
+        handleAdvancedSearch(newPage);
+      }
+    } else {
+      loadFloorPlans(newPage);
+    }
+  };
 
   // 상세 보기
   const handleViewDetail = async (floorplanId: number) => {
@@ -262,7 +294,12 @@ export function FloorPlansPage() {
       await deleteEntities('floorplan', confirmModal.ids);
       setConfirmModal(null);
       setSelectedIds([]);
-      loadFloorPlans();
+      // 현재 페이지 새로고침
+      if (isSearchActive) {
+        handlePageChange(currentPage);
+      } else {
+        loadFloorPlans(currentPage);
+      }
     } catch (error) {
       console.error('삭제 실패:', error);
       alert('삭제에 실패했습니다.');
@@ -276,14 +313,17 @@ export function FloorPlansPage() {
     );
   };
 
-  // 전체 선택
+  // 전체 선택 (현재 페이지)
   const toggleSelectAll = () => {
-    if (selectedIds.length === currentFloorPlans.length && currentFloorPlans.length > 0) {
+    if (selectedIds.length === floorPlans.length && floorPlans.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(currentFloorPlans.map((p) => p.id));
+      setSelectedIds(floorPlans.map((p) => p.id));
     }
   };
+
+  // 표시용 페이지 번호 (1-based)
+  const displayPage = currentPage + 1;
 
   return (
     <AdminLayout>
@@ -360,7 +400,7 @@ export function FloorPlansPage() {
             </div>
             <div className={styles.filterActions}>
               <button className={styles.resetBtn} onClick={resetFilters}>초기화</button>
-              <button className={styles.primaryBtn} onClick={handleAdvancedSearch}>검색</button>
+              <button className={styles.primaryBtn} onClick={() => handleAdvancedSearch(0)}>검색</button>
             </div>
           </div>
         )}
@@ -376,7 +416,7 @@ export function FloorPlansPage() {
                   <th>
                     <input
                       type="checkbox"
-                      checked={selectedIds.length === currentFloorPlans.length && currentFloorPlans.length > 0}
+                      checked={selectedIds.length === floorPlans.length && floorPlans.length > 0}
                       onChange={toggleSelectAll}
                     />
                   </th>
@@ -387,7 +427,7 @@ export function FloorPlansPage() {
                 </tr>
               </thead>
               <tbody>
-                {currentFloorPlans.map((plan) => (
+                {floorPlans.map((plan) => (
                   <tr key={plan.id}>
                     <td>
                       <input
@@ -422,19 +462,19 @@ export function FloorPlansPage() {
         </div>
 
         <div className={styles.pagination}>
-          <span className={styles.pageInfo}>총 {floorPlans.length}개 도면 (페이지 {currentPage}/{totalPages})</span>
+          <span className={styles.pageInfo}>총 {totalElements}개 도면 (페이지 {displayPage}/{totalPages || 1})</span>
           <div className={styles.pageButtons}>
             <button
               className={styles.pageBtn}
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 0}
             >
               이전
             </button>
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter(page => {
                 // 현재 페이지 주변 5개만 표시
-                return page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2);
+                return page === 1 || page === totalPages || (page >= displayPage - 2 && page <= displayPage + 2);
               })
               .map((page, index, array) => {
                 // ... 표시
@@ -443,8 +483,8 @@ export function FloorPlansPage() {
                     <span key={`ellipsis-${page}`} className={styles.pageEllipsis}>...</span>,
                     <button
                       key={page}
-                      className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
-                      onClick={() => setCurrentPage(page)}
+                      className={`${styles.pageBtn} ${displayPage === page ? styles.activePage : ''}`}
+                      onClick={() => handlePageChange(page - 1)}
                     >
                       {page}
                     </button>
@@ -453,8 +493,8 @@ export function FloorPlansPage() {
                 return (
                   <button
                     key={page}
-                    className={`${styles.pageBtn} ${currentPage === page ? styles.activePage : ''}`}
-                    onClick={() => setCurrentPage(page)}
+                    className={`${styles.pageBtn} ${displayPage === page ? styles.activePage : ''}`}
+                    onClick={() => handlePageChange(page - 1)}
                   >
                     {page}
                   </button>
@@ -462,8 +502,8 @@ export function FloorPlansPage() {
               })}
             <button
               className={styles.pageBtn}
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages - 1}
             >
               다음
             </button>

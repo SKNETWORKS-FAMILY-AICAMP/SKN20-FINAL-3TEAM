@@ -22,10 +22,10 @@ export function DashboardPage() {
         setIsLoading(true);
         const [statsData, plansData] = await Promise.all([
           getAdminStats(),
-          getFloorPlans()
+          getFloorPlans(0, 6)
         ]);
         setStats(statsData);
-        setRecentPlans(plansData.slice(0, 6));
+        setRecentPlans(plansData.content);
       } catch (error) {
         console.error('데이터 로드 실패:', error);
       } finally {
