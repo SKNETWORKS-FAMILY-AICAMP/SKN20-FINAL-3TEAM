@@ -113,24 +113,66 @@ const convertHistoryToMessages = (history: ChatHistory[]): ChatMessageType[] => 
     if (item.imageUrls) {
       try {
         const urls: string[] = JSON.parse(item.imageUrls);
-        const { summary, descriptions } = parseFloorplanAnswer(item.answer);
-        images = urls.map((url, idx) => {
-          const fileName = url.split('/').pop() || '';
-          const docId = fileName.replace(/\.[^.]+$/, '');
-          return {
-            url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
-            name: docId || `도면 #${idx + 1}`,
-            description: descriptions[idx] || '',
-          };
-        });
-        // 요약에서 총 개수 파싱 후 친절한 문구 생성
-        const shownCount = urls.length;
-        const totalMatch = summary.match(/(\d+)/);
-        const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
-        if (totalCount > shownCount) {
-          displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+        const hasFloorplanMarkers = /(?:#{1,6}\s*)?\[도면 #\d+\]/.test(item.answer);
+
+        if (hasFloorplanMarkers) {
+          // 텍스트 검색 모드
+          const { summary, descriptions } = parseFloorplanAnswer(item.answer);
+          images = urls.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `도면 #${idx + 1}`,
+              description: descriptions[idx] || '',
+            };
+          });
+          const shownCount = urls.length;
+          const totalMatch = summary.match(/(\d+)/);
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          if (totalCount > shownCount) {
+            displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else {
+            displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          }
         } else {
-          displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          // 이미지 분석 모드: [유사 도면 #N] 마커 파싱
+          // 마커 형식: "### [유사 도면 #1] APT_FP_OBJ_123" (### prefix + document_id suffix)
+          const similarDetectRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\]/;
+          const similarSplitRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\][^\n]*/;
+          const firstSimilarIdx = item.answer.search(similarDetectRegex);
+
+          let analysisPart = item.answer;
+          let similarDescriptions: string[] = [];
+
+          if (firstSimilarIdx !== -1) {
+            analysisPart = item.answer.substring(0, firstSimilarIdx).trim();
+            const similarPart = item.answer.substring(firstSimilarIdx);
+            const parts = similarPart.split(similarSplitRegex);
+            similarDescriptions = parts.slice(1).map((p) => p.trim());
+          }
+
+          const totalMatch = analysisPart.match(/유사 도면 (\d+)개\s*$/);
+          const shownCount = urls.length;
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          analysisPart = analysisPart.replace(/\n*유사 도면 \d+개\s*$/, '').trim();
+
+          displayContent = analysisPart;
+          if (totalCount > shownCount) {
+            displayContent += `\n\n유사한 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else if (shownCount > 0) {
+            displayContent += `\n\n유사한 도면 ${shownCount}개를 찾았습니다.`;
+          }
+
+          images = urls.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `유사 도면 #${idx + 1}`,
+              description: similarDescriptions[idx] || '',
+            };
+          });
         }
       } catch (e) {
         console.error('imageUrls 파싱 실패:', e);
@@ -452,25 +494,68 @@ const ChatPage: React.FC = () => {
       let displayContent = response.answer;
 
       if (hasFloorplans) {
-        const { summary, descriptions } = parseFloorplanAnswer(response.answer);
-        floorplanImages = response.image_urls!.map((url, idx) => {
-          // URL에서 실제 도면 ID 추출 (예: .../APT_FP_OBJ_644126077.PNG → APT_FP_OBJ_644126077)
-          const fileName = url.split('/').pop() || '';
-          const docId = fileName.replace(/\.[^.]+$/, ''); // 확장자 제거
-          return {
-            url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
-            name: docId || `도면 #${idx + 1}`,
-            description: descriptions[idx] || '',
-          };
-        });
-        // 요약에서 총 개수 파싱 후 친절한 문구 생성
-        const shownCount = response.image_urls!.length;
-        const totalMatch = summary.match(/(\d+)/);
-        const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
-        if (totalCount > shownCount) {
-          displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+        const hasFloorplanMarkers = /(?:#{1,6}\s*)?\[도면 #\d+\]/.test(response.answer);
+
+        if (hasFloorplanMarkers) {
+          // 텍스트 검색 모드: [도면 #N] 마커 기반 파싱
+          const { summary, descriptions } = parseFloorplanAnswer(response.answer);
+          floorplanImages = response.image_urls!.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `도면 #${idx + 1}`,
+              description: descriptions[idx] || '',
+            };
+          });
+          const shownCount = response.image_urls!.length;
+          const totalMatch = summary.match(/(\d+)/);
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          if (totalCount > shownCount) {
+            displayContent = `조건을 만족하는 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else {
+            displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          }
         } else {
-          displayContent = `조건을 만족하는 도면 ${totalCount}개를 모두 보여드립니다.`;
+          // 이미지 분석 모드: [유사 도면 #N] 마커 파싱
+          // 마커 형식: "### [유사 도면 #1] APT_FP_OBJ_123" (### prefix + document_id suffix)
+          const similarDetectRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\]/;
+          const similarSplitRegex = /(?:#{1,6}\s*)?\[유사 도면 #\d+\][^\n]*/;
+          const firstSimilarIdx = response.answer.search(similarDetectRegex);
+
+          let analysisPart = response.answer;
+          let similarDescriptions: string[] = [];
+
+          if (firstSimilarIdx !== -1) {
+            analysisPart = response.answer.substring(0, firstSimilarIdx).trim();
+            const similarPart = response.answer.substring(firstSimilarIdx);
+            const parts = similarPart.split(similarSplitRegex);
+            similarDescriptions = parts.slice(1).map((p) => p.trim());
+          }
+
+          // "유사 도면 N개" 줄에서 총 개수 추출 후 제거
+          const totalMatch = analysisPart.match(/유사 도면 (\d+)개\s*$/);
+          const shownCount = response.image_urls!.length;
+          const totalCount = totalMatch ? parseInt(totalMatch[1]) : shownCount;
+          analysisPart = analysisPart.replace(/\n*유사 도면 \d+개\s*$/, '').trim();
+
+          // displayContent: 분석 텍스트 + 유사 도면 안내 문구
+          displayContent = analysisPart;
+          if (totalCount > shownCount) {
+            displayContent += `\n\n유사한 도면은 총 ${totalCount}개입니다. 그 중 가장 유사한 ${shownCount}개의 도면을 보여드립니다. 더 보고 싶으시면 말씀해주세요!`;
+          } else if (shownCount > 0) {
+            displayContent += `\n\n유사한 도면 ${shownCount}개를 찾았습니다.`;
+          }
+
+          floorplanImages = response.image_urls!.map((url, idx) => {
+            const fileName = url.split('/').pop() || '';
+            const docId = fileName.replace(/\.[^.]+$/, '');
+            return {
+              url: url.startsWith('http') ? url : `${BASE_URL}${url}`,
+              name: docId || `유사 도면 #${idx + 1}`,
+              description: similarDescriptions[idx] || '',
+            };
+          });
         }
       }
 

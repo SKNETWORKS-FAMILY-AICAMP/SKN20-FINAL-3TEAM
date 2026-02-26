@@ -146,6 +146,7 @@ async def generate_metadata(request: SaveRequest):
 async def orchestrate_query(
     email: str = Form(...),
     question: str = Form(""),
+    chat_room_id: Optional[int] = Form(None),
     file: Optional[UploadFile] = File(None),
 ):
     """
@@ -155,7 +156,9 @@ async def orchestrate_query(
     이미지 업로드 → CV 분석 → 도면 검색 에이전트 (image 모드)
     """
     logger.info("=== /orchestrate 엔드포인트 호출됨 ===")
-    logger.info(f"Email: {email}, Question: {question}, File: {file is not None}")
+    logger.info(
+        f"Email: {email}, Question: {question}, ChatRoomId: {chat_room_id}, File: {file is not None}"
+    )
 
     try:
         image = None
@@ -172,6 +175,7 @@ async def orchestrate_query(
         result = orchestrator.route(
             email=email,
             question=question,
+            chat_room_id=chat_room_id,
             image=image,
             filename=filename,
         )

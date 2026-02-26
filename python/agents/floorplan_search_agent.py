@@ -6,6 +6,7 @@ image 모드: CV 분석 결과 → 섹션 2,3 답변 생성
 
 import json
 import logging
+import re
 from typing import Optional
 
 from agents.base import BaseAgent
@@ -50,10 +51,11 @@ class FloorplanSearchAgent(BaseAgent):
     def execute(self, mode: str, **kwargs) -> dict:
         """
         Args:
-            mode: "text_search" | "image"
+            mode: "text_search" | "image" | "image_search"
             kwargs:
-                text_search → query: str, email: str
-                image       → cv_result: CVAnalysisResult
+                text_search  → query: str, email: str
+                image        → cv_result: CVAnalysisResult
+                image_search → cv_result: CVAnalysisResult
         """
         self._load_components()
 
@@ -64,6 +66,10 @@ class FloorplanSearchAgent(BaseAgent):
             )
         elif mode == "image":
             return self._execute_image_analysis(
+                cv_result=kwargs["cv_result"],
+            )
+        elif mode == "image_search":
+            return self._execute_image_search(
                 cv_result=kwargs["cv_result"],
             )
         else:
@@ -91,6 +97,94 @@ class FloorplanSearchAgent(BaseAgent):
             "summaryTitle": "도면 이미지 분석 결과",
             "answer": answer,
             "floorplan_ids": None,
+        }
+
+    # ===== image_search 모드 =====
+
+    def _execute_image_search(self, cv_result: CVAnalysisResult) -> dict:
+        """CV 분석 결과 → 섹션 1,2 답변 + document 기반 유사 도면 검색"""
+        logger.info("=" * 50)
+        logger.info("[image_search] 이미지 분석 + 유사 도면 검색 시작")
+        logger.info("=" * 50)
+
+        # 1. 분석 텍스트 생성 (도면 기본 정보 + 공간 구성 설명)
+        logger.info("[1/3] 도면 분석 텍스트 생성 중...")
+        analysis_text = self._generate_answer_sections_2_3(cv_result)
+        logger.info("[1/3] 분석 텍스트 생성 완료")
+
+        # 2. 메트릭 핵심 정보 + Overall summary → 검색 쿼리 구성
+        #    → _analyze_query()가 자동으로 필터 추출 + _retrieve_hybrid()가 벡터+텍스트 하이브리드 검색
+        metrics = cv_result.metrics or {}
+        metric_parts = []
+        if metrics.get("structure_type"):
+            metric_parts.append(f"{metrics['structure_type']} 구조")
+        if metrics.get("bay_count"):
+            metric_parts.append(f"{metrics['bay_count']}베이")
+        if metrics.get("room_count"):
+            metric_parts.append(f"방 {metrics['room_count']}개")
+        if metrics.get("bathroom_count"):
+            metric_parts.append(f"화장실 {metrics['bathroom_count']}개")
+        if metrics.get("windowless_count") is not None:
+            metric_parts.append(f"무창 공간 {metrics['windowless_count']}개")
+        if metrics.get("living_room_ratio") is not None:
+            metric_parts.append(f"거실 비율 {metrics['living_room_ratio']}%")
+
+        summary_match = re.search(r'Overall summary:\s*(.+?)(?:\n|$)', analysis_text)
+        overall_summary = summary_match.group(1).strip() if summary_match else ""
+
+        # 메트릭 요약 + Overall summary 결합
+        metrics_prefix = ", ".join(metric_parts) + ". " if metric_parts else ""
+        search_query = metrics_prefix + overall_summary
+        if not search_query.strip():
+            search_query = (cv_result.document or "")[:200]
+
+        # 메트릭에서 명시적 필터 구성 (LLM 추출 필터보다 정확)
+        explicit_filters = {}
+        for key in ("structure_type", "room_count", "bay_count", "bathroom_count", "windowless_count"):
+            if metrics.get(key) is not None:
+                explicit_filters[key] = metrics[key]
+        if metrics.get("living_room_ratio") is not None:
+            explicit_filters["living_room_ratio"] = {"op": "동일", "val": metrics["living_room_ratio"]}
+
+        logger.info("[2/3] 유사 도면 검색 시작...")
+        logger.info("  검색 쿼리: %s", search_query)
+        logger.info("  명시적 필터: %s", explicit_filters)
+
+        search_result = self._rag.search_by_description(
+            search_query, top_k=3, explicit_filters=explicit_filters,
+        )
+        docs = search_result["docs"]
+        total_count = search_result["total_count"]
+        floorplan_ids = [row[0] for row in docs] if docs else []
+
+        logger.info(
+            "[2/3] 유사 도면 %d개 반환 (총 %d개 중): %s",
+            len(floorplan_ids), total_count, floorplan_ids,
+        )
+
+        # 3. 유사 도면 구조화된 설명 생성 (LLM)
+        answer = analysis_text
+        if docs:
+            logger.info("[3/3] 유사 도면 구조화된 설명 생성 중 (LLM)...")
+            similar_answer = self._rag.generate_similar_answer(
+                analysis_metrics=metrics,
+                docs=docs,
+                total_count=total_count,
+            )
+            if similar_answer:
+                answer += "\n\n" + similar_answer
+            logger.info("[3/3] 유사 도면 설명 생성 완료")
+        else:
+            logger.info("[3/3] 유사 도면 없음 — 설명 생성 건너뜀")
+
+        logger.info("=" * 50)
+        logger.info("[image_search] 완료 (도면 %d개)", len(floorplan_ids))
+        logger.info("=" * 50)
+
+        return {
+            "summaryTitle": "도면 이미지 분석 결과",
+            "answer": answer,
+            "floorplan_ids": floorplan_ids if floorplan_ids else None,
         }
 
     def _generate_answer_sections_2_3(self, cv_result: CVAnalysisResult) -> str:
