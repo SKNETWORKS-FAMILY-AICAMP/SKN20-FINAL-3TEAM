@@ -2,7 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [backtopython]
+    branches: [main, backtopython]
 
 jobs:
   deploy:
@@ -17,7 +17,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /home/ubuntu/SKN20-FINAL-3TEAM
-            git pull origin backtopython
+            git checkout main
+            git pull origin main
 
             # Python FastAPI
             source venv/bin/activate
