@@ -56,6 +56,8 @@ export interface SearchFloorPlanRequest {
   endDate?: string;
   minRooms?: number;
   maxRooms?: number;
+  page?: number;
+  size?: number;
 }
 
 export interface FloorPlanDetailRequest {
@@ -98,4 +100,27 @@ export interface ChatHistoryDetail {
   question: string;
   answer: string;
   createdAt: string;
+}
+
+// ============================================
+// 페이징 타입
+// ============================================
+
+export interface PageResponse<T> {
+  content: T[];
+  currentPage: number;
+  totalPages: number;
+  totalElements: number;
+  size: number;
+  first: boolean;
+  last: boolean;
+}
+
+export interface ActivityLogParams {
+  page?: number;
+  size?: number;
+  type?: string;
+  search?: string;
+  startDate?: string;
+  endDate?: string;
 }
