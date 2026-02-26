@@ -33,9 +33,7 @@ class RAGService:
 
         try:
             self.config = RAGConfig()
-            self.embedding_manager = EmbeddingManager(
-                model_name=self.config.EMBEDDING_MODEL
-            )
+            self.embedding_manager = EmbeddingManager()
             self.llm_client = OpenAIClient(
                 api_key=self.config.OPENAI_API_KEY,
                 model=self.config.OPENAI_MODEL,

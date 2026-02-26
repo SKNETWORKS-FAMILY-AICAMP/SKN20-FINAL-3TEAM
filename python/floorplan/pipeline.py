@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -167,12 +168,16 @@ class ArchitecturalHybridRAG:
     FLOORPLAN_BLOCK_HEADER_RE = re.compile(
         r"(?m)^\s*(?:#{1,6}\s*)?\[도면\s*#\d+\]\s*(?P<document_id>[^\n]+?)\s*$"
     )
+    LOCAL_EMBEDDING_MODEL_MAP = {
+        "qwen3-embedding-0.6b": "Qwen/Qwen3-Embedding-0.6B",
+        "qwen/qwen3-embedding-0.6b": "Qwen/Qwen3-Embedding-0.6B",
+    }
 
     def __init__(
         self,
         db_config,
         openai_api_key,
-        embedding_model: str = "Qwen/Qwen3-Embedding-0.6B",
+        embedding_model: str = "qwen3-embedding-0.6b",
         embedding_dimensions: int = 1024,
         vector_weight: float = 0.8,
         text_weight: float = 0.2,
@@ -192,7 +197,10 @@ class ArchitecturalHybridRAG:
         self.client = OpenAI(api_key=openai_api_key)
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
-        self.embedding_manager = EmbeddingManager(model_name=embedding_model)
+        self._local_embedding_model_name = self._resolve_local_embedding_model_name(
+            embedding_model
+        )
+        self._local_embedding_model = None
         self.vector_weight, self.text_weight = self._normalize_hybrid_weights(
             vector_weight, text_weight
         )
@@ -225,6 +233,76 @@ class ArchitecturalHybridRAG:
         except Exception:
             payload = str(fields)
         self.logger.log(level, "event=%s data=%s", event, payload)
+
+    @classmethod
+    def _resolve_local_embedding_model_name(cls, model_name: str) -> Optional[str]:
+        normalized = str(model_name or "").strip().lower()
+        if not normalized:
+            return None
+        return cls.LOCAL_EMBEDDING_MODEL_MAP.get(normalized)
+
+    @staticmethod
+    def _resolve_hf_token() -> str:
+        for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+            value = os.getenv(key)
+            if value:
+                stripped = value.strip()
+                if stripped:
+                    return stripped
+        return ""
+
+    def _ensure_local_embedding_model(self):
+        if self._local_embedding_model is not None:
+            return self._local_embedding_model
+        if not self._local_embedding_model_name:
+            raise ValueError("Local embedding model is not configured.")
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "sentence-transformers is required for qwen local embedding mode."
+            ) from exc
+
+        self._log_event(
+            event="local_embedding_model_load_start",
+            level=logging.INFO,
+            model=self._local_embedding_model_name,
+        )
+        hf_token = self._resolve_hf_token()
+        init_kwargs = {}
+        if hf_token:
+            os.environ.setdefault("HF_TOKEN", hf_token)
+            init_kwargs["token"] = hf_token
+        self._local_embedding_model = SentenceTransformer(
+            self._local_embedding_model_name, **init_kwargs
+        )
+        self._log_event(
+            event="local_embedding_model_load_done",
+            level=logging.INFO,
+            model=self._local_embedding_model_name,
+        )
+        return self._local_embedding_model
+
+    def _embed_text(self, text: str) -> list[float]:
+        if self._local_embedding_model_name:
+            model = self._ensure_local_embedding_model()
+            encoded = model.encode(text, normalize_embeddings=True)
+            embedding = encoded.tolist() if hasattr(encoded, "tolist") else list(encoded)
+        else:
+            embedding_resp = self.client.embeddings.create(
+                model=self.embedding_model,
+                input=text,
+                dimensions=self.embedding_dimensions,
+            )
+            embedding = embedding_resp.data[0].embedding
+
+        if len(embedding) != self.embedding_dimensions:
+            raise ValueError(
+                "Embedding dimension mismatch: "
+                f"expected={self.embedding_dimensions}, actual={len(embedding)}, "
+                f"model={self.embedding_model}"
+            )
+        return embedding
 
     @staticmethod
     def _compress_compound_space_label(label: str) -> str:
@@ -263,7 +341,8 @@ class ArchitecturalHybridRAG:
             sep = match.group("sep")
             body = match.group("body")
             compacted = self._compress_compound_space_label(label)
-            return f"{prefix}{compacted}{sep}{body}"
+            normalized_label = self._normalize_space_label_for_output(compacted)
+            return f"{prefix}{normalized_label}{sep}{body}"
 
         return re.sub(
             r"(?m)^(?P<prefix>\s*■\s*)(?P<label>[^:\n]+?)(?P<sep>\s*:\s*)(?P<body>.*)$",
@@ -404,6 +483,11 @@ class ArchitecturalHybridRAG:
             r"\1현관/기타: ",
             normalized,
         )
+        normalized = re.sub(
+            r"(?mi)^(\s*(?:[-•]\s*)?)(?:elev\.?\s*홀|elev\.?\s*hall|elevator\s*hall|엘리베이터\s*홀)\s*:\s*",
+            r"\1엘리베이터홀: ",
+            normalized,
+        )
         return normalized
 
     @staticmethod
@@ -537,14 +621,29 @@ class ArchitecturalHybridRAG:
         text = re.sub(r"좋음입니다(?P<tail>[.!?]?)", r"좋습니다\g<tail>", text)
         return text
 
+    def _normalize_requested_tone_phrasing(self, answer: str) -> str:
+        text = str(answer or "")
+        if not text:
+            return text
+        text = re.sub(
+            r"정보가\s*부족해\s*판단이\s*어렵습니다\.?",
+            "정보가 부족합니다.",
+            text,
+        )
+        text = re.sub(
+            r"기능을\s*확정하기\s*어렵습니다\.?",
+            "기능을 확정할 수 없습니다.",
+            text,
+        )
+        return text
+
     def _normalize_floorplan_block_breaks(self, answer: str) -> str:
         text = str(answer or "")
         if not text:
             return text
-        # Ensure each "[도면 #N]" or "### [도면 #N]" marker starts on a new line.
         text = re.sub(r"(?<!^)(?<!\n)\s*((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\1", text)
-        # Keep one blank line before each marker for readability.
         text = re.sub(r"(?m)([^\n])\n((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\1\n\n\2", text)
+
         return re.sub(r"\n{3,}((?:#{1,6}\s*)?\[\s*도면\s*#\d+\])", r"\n\n\1", text)
 
     def _normalize_generated_answer(self, answer: str) -> str:
@@ -554,12 +653,14 @@ class ArchitecturalHybridRAG:
             self._normalize_meta_expressions(
                 self._normalize_summary_signal_sentence(
                     self._normalize_signal_tone_phrasing(
+                    self._normalize_requested_tone_phrasing(
                     self._normalize_layout_tone_style(
                         self._normalize_space_bullet_labels(
                             self._normalize_technical_parenthetical_phrasing(
                                 self._normalize_space_section_labels(answer)
                             )
                         )
+                    )
                     )
                     )
                 )
@@ -639,6 +740,22 @@ class ArchitecturalHybridRAG:
             missing_fields.append("non_empty_answer")
 
         normalized_mode = mode.strip().lower()
+        safe_default_answer = self._build_safe_default_answer(
+            mode=normalized_mode,
+            expected_document_id=expected_document_id,
+        )
+        if text.strip() == str(safe_default_answer or "").strip():
+            has_document_id_token = True
+            has_metadata_summary = True
+            has_layout_summary = True
+            return AnswerValidationResult(
+                ok=is_non_empty,
+                has_document_id_token=has_document_id_token,
+                has_metadata_summary=has_metadata_summary,
+                has_layout_summary=has_layout_summary,
+                missing_fields=missing_fields,
+            )
+
         if normalized_mode == "no_match":
             has_metadata_summary = bool(self.NO_MATCH_COUNT_LINE_RE.search(text))
             has_document_id_token = True
@@ -669,11 +786,8 @@ class ArchitecturalHybridRAG:
             missing_fields.append("layout_summary")
 
         if normalized_mode == "document_id":
-            # 모든 모드에서 "검색된 도면 id" 토큰 검증은 수행하지 않는다.
             has_document_id_token = True
         elif normalized_mode == "general":
-            # General mode follows the multi-floorplan format:
-            # "조건을 만족하는 도면 총 개수" + repeated "[도면 #N] {document_id}" blocks.
             has_document_id_token = True
             if not re.search(
                 r"(?m)^\s*조건을\s*만족하는\s*도면\s*총\s*개수\s*:\s*\d+\s*$",
@@ -682,7 +796,6 @@ class ArchitecturalHybridRAG:
             ):
                 missing_fields.append("general_total_count_line")
 
-            # Each floorplan marker must start on a new line, not be attached to prior text.
             for _line in text.splitlines():
                 _stripped = _line.strip()
                 if re.search(r"\[\s*도면\s*#\d+\]", _stripped):
@@ -772,40 +885,15 @@ class ArchitecturalHybridRAG:
         if normalized_mode == "document_id":
             document_id = (expected_document_id or "정보 생성 불가").strip() or "정보 생성 불가"
             return (
-                f"1. 검색된 도면 id: {document_id}\n\n"
-                "2. 도면 기본 정보 📊\n"
-                "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
-                "3. 도면 공간 구성 설명 🧩\n"
-                "■ 종합 등급: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 부적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 핵심 설계 평가\n"
-                "• 채광 및 쾌적성: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 가족 융화: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 수납: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 주요 공간별 상세 분석\n"
-                "[공간 정보] 응답 형식 검증 실패로 설명 생성 불가"
+                f"응답 형식 검증에 실패했습니다. 잠시 후 다시 시도하세요."
             )
         if normalized_mode == "general":
             return (
-                "1. 검색된 도면 id: 정보 생성 불가\n\n"
-                "2. 도면 기본 정보 📊\n"
-                "- 응답 형식 검증 실패로 요약 생성 불가\n\n"
-                "3. 도면 공간 구성 설명 🧩\n"
-                "■ 종합 등급: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "- 부적합 항목: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 핵심 설계 평가\n"
-                "• 채광 및 쾌적성: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 가족 융화: 응답 형식 검증 실패로 설명 생성 불가\n"
-                "• 수납: 응답 형식 검증 실패로 설명 생성 불가\n\n"
-                "■ 주요 공간별 상세 분석\n"
-                "[공간 정보] 응답 형식 검증 실패로 설명 생성 불가"
+                "응답 형식 검증에 실패했습니다. 잠시 후 다시 시도하세요."
             )
         if normalized_mode == "no_match":
             return (
                 "조건을 만족하는 도면 총 개수: 0\n"
-                "검색된 도면 id: 없음\n"
                 "요청 조건과 일치하는 도면이 존재하지 않습니다."
             )
         raise ValueError(f"Unsupported validation mode: {mode}")
@@ -1168,6 +1256,9 @@ class ArchitecturalHybridRAG:
             bounds.append({"op": op, "val": val})
         return bounds
 
+    # 비율 필터 "동일" 연산자의 허용 오차 (±)
+    RATIO_EQUAL_TOLERANCE = 3.0
+
     def _ratio_filter_to_bounds(self, value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, dict):
             return []
@@ -1196,7 +1287,13 @@ class ArchitecturalHybridRAG:
         op = self._normalize_ratio_operator(value.get("op", value.get("operator")))
         val = self._parse_float(value.get("val", value.get("value")))
         if op is not None and val is not None:
-            bounds.append({"op": op, "val": val})
+            # "동일" → ±RATIO_EQUAL_TOLERANCE 범위로 변환 (정확한 소수점 매칭 방지)
+            if op == "동일":
+                tol = self.RATIO_EQUAL_TOLERANCE
+                bounds.append({"op": "이상", "val": round(val - tol, 4)})
+                bounds.append({"op": "이하", "val": round(val + tol, 4)})
+            else:
+                bounds.append({"op": op, "val": val})
 
         deduped: list[dict[str, Any]] = []
         seen: set[tuple[str, float]] = set()
@@ -1438,10 +1535,17 @@ class ArchitecturalHybridRAG:
         if not raw:
             return ""
         compact = re.sub(r"\s+", "", raw)
+        compact_ascii = re.sub(r"[._/\-]+", "", compact).lower()
         if re.fullmatch(r"주방(?:및)?식당|주방/식당", compact):
             return "주방/식당"
         if re.fullmatch(r"현관(?:및)?기타(?:공간)?|현관/기타(?:공간)?", compact):
             return "현관/기타"
+        if compact == "엘리베이터홀" or compact_ascii in {
+            "elev홀",
+            "elevhall",
+            "elevatorhall",
+        }:
+            return "엘리베이터홀"
         return raw
 
     def _extract_space_labels_from_document(self, document: str) -> list[str]:
@@ -1673,10 +1777,10 @@ class ArchitecturalHybridRAG:
         if storage_priority and ratio_proximity is not None:
             rescored_docs.sort(key=lambda item: (-item[1], item[2], -item[0]))
         elif storage_priority:
-            # 수납 선호 질의는 수납 우수(2) > 보통(1) > 미확인(0) > 미흡(-1) 순을 우선한다.
+            # 수납 선호 질의: 수납 우수(2) > 보통(1) > 미확인(0) > 미흡(-1)
             rescored_docs.sort(key=lambda item: (item[1], item[0]), reverse=True)
         elif ratio_proximity is not None:
-            # 비율 조건 질의는 기준값에 더 가까운 도면을 우선 노출한다.
+            # 비율 조건 질의: 기준값에 더 가까운 도면을 우선 노출
             rescored_docs.sort(key=lambda item: (item[2], -item[0]))
         else:
             rescored_docs.sort(key=lambda item: item[0], reverse=True)
@@ -1801,7 +1905,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
 * 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
 * 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
 * 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족해 판단이 어렵습니다"처럼 간결하게 표현한다.
+* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
 * 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
 * `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
 * 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.
@@ -1846,7 +1950,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=0.0,
+                temperature=0.1,
             )
             return (response.choices[0].message.content or "").strip()
 
@@ -1890,7 +1994,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         semantic_query = f"{documents} {raw_query}".strip() or raw_query or documents
         text_query = str(documents).strip() or str(raw_query).strip()
 
-        embedding = self.embedding_manager.embed_text(semantic_query)
+        embedding = self._embed_text(semantic_query)
         embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
 
         where_sql, filter_params = self._build_filter_where_parts(filters)
@@ -1932,10 +2036,67 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             OFFSET %s
         """
 
-        try:
+        def _exec_hybrid(w_sql, w_params, use_text=True):
+            """하이브리드 검색 SQL 실행 헬퍼"""
+            if use_text:
+                p = [embedding_vector, text_query, *w_params,
+                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                ts_expr = "ts_rank_cd(to_tsvector('simple', COALESCE(fa.analysis_description, '')), websearch_to_tsquery('simple', %s))"
+            else:
+                p = [embedding_vector, *w_params,
+                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                ts_expr = "0.0::double precision"
+                # text_query placeholder 제거
+            text_placeholder = "%s, " if use_text else ""
+            q = f"""
+                WITH scored AS (
+                    SELECT f.id AS floorplan_id, f.name AS document_id,
+                    fa.analysis_description AS document,
+                    fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
+                    fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.has_special_space, fa.has_etc_space,
+                    (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
+                    {ts_expr} AS text_score
+                    FROM floorplan_analysis fa
+                    JOIN floorplan f ON fa.floorplan_id = f.id
+                    WHERE {w_sql}
+                )
+                SELECT floorplan_id, document_id, document,
+                windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
+                structure_type, bay_count, room_count, bathroom_count,
+                compliance_grade, ventilation_grade, has_special_space, has_etc_space,
+                (%s * vector_similarity + %s * text_score) AS similarity
+                FROM scored
+                ORDER BY similarity DESC
+                LIMIT %s
+                OFFSET %s
+            """
             with self.conn.cursor() as cur:
-                cur.execute(sql, params)
+                cur.execute(q, p)
                 return cur.fetchall()
+
+        try:
+            results = _exec_hybrid(where_sql, filter_params, use_text=True)
+
+            # 폴백: 결과 0 → 점진적 필터 완화 (평가성 → 비율/부울 → 구조 순 제거)
+            if not results and filters:
+                for relaxed in self._relax_filters(filters):
+                    if len(relaxed) >= len(filters):
+                        continue
+                    self._log_event(
+                        event="retrieve_filter_relaxation",
+                        level=logging.INFO,
+                        reason="progressive_filter_relaxation",
+                        dropped=[k for k in filters if k not in relaxed],
+                        remaining=list(relaxed.keys()),
+                    )
+                    fb_where, fb_params = self._build_filter_where_parts(relaxed)
+                    results = _exec_hybrid(fb_where, fb_params, use_text=True)
+                    if results:
+                        break
+
+            return results
         except Exception as exc:
             self.conn.rollback()
             if text_query:
@@ -1947,42 +2108,235 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     filter_count=len(filter_params),
                     error=str(exc),
                 )
-                fallback_params = [
-                    embedding_vector,
-                    *filter_params,
-                    self.vector_weight,
-                    self.text_weight,
-                    top_k,
-                    max(0, int(offset)),
-                ]
-                fallback_sql = f"""
-                    WITH scored AS (
-                        SELECT f.id AS floorplan_id, f.name AS document_id,
-                        fa.analysis_description AS document,
-                        fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
-                        fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                        fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
-                        fa.has_special_space, fa.has_etc_space,
-                        (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
-                        0.0::double precision AS text_score
-                        FROM floorplan_analysis fa
-                        JOIN floorplan f ON fa.floorplan_id = f.id
-                        WHERE {where_sql}
-                    )
-                    SELECT floorplan_id, document_id, document,
-                    windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
-                    structure_type, bay_count, room_count, bathroom_count,
-                    compliance_grade, ventilation_grade, has_special_space, has_etc_space,
-                    (%s * vector_similarity + %s * text_score) AS similarity
-                    FROM scored
-                    ORDER BY similarity DESC
-                    LIMIT %s
-                    OFFSET %s
-                """
+                try:
+                    return _exec_hybrid(where_sql, filter_params, use_text=False)
+                except Exception:
+                    self.conn.rollback()
+                    # 필터 전체 제거 후 최종 시도
+                    return _exec_hybrid("TRUE", [], use_text=False)
+            raise
+
+    def retrieve_by_embedding(
+        self,
+        embedding: list[float],
+        filters: dict[str, Any] | None = None,
+        top_k: int = 3,
+    ) -> list:
+        """
+        Pre-computed embedding 기반 유사 도면 검색.
+        CV 분석에서 생성된 embedding 벡터를 직접 사용하여 DB에서 유사 도면을 찾는다.
+
+        Args:
+            embedding: 1024-dim embedding vector (qwen3-embedding-0.6b)
+            filters: 메트릭 기반 필터 (structure_type, room_count 등). None이면 필터 없이 검색.
+            top_k: 반환할 최대 도면 수
+        Returns:
+            list of tuples (_retrieve_hybrid와 동일 형식)
+        """
+        embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
+
+        where_sql, filter_params = self._build_filter_where_parts(filters or {})
+        params = [embedding_vector, *filter_params, top_k]
+
+        sql = f"""
+            SELECT f.id AS floorplan_id, f.name AS document_id,
+                fa.analysis_description AS document,
+                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
+                fa.bathroom_ratio, fa.kitchen_ratio,
+                fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                fa.has_special_space, fa.has_etc_space,
+                (1 - (fa.embedding <=> %s::vector)) AS similarity
+            FROM floorplan_analysis fa
+            JOIN floorplan f ON fa.floorplan_id = f.id
+            WHERE {where_sql}
+            ORDER BY similarity DESC
+            LIMIT %s
+        """
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, params)
+                results = cur.fetchall()
+        except Exception:
+            self.conn.rollback()
+            results = []
+
+        # Progressive filter relaxation: 필터 적용 시 결과가 부족하면 필터 없이 재검색
+        if len(results) < top_k and filters:
+            fallback_params = [embedding_vector, top_k]
+            fallback_sql = """
+                SELECT f.id AS floorplan_id, f.name AS document_id,
+                    fa.analysis_description AS document,
+                    fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
+                    fa.bathroom_ratio, fa.kitchen_ratio,
+                    fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.has_special_space, fa.has_etc_space,
+                    (1 - (fa.embedding <=> %s::vector)) AS similarity
+                FROM floorplan_analysis fa
+                JOIN floorplan f ON fa.floorplan_id = f.id
+                ORDER BY similarity DESC
+                LIMIT %s
+            """
+            try:
                 with self.conn.cursor() as cur:
                     cur.execute(fallback_sql, fallback_params)
-                    return cur.fetchall()
-            raise
+                    fallback_results = cur.fetchall()
+                # 기존 결과 ID를 제외하고 부족분 채우기
+                existing_ids = {row[0] for row in results}
+                for row in fallback_results:
+                    if row[0] not in existing_ids:
+                        results.append(row)
+                        existing_ids.add(row[0])
+                    if len(results) >= top_k:
+                        break
+            except Exception:
+                self.conn.rollback()
+
+        return results[:top_k]
+
+    def search_by_description(
+        self, description: str, top_k: int = 3,
+        explicit_filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        텍스트 설명(document)으로 유사 도면 검색.
+        이미지 분석 후 생성된 document를 검색 쿼리로 사용한다.
+        run()과 달리 세션/히스토리 부작용 없이 검색+리랭킹만 수행.
+
+        Args:
+            description: 자연어 도면 설명 (to_natural_language() 결과)
+            top_k: 최종 반환할 도면 수
+            explicit_filters: 명시적 필터 (LLM 추출 필터를 덮어씀, 이미지 검색용)
+        Returns:
+            {"docs": [...], "query_json": {...}, "total_count": int}
+        """
+        query_json = self._analyze_query(description)
+        filters = query_json.get("filters", {}) or {}
+        documents = query_json.get("documents", "") or ""
+
+        # 명시적 필터가 있으면 LLM 추출 필터에 병합 (명시적 필터 우선)
+        if explicit_filters:
+            self.logger.info("[search_by_description] LLM 추출 필터: %s", filters)
+            self.logger.info("[search_by_description] 명시적 필터: %s", explicit_filters)
+            filters.update(explicit_filters)
+            query_json["filters"] = filters
+
+        self.logger.info("[search_by_description] 최종 필터: %s", filters)
+        self.logger.info("[search_by_description] documents: %s", documents[:100] if documents else "(없음)")
+
+        total_count = self._count_matches(filters, documents)
+        self.logger.info("[search_by_description] 매칭 도면: %d개", total_count)
+
+        if total_count <= 0:
+            return {"docs": [], "query_json": query_json, "total_count": 0}
+
+        retrieve_k = min(max(total_count, top_k), 50)
+        docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
+
+        docs = self._rerank_by_query_signal_preferences(
+            docs, description, filters,
+        )
+
+        return {
+            "docs": docs[:top_k],
+            "query_json": query_json,
+            "total_count": total_count,
+        }
+
+    def count_by_filters(self, filters: dict[str, Any] | None = None) -> int:
+        """필터 조건에 맞는 도면 총 개수 반환 (public wrapper)"""
+        return self._count_matches(filters or {})
+
+    def generate_similar_answer(
+        self,
+        analysis_metrics: dict[str, Any],
+        docs: list,
+        total_count: int,
+    ) -> str:
+        """
+        유사 도면 검색 결과를 텍스트 검색과 동일한 구조로 생성.
+        기존 _generate_answer를 재사용하고 마커를 [유사 도면 #N]으로 변환.
+
+        Args:
+            analysis_metrics: CV 분석 메트릭 (room_count, bay_count 등)
+            docs: retrieve_by_embedding 결과 (tuple list)
+            total_count: 필터 조건에 맞는 전체 도면 수
+        Returns:
+            [유사 도면 #N] 마커가 포함된 구조화된 답변 문자열
+        """
+        if not docs:
+            return ""
+
+        # 메트릭에서 검색 쿼리 텍스트 생성
+        parts = []
+        m = analysis_metrics or {}
+        if m.get("structure_type"):
+            parts.append(f"{m['structure_type']} 구조")
+        if m.get("bay_count"):
+            parts.append(f"Bay {m['bay_count']}개")
+        if m.get("room_count"):
+            parts.append(f"방 {m['room_count']}개")
+        if m.get("bathroom_count"):
+            parts.append(f"화장실 {m['bathroom_count']}개")
+        if m.get("windowless_count") is not None:
+            parts.append(f"무창 공간 {m['windowless_count']}개")
+        if m.get("living_room_ratio") is not None:
+            parts.append(f"거실 비율 {m['living_room_ratio']}%")
+        query = ", ".join(parts) + " 구성의 도면과 유사한 도면" if parts else "업로드된 도면과 유사한 도면"
+
+        # query_json 구성 (구조 필터 + 비율 필터)
+        filters: dict[str, Any] = {}
+        for key in ("structure_type", "room_count", "bay_count", "bathroom_count", "windowless_count"):
+            if key in m and m[key] is not None:
+                filters[key] = m[key]
+        if m.get("living_room_ratio") is not None:
+            filters["living_room_ratio"] = {"op": "동일", "val": m["living_room_ratio"]}
+        query_json = {"filters": filters, "documents": "", "raw_query": query}
+
+        # 기존 _generate_answer 재사용
+        answer = self._generate_answer(query, query_json, docs, total_count)
+
+        # [도면 #N] → [유사 도면 #N] 마커 변환
+        answer = re.sub(
+            r"(#{1,6}\s*)?\[도면 #(\d+)\]",
+            lambda mat: f"{mat.group(1) or ''}[유사 도면 #{mat.group(2)}]",
+            answer,
+        )
+        # "조건을 만족하는 도면 총 개수: N" → "유사 도면 N개"
+        answer = re.sub(
+            r"조건을 만족하는 도면 총 개수:\s*(\d+)",
+            r"유사 도면 \1개",
+            answer,
+        )
+        return answer
+
+    # 점진적 필터 완화 우선순위 (먼저 제거할 필터 → 나중에 제거할 필터)
+    # 평가성 필터 → 비율 필터 → 부울 필터 → 구조 필터 순으로 제거
+    _FILTER_DROP_PRIORITY = [
+        # 1단계: 평가성 필터 (가장 제한적, 먼저 제거)
+        {"compliance_grade", "ventilation_grade"},
+        # 2단계: 비율 필터 + 부울 필터
+        {"balcony_ratio", "living_room_ratio", "bathroom_ratio", "kitchen_ratio",
+         "has_special_space", "has_etc_space"},
+        # 3단계: 구조 필터 (마지막까지 유지, 최후에 제거)
+        {"structure_type", "bay_count", "room_count", "bathroom_count", "windowless_count"},
+    ]
+
+    def _relax_filters(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        필터를 점진적으로 완화한 후보 목록 반환.
+        우선순위가 낮은 필터부터 제거하여 여러 단계의 완화된 필터셋을 생성.
+        """
+        candidates = []
+        current = dict(filters)
+        for drop_set in self._FILTER_DROP_PRIORITY:
+            keys_to_drop = [k for k in current if k in drop_set]
+            if keys_to_drop:
+                current = {k: v for k, v in current.items() if k not in drop_set}
+                candidates.append(current.copy())
+        return candidates
 
     def _count_matches(self, filters: dict[str, Any], documents: str = "") -> int:
         where_sql, params = self._build_filter_where_parts(filters)
@@ -1994,12 +2348,18 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                 "to_tsvector('simple', COALESCE(fa.analysis_description, '')) @@ websearch_to_tsquery('simple', %s)"
             )
             params = [*params, normalized_documents]
-        sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {where_sql}"
-        try:
+        base_sql = "SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {}"
+
+        def _exec_count(w_sql, w_params):
             with self.conn.cursor() as cur:
-                cur.execute(sql, params)
-                matched_count = int(cur.fetchone()[0])
-            if normalized_documents and matched_count == 0 and filters:
+                cur.execute(base_sql.format(w_sql), w_params)
+                return int(cur.fetchone()[0])
+
+        try:
+            matched_count = _exec_count(where_sql, params)
+
+            # 폴백 1: 텍스트 검색 제거 (필터만)
+            if matched_count == 0 and normalized_documents and filters:
                 self._log_event(
                     event="count_matches_zero_text_fallback",
                     level=logging.INFO,
@@ -2007,11 +2367,26 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     text_query=normalized_documents,
                     filter_count=len(filters),
                 )
-                fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
-                with self.conn.cursor() as cur:
-                    cur.execute(fallback_sql, fallback_params)
-                    return int(cur.fetchone()[0])
+                fb_where, fb_params = self._build_filter_where_parts(filters)
+                matched_count = _exec_count(fb_where, fb_params)
+
+            # 폴백 2~N: 점진적 필터 완화 (평가성 → 비율/부울 → 구조 순 제거)
+            if matched_count == 0 and filters:
+                for relaxed in self._relax_filters(filters):
+                    if len(relaxed) >= len(filters):
+                        continue
+                    self._log_event(
+                        event="count_matches_filter_relaxation",
+                        level=logging.INFO,
+                        reason="progressive_filter_relaxation",
+                        dropped=[k for k in filters if k not in relaxed],
+                        remaining=list(relaxed.keys()),
+                    )
+                    fb_where, fb_params = self._build_filter_where_parts(relaxed)
+                    matched_count = _exec_count(fb_where, fb_params)
+                    if matched_count > 0:
+                        break
+
             return matched_count
         except Exception as exc:
             self.conn.rollback()
@@ -2024,10 +2399,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     error=str(exc),
                 )
                 fallback_where_sql, fallback_params = self._build_filter_where_parts(filters)
-                fallback_sql = f"SELECT COUNT(*) FROM floorplan_analysis fa JOIN floorplan f ON fa.floorplan_id = f.id WHERE {fallback_where_sql}"
-                with self.conn.cursor() as cur:
-                    cur.execute(fallback_sql, fallback_params)
-                    return int(cur.fetchone()[0])
+                return _exec_count(fallback_where_sql, fallback_params)
             raise
 
     def _generate_answer(
@@ -2137,7 +2509,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
 * 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
 * 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
 * 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족해 판단이 어렵습니다"처럼 간결하게 표현한다.
+* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
 * 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
 * `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
 * 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.

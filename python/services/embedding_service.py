@@ -1,6 +1,6 @@
 """
 임베딩 생성 서비스
-Qwen3-Embedding-0.6B를 사용한 벡터 생성 (1024차원)
+OpenAI Embedding API를 사용한 벡터 생성
 """
 
 import logging
@@ -27,9 +27,7 @@ class EmbeddingService:
         logger.info("임베딩 매니저 로딩 중...")
         try:
             self.config = RAGConfig()
-            self.embedding_manager = EmbeddingManager(
-                model_name=self.config.EMBEDDING_MODEL
-            )
+            self.embedding_manager = EmbeddingManager()
             logger.info("임베딩 매니저 로딩 완료!")
         except Exception as e:
             logger.error(f"임베딩 매니저 로딩 실패: {e}")
@@ -43,7 +41,7 @@ class EmbeddingService:
             text: 임베딩할 텍스트 (최대 8000자)
             
         Returns:
-            1024차원 임베딩 벡터
+            1536차원 임베딩 벡터
         """
         self.load_manager()
         
@@ -55,7 +53,7 @@ class EmbeddingService:
         except Exception as e:
             logger.error(f"임베딩 생성 실패: {e}")
             # 실패 시 0 벡터 반환
-            return [0.0] * 1024
+            return [0.0] * 1536
     
     def is_loaded(self) -> bool:
         """매니저 로드 여부 확인"""

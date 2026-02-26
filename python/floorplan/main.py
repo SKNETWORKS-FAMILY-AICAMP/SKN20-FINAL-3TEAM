@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -57,6 +58,25 @@ def _load_env_candidates() -> None:
             loaded.add(resolved)
 
 
+def _resolve_hf_token_from_env() -> str:
+    for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+        value = os.getenv(key)
+        if value:
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return ""
+
+
+def _configure_hf_token(token: str | None) -> None:
+    resolved = (token or "").strip()
+    if not resolved:
+        return
+    os.environ["HF_TOKEN"] = resolved
+    os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", resolved)
+    os.environ.setdefault("HUGGINGFACEHUB_API_TOKEN", resolved)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Test runner for python/floorplan/pipeline.py"
@@ -80,8 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="OpenAI API key (or set OPENAI_API_KEY)",
     )
     parser.add_argument(
+        "--hf-token",
+        default=_resolve_hf_token_from_env(),
+        help="Hugging Face token (or set HF_TOKEN)",
+    )
+    parser.add_argument(
         "--embedding-model",
-        default=_env("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
+        default=_env("EMBEDDING_MODEL", "qwen3-embedding-0.6b"),
     )
     parser.add_argument(
         "--embedding-dimensions",
@@ -90,6 +115,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--vector-weight", type=float, default=0.8)
     parser.add_argument("--text-weight", type=float, default=0.2)
+    parser.add_argument(
+        "--validate-sample",
+        action="store_true",
+        help="Run 100-sample validation (format + ranking metrics) using ground truth data",
+    )
+    parser.add_argument(
+        "--validate-size",
+        type=int,
+        default=int(_env("VALIDATE_SIZE", "100")),
+        help="Validation sample size (default: 100)",
+    )
+    parser.add_argument(
+        "--validate-seed",
+        type=int,
+        default=int(_env("VALIDATE_SEED", "42")),
+        help="Validation sampling seed (default: 42)",
+    )
+    parser.add_argument(
+        "--validate-output",
+        default=_env("VALIDATE_OUTPUT_DIR", "artifacts/validation"),
+        help="Validation output directory",
+    )
+    parser.add_argument(
+        "--ground-truth-path",
+        default=_env("GROUND_TRUTH_PATH", "data/ground_truth.csv"),
+        help="Ground truth file path (.csv, .jsonl, .json)",
+    )
     return parser
 
 
@@ -98,6 +150,7 @@ def build_rag(args: argparse.Namespace):
 
     if not args.openai_api_key:
         raise ValueError("OPENAI_API_KEY is required. Pass --openai-api-key or set env.")
+    _configure_hf_token(getattr(args, "hf_token", None))
 
     db_config = {
         "host": args.db_host,
@@ -143,13 +196,66 @@ def run_interactive(rag) -> None:
         run_once(rag, query)
 
 
+def run_image_name_test(rag, image_name: str) -> int:
+    query = image_name.strip()
+    answer = rag.run(query)
+
+    has_document_id_line = bool(
+        re.search(rf"(?m)^1\.\s*검색된 도면 id:\s*{re.escape(query)}\s*$", answer)
+    )
+    has_metadata_section = "2. 도면 기본 정보 요약" in answer
+    has_layout_section = "3. 도면 공간 구성 설명" in answer
+    passed = has_document_id_line and has_metadata_section and has_layout_section
+
+    print("\n=== TEST QUERY ===")
+    print(query)
+    print("\n=== TEST CHECKS ===")
+    print(f"- has_document_id_line: {has_document_id_line}")
+    print(f"- has_metadata_section: {has_metadata_section}")
+    print(f"- has_layout_section: {has_layout_section}")
+    print(f"- result: {'PASS' if passed else 'FAIL'}")
+    print("\n=== ANSWER ===")
+    print(answer)
+
+    return 0 if passed else 1
+
+
 def main() -> int:
     _load_env_candidates()
     parser = build_parser()
+    parser.add_argument(
+        "--test-image-name",
+        help=(
+            "Run document_id query test and assert document-id prompt output format "
+            "(example: APT_FP_OCR_030796374.PNG)"
+        ),
+    )
     args = parser.parse_args()
 
     try:
         rag = build_rag(args)
+        if args.validate_sample:
+            from validation_agent import (
+                ValidationAgent,
+                ValidationConfig,
+                ValidationInputError,
+            )
+
+            try:
+                config = ValidationConfig(
+                    ground_truth_path=Path(args.ground_truth_path),
+                    output_dir=Path(args.validate_output),
+                    sample_size=int(args.validate_size),
+                    seed=int(args.validate_seed),
+                )
+                validator = ValidationAgent(rag=rag, config=config)
+                return validator.run()
+            except ValidationInputError as exc:
+                print(f"Validation input error: {exc}", file=sys.stderr)
+                return 2
+
+        if args.test_image_name:
+            return run_image_name_test(rag, args.test_image_name)
         if args.interactive:
             run_interactive(rag)
         else:
