@@ -33,17 +33,13 @@ class ArchitecturalHybridRAG:
         "room_count",
         "bathroom_count",
         "compliance_grade",
-        "ventilation_grade",
+        "ventilation_quality",
         "has_special_space",
         "has_etc_space",
     ]
 
     FILTER_ALIASES = {
-        "ventilation_quality": "ventilation_grade",
-    }
-
-    # floorplan_analysis 실제 DB 컬럼명 매핑 (내부명 → DB 컬럼명)
-    _DB_COLUMN_MAP = {
+        # Backward compatibility for older analyzer outputs.
         "ventilation_grade": "ventilation_quality",
     }
 
@@ -90,6 +86,22 @@ class ArchitecturalHybridRAG:
         "family_harmony": "미흡함",
         "storage": "부족함",
     }
+    DOCUMENT_COMPLIANCE_ITEM_LABEL_RE = re.compile(
+        r"(채광(?:\s*및\s*쾌적성)?|daylight(?:ing|ling)?|lighting|환기|ventilation|가족\s*융화|가족융화|family_community|family_harmony|수납(?:\s*공간)?|storage)\s*(?:은\(는\)|은|는|이|가|:|=)\s*",
+        re.IGNORECASE,
+    )
+    DOCUMENT_COMPLIANCE_POSITIVE_RE = re.compile(
+        r"(우수|양호|적정|적합|충분|넉넉|충족|확보|부합|범위\s*내|원활|좋|유리|풍부|넓)",
+        re.IGNORECASE,
+    )
+    DOCUMENT_COMPLIANCE_NEGATIVE_RE = re.compile(
+        r"(미흡|부족|부적합|불합격|미달|초과|무창|없음|없다|불리|불충분|권장[^,.\n]{0,30}(?:초과|미달)|기준[^,.\n]{0,30}(?:초과|미달))",
+        re.IGNORECASE,
+    )
+    DOCUMENT_COMPLIANCE_UNCERTAIN_RE = re.compile(
+        r"(불명확|확실하지\s*않|확정할\s*수\s*없|정보가\s*부족|평가\s*불가|판단\s*불가|미확인|어렵)",
+        re.IGNORECASE,
+    )
     DOCUMENT_ID_LINE_RE = re.compile(r"(?m)^1\.\s*검색된 도면 id:\s*(.+)\s*$")
     GENERAL_ID_TOKEN_RE = re.compile(r"검색된\s*도면\s*id", re.IGNORECASE)
     METADATA_SECTION_TOKEN = "2. 도면 기본 정보"
@@ -103,6 +115,34 @@ class ArchitecturalHybridRAG:
         re.IGNORECASE,
     )
     NO_MATCH_MESSAGE_TOKEN = "요청 조건과 일치하는 도면이 존재하지 않습니다."
+    WINDOWLESS_QUERY_ALIAS_RE = re.compile(
+        r"(무창\s*공간|무창실|무창|창문이\s*없는(?:\s*공간)?|창문\s*없는(?:\s*공간)?|창\s*없는(?:\s*공간)?|노창)",
+        re.IGNORECASE,
+    )
+    DOC_RATIO_TOKEN_RE = re.compile(
+        r"(%|퍼센트|비율|ratio|이상|이하|초과|미만|동일)",
+        re.IGNORECASE,
+    )
+    STORAGE_RATIO_QUERY_TARGET_RE = re.compile(
+        r"(수납(?:\s*공간)?|storage|드레스룸|팬트리)",
+        re.IGNORECASE,
+    )
+    LDK_RATIO_QUERY_TARGET_RE = re.compile(
+        r"(ldk|엘디케이|리빙\s*다이닝\s*키친|living\s*dining\s*kitchen)",
+        re.IGNORECASE,
+    )
+    WINDOWLESS_RATIO_DOC_KEYWORD_RE = re.compile(
+        r"(무창(?:\s*공간|\s*실)?|노창|창문(?:이)?\s*없는|창\s*없는)",
+        re.IGNORECASE,
+    )
+    STORAGE_RATIO_DOC_KEYWORD_RE = re.compile(
+        r"(수납(?:\s*공간)?|storage|드레스룸|팬트리)",
+        re.IGNORECASE,
+    )
+    LDK_RATIO_DOC_KEYWORD_RE = re.compile(
+        r"(ldk|엘디케이|리빙\s*다이닝\s*키친|living\s*dining\s*kitchen)",
+        re.IGNORECASE,
+    )
     DOCUMENT_LAYOUT_REQUIRED_HEADERS = (
         "종합 등급",
         "핵심 설계 평가",
@@ -256,7 +296,7 @@ class ArchitecturalHybridRAG:
             raise ValueError("Local embedding model is not configured.")
         try:
             from sentence_transformers import SentenceTransformer
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: 
             raise RuntimeError(
                 "sentence-transformers is required for qwen local embedding mode."
             ) from exc
@@ -528,18 +568,63 @@ class ArchitecturalHybridRAG:
                 header = match.group("header")
                 body = match.group("body")
                 normalized_lines: list[str] = []
+                line_by_label: dict[str, str] = {}
                 for line in body.splitlines():
                     stripped = line.strip()
                     if not stripped:
                         continue
-                    line_match = re.match(r"^\s*(?:[-•]\s*)?([^:\n]+)\s*:\s*(.+?)\s*$", line)
-                    if line_match:
-                        label = self._normalize_core_eval_label_for_output(line_match.group(1))
-                        content = re.sub(r"\s+", " ", line_match.group(2)).strip()
+                    bracket_match = re.match(
+                        r"^\s*(?:[-•]\s*)?\[(?P<label>[^\]\n]+)\]\s*(?::\s*|\s+)?(?P<content>.+?)\s*$",
+                        line,
+                    )
+                    if bracket_match:
+                        label = self._normalize_core_eval_label_for_output(bracket_match.group("label"))
+                        if not label:
+                            label = re.sub(r"\s+", " ", bracket_match.group("label")).strip()
+                        content = re.sub(r"\s+", " ", bracket_match.group("content")).strip()
                         if label and content:
-                            normalized_lines.append(f"• {label}: {content}")
+                            existing = line_by_label.get(label)
+                            if not existing:
+                                line_by_label[label] = content
+                            elif content not in existing:
+                                line_by_label[label] = f"{existing} {content}"
                         continue
+                    line_match = re.match(
+                        r"^\s*(?:[-•]\s*)?(?P<label>[^:\n\[\]]+)\s*:\s*(?P<content>.+?)\s*$",
+                        line,
+                    )
+                    if line_match:
+                        label = self._normalize_core_eval_label_for_output(line_match.group("label"))
+                        if not label:
+                            label = re.sub(r"\s+", " ", line_match.group("label")).strip()
+                        content = re.sub(r"\s+", " ", line_match.group("content")).strip()
+                        if label and content:
+                            existing = line_by_label.get(label)
+                            if not existing:
+                                line_by_label[label] = content
+                            elif content not in existing:
+                                line_by_label[label] = f"{existing} {content}"
+                        continue
+
+                    bare_match = re.match(
+                        r"^\s*(?:[-•]\s*)?(?P<label>채광|환기|가족\s*융화|수납)\s+(?P<content>.+?)\s*$",
+                        stripped,
+                    )
+                    if bare_match:
+                        label = self._normalize_core_eval_label_for_output(bare_match.group("label"))
+                        content = re.sub(r"\s+", " ", bare_match.group("content")).strip()
+                        if label and content:
+                            existing = line_by_label.get(label)
+                            if not existing:
+                                line_by_label[label] = content
+                            elif content not in existing:
+                                line_by_label[label] = f"{existing} {content}"
+                        continue
+
                     normalized_lines.append(stripped)
+
+                for label, content in line_by_label.items():
+                    normalized_lines.append(f"[{label}] {content}")
                 block_body = "\n".join(normalized_lines).strip()
                 if not block_body:
                     return header
@@ -576,7 +661,7 @@ class ArchitecturalHybridRAG:
             return normalized
 
         section_pattern = re.compile(
-            r"(?s)(?P<header>3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*)(?P<body>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)"
+            r"(?s)(?P<header>3\.\s*도면\s*공간\s*구성\s*설명(?:\s*🧩)?\s*)(?P<body>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)"
         )
 
         return section_pattern.sub(
@@ -671,7 +756,7 @@ class ArchitecturalHybridRAG:
         if not text:
             return ""
         match = re.search(
-            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*(?P<section>.*)$",
+            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명(?:\s*🧩)?\s*(?P<section>.*)$",
             text,
         )
         if not match:
@@ -683,7 +768,7 @@ class ArchitecturalHybridRAG:
         if not text:
             return []
         matches = re.finditer(
-            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명\s*🧩\s*(?P<section>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)",
+            r"(?s)3\.\s*도면\s*공간\s*구성\s*설명(?:\s*🧩)?\s*(?P<section>.*?)(?=\n(?:#{1,6}\s*)?\[\s*도면\s*#|\Z)",
             text,
         )
         sections = [m.group("section").strip() for m in matches]
@@ -703,6 +788,8 @@ class ArchitecturalHybridRAG:
             if not stripped:
                 continue
             if re.match(r"^(?:[-•·]\s*)?[^:\n]+:\s*.+$", stripped):
+                return True
+            if re.match(r"^(?:[-•·]\s*)?\[[^\]\n]+\](?:\s*:\s*|\s+).+$", stripped):
                 return True
         return False
 
@@ -1010,44 +1097,106 @@ class ArchitecturalHybridRAG:
             raise ValueError("At least one hybrid weight must be greater than zero.")
         return vector / total, text / total
 
+    def _normalize_windowless_aliases(self, query: str) -> str:
+        text = str(query or "")
+        if not text:
+            return text
+        normalized = self.WINDOWLESS_QUERY_ALIAS_RE.sub("무창 공간", text)
+        normalized = re.sub(r"(무창\s*공간)(?:\s*무창\s*공간)+", r"\1", normalized)
+        normalized = re.sub(r"\s{2,}", " ", normalized)
+        return normalized.strip()
+
     def _analyze_query(self, query: str) -> dict:
         """ 
         LLM: query -> JSON (filters, documents)
         """
+        normalized_query = self._normalize_windowless_aliases(query)
         word_rules_text = json.dumps(self.word_dict, ensure_ascii=False, indent=2)
         system_prompt = (
-            "You are a query analyzer for architectural floorplan retrieval.\n"
-            "Return ONLY valid JSON in this exact schema:\n"
-            "{\n"
-            '  "filters": {\n'
-            '    "windowless_count": {"op": "이상|이하|초과|미만|동일", "val": "integer"} (optional),\n'
-            '    "balcony_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
-            '    "living_room_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
-            '    "bathroom_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
-            '    "kitchen_ratio": {"op": "이상|이하|초과|미만|동일", "val": "number"} (optional),\n'
-            '    "structure_type": "string(optional)",\n'
-            '    "bay_count": "integer(optional)",\n'
-            '    "room_count": "integer(optional)",\n'
-            '    "bathroom_count": "integer(optional)",\n'
-            '    "compliance_grade": "string(optional)",\n'
-            '    "ventilation_grade": "string(optional)",\n'
-            '    "has_special_space": "boolean(optional)",\n'
-            '    "has_etc_space": "boolean(optional)"\n'
-            "  },\n"
-            '  "documents": "string(required)"\n'
-            "}\n"
-            "Map explicit, structured constraints to filters.\n"
-            "Put abstract or descriptive intent into documents.\n"
-            "If no filter applies, use an empty filters object.\n"
-            "Synonym and classification rules (JSON):\n"
-            f"{word_rules_text}\n"
-            "Prompt rules:\n"
-            "1) Normalization Rule: When interpreting the user's query, map terms to standardized space names using normalization_rules.\n"
-            "2) Etc. Space Classification: If a mapped/mentioned space is in special_classification['기타공간'] "
-            "(or equivalent category_groups['기타공간']), include \"has_etc_space\": true in filters.\n"
-            "3) Special Space Classification: If a mapped/mentioned space is in special_classification['특화공간'] "
-            "(or equivalent category_groups['특화공간']), include \"has_special_space\": true in filters.\n"
-            "Only include these boolean fields when the condition is met."
+                "You are a query analyzer for architectural floorplan retrieval.\n"
+    "Your sole task: parse a Korean-language user query and return a structured JSON object.\n"
+    "\n"
+    "## OUTPUT REQUIREMENTS\n"
+    "- Respond with ONLY valid JSON. No explanation, no markdown, no code fences.\n"
+    "- All Korean string values must be preserved as-is (UTF-8).\n"
+    "- If no filter condition applies, use an empty object for 'filters'.\n"
+    "- 'documents' is ALWAYS required; use an empty string \"\" if no descriptive intent is found.\n"
+    "\n"
+    
+    # --- SCHEMA ---
+    "## JSON SCHEMA\n"
+    "{\n"
+    "  \"filters\": {\n"
+    "    \"windowless_count\":  {\"op\": \"이상|이하|초과|미만|동일\", \"val\": <integer>},  // optional\n"
+    "    \"balcony_ratio\":     {\"op\": \"이상|이하|초과|미만|동일\", \"val\": <number>},   // optional\n"
+    "    \"living_room_ratio\": {\"op\": \"이상|이하|초과|미만|동일\", \"val\": <number>},   // optional\n"
+    "    \"bathroom_ratio\":    {\"op\": \"이상|이하|초과|미만|동일\", \"val\": <number>},   // optional\n"
+    "    \"kitchen_ratio\":     {\"op\": \"이상|이하|초과|미만|동일\", \"val\": <number>},   // optional\n"
+    "    \"structure_type\":    <string>,   // optional\n"
+    "    \"bay_count\":         <integer>,  // optional\n"
+    "    \"room_count\":        <integer>,  // optional\n"
+    "    \"bathroom_count\":    <integer>,  // optional\n"
+    "    \"compliance_grade\":  <string>,   // optional\n"
+    "    \"ventilation_quality\": <string>,   // optional\n"
+    "    \"has_special_space\": <boolean>,  // optional — set ONLY when condition is met\n"
+    "    \"has_etc_space\":     <boolean>   // optional — set ONLY when condition is met\n"
+    "  },\n"
+    "  \"documents\": <string>  // REQUIRED — abstract or descriptive intent from query\n"
+    "}\n"
+    "\n"
+    
+    # --- MAPPING RULES ---
+    "## MAPPING RULES\n"
+    "\n"
+    "**Rule 1 — Normalization:**\n"
+    "Map all user terms to standardized space names using normalization_rules in the synonym data below.\n"
+    "\n"
+    "**Rule 2 — 기타공간 Classification:**\n"
+    "If a mapped/mentioned space appears in special_classification['기타공간'] "
+    "(or category_groups['기타공간']), set \"has_etc_space\": true in filters.\n"
+    "\n"
+    "**Rule 3 — 특화공간 Classification:**\n"
+    "If a mapped/mentioned space appears in special_classification['특화공간'] "
+    "(or category_groups['특화공간']), set \"has_special_space\": true in filters.\n"
+    "\n"
+    "**Rule 4 — Filters vs. Documents split:**\n"
+    "- Map explicit, structured constraints (counts, ratios, grades, types) → filters\n"
+    "- Map abstract, qualitative, or descriptive intent → documents\n"
+    "- A query may populate BOTH filters and documents at the same time.\n"
+    "\n"
+    
+    # --- NEGATIVE RULES ---
+    "## DO NOT\n"
+    "- Do NOT add has_special_space or has_etc_space unless the space explicitly matches the classification lists.\n"
+    "- Do NOT omit the 'documents' field — always include it even if value is \"\".\n"
+    "- Do NOT include filters keys with null values — omit the key entirely if not applicable.\n"
+    "- Do NOT wrap output in markdown code fences or add any text outside the JSON object.\n"
+    "\n"
+   
+    # --- FEW-SHOT EXAMPLES ─---
+    "\n"
+    "Input: \"방 3개에 욕실 2개인 평면 찾아줘\"\n"
+    "Output: {\"filters\": {\"room_count\": 3, \"bathroom_count\": 2}, \"documents\": \"\"}\n"
+    "\n"
+    "Input: \"발코니 비율이 15% 이상인 발코니 활용도가 좋은 평면\"\n"
+    "Output: {\"filters\": {\"balcony_ratio\": {\"op\": \"이상\", \"val\": 15}}, "
+    "\"documents\": \"발코니 활용도가 좋은\"}\n"
+    "\n"
+    "Input: \"무창실이 2개 미만이고 환기등급이 양호인 구조\"\n"
+    "Output: {\"filters\": {\"windowless_count\": {\"op\": \"미만\", \"val\": 2}, "
+    "\"ventilation_quality\": \"양호\"}, \"documents\": \"\"}\n"
+    "\n"
+    "Input: \"채광이 좋고 거실이 넓은 개방형 평면\"\n"
+    "Output: {\"filters\": {}, \"documents\": \"채광이 좋고 거실이 넓은 개방형 평면\"}\n"
+    "\n"
+    "Input: \"드레스룸 있는 4베이 판상형 평면\"\n"
+    "Output: {\"filters\": {\"bay_count\": 4, \"structure_type\": \"판상형\", "
+    "\"has_special_space\": true}, \"documents\": \"드레스룸 있는 평면\"}\n"
+    "\n"
+    
+    # --- SYNONYM / CLASSIFICATION DATA ---
+    "## SYNONYM AND CLASSIFICATION RULES (JSON)\n"
+    f"{word_rules_text}\n"
         )
 
         try:
@@ -1055,7 +1204,7 @@ class ArchitecturalHybridRAG:
                 model="gpt-5-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query},
+                    {"role": "user", "content": normalized_query},
                 ],
                 response_format={"type": "json_object"},
             )
@@ -1078,22 +1227,22 @@ class ArchitecturalHybridRAG:
                 parsed.get("documents")
                 or parsed.get("search_text")
                 or parsed.get("context")
-                or query
+                or normalized_query
             )
             documents = str(documents).strip()
             if not documents:
-                documents = query
-            documents = self._augment_documents_from_query(query, documents)
+                documents = normalized_query
+            documents = self._augment_documents_from_query(normalized_query, documents)
 
             filters = self._normalize_filters(raw_filters)
-            filters = self._augment_filters_from_query(query, filters)
-            filters = self._drop_implicit_ratio_filters(query, filters)
-            return {"filters": filters, "documents": documents, "raw_query": query}
+            filters = self._augment_filters_from_query(normalized_query, filters)
+            filters = self._drop_implicit_ratio_filters(normalized_query, filters)
+            return {"filters": filters, "documents": documents, "raw_query": normalized_query}
         except (json.JSONDecodeError, ValueError, KeyError, TypeError, IndexError):
             self.logger.warning(
                 "Analyzer JSON parsing failed. Falling back to keyword-only search."
             )
-            return {"filters": {}, "documents": query, "raw_query": query}
+            return {"filters": {}, "documents": normalized_query, "raw_query": normalized_query}
 
     def _normalize_filters(self, raw_filters: dict[str, Any]) -> dict[str, Any]:
         normalized: dict[str, Any] = {}
@@ -1198,7 +1347,7 @@ class ArchitecturalHybridRAG:
 
         candidates: list[tuple[int, str, float]] = []
         occupied_spans: list[tuple[int, int]] = []
-        # Range phrases (e.g., "10%에서 20% 사이", "10~20%") are treated as inclusive bounds.
+
         for match in re.finditer(
             r"(-?\d+(?:\.\d+)?)\s*%?\s*(?:에서|부터|~|〜|∼|-)\s*(-?\d+(?:\.\d+)?)\s*%?\s*(?:사이|구간|범위)?",
             raw,
@@ -1285,7 +1434,7 @@ class ArchitecturalHybridRAG:
         op = self._normalize_ratio_operator(value.get("op", value.get("operator")))
         val = self._parse_float(value.get("val", value.get("value")))
         if op is not None and val is not None:
-            # "동일" → ±RATIO_EQUAL_TOLERANCE 범위로 변환 (정확한 소수점 매칭 방지)
+
             if op == "동일":
                 tol = self.RATIO_EQUAL_TOLERANCE
                 bounds.append({"op": "이상", "val": round(val - tol, 4)})
@@ -1400,13 +1549,26 @@ class ArchitecturalHybridRAG:
                 if numeric:
                     augmented["bathroom_count"] = int(numeric.group())
 
-        if "ventilation_grade" not in augmented and "환기" in query:
+        if "windowless_count" not in augmented and re.search(
+            r"무창\s*공간",
+            query,
+            flags=re.IGNORECASE,
+        ):
+            match = (
+                re.search(r"무창\s*공간(?:이|은|는|을|의)?\s*(\d+)\s*개", query, re.IGNORECASE)
+                or re.search(r"(\d+)\s*개\s*무창\s*공간", query, re.IGNORECASE)
+                or re.search(r"무창\s*공간(?:이|은|는|을|의)?\s*(\d+)", query, re.IGNORECASE)
+            )
+            if match:
+                augmented["windowless_count"] = int(match.group(1))
+
+        if "ventilation_quality" not in augmented and "환기" in query:
             if "우수" in query:
-                augmented["ventilation_grade"] = "우수"
+                augmented["ventilation_quality"] = "우수"
             elif "보통" in query:
-                augmented["ventilation_grade"] = "보통"
+                augmented["ventilation_quality"] = "보통"
             elif "미흡" in query:
-                augmented["ventilation_grade"] = "미흡"
+                augmented["ventilation_quality"] = "미흡"
 
         ratio_query_targets = {
             "balcony_ratio": r"(발코니|베란다)",
@@ -1444,6 +1606,273 @@ class ArchitecturalHybridRAG:
             sanitized.pop(key, None)
         return sanitized
 
+    def _extract_ratio_bounds_from_query_by_target(
+        self,
+        query: str,
+        target_pattern: re.Pattern[str],
+        normalize_windowless: bool = False,
+    ) -> list[dict[str, Any]]:
+        text = self._normalize_windowless_aliases(query) if normalize_windowless else str(query or "")
+        if not text:
+            return []
+        if not target_pattern.search(text):
+            return []
+        if not self.DOC_RATIO_TOKEN_RE.search(text):
+            return []
+
+        clauses = [
+            clause.strip()
+            for clause in re.split(r"(?:,|;|/|그리고|및|이고|이며|또는)", text)
+            if clause.strip()
+        ]
+        target_clauses = [clause for clause in clauses if target_pattern.search(clause)]
+        for clause in target_clauses:
+            bounds = self._parse_ratio_conditions_from_text(clause)
+            if bounds:
+                return bounds
+            numeric = self._parse_float(clause)
+            if numeric is not None:
+                return [{"op": "동일", "val": float(numeric)}]
+
+        for match in target_pattern.finditer(text):
+            snippet = text[max(0, match.start() - 28) : min(len(text), match.end() + 28)]
+            bounds = self._parse_ratio_conditions_from_text(snippet)
+            if bounds:
+                return bounds
+            numeric = self._parse_float(snippet)
+            if numeric is not None:
+                return [{"op": "동일", "val": float(numeric)}]
+
+        target_mentions = len(list(target_pattern.finditer(text)))
+        if target_mentions == 1:
+            bounds = self._parse_ratio_conditions_from_text(text)
+            if bounds:
+                return bounds
+            numeric = self._parse_float(text)
+            if numeric is not None:
+                return [{"op": "동일", "val": float(numeric)}]
+        return []
+
+    def _extract_windowless_ratio_bounds_from_query(self, query: str) -> list[dict[str, Any]]:
+        return self._extract_ratio_bounds_from_query_by_target(
+            query=query,
+            target_pattern=re.compile(r"무창\s*공간", re.IGNORECASE),
+            normalize_windowless=True,
+        )
+
+    def _extract_storage_ratio_bounds_from_query(self, query: str) -> list[dict[str, Any]]:
+        return self._extract_ratio_bounds_from_query_by_target(
+            query=query,
+            target_pattern=self.STORAGE_RATIO_QUERY_TARGET_RE,
+        )
+
+    def _extract_ldk_ratio_bounds_from_query(self, query: str) -> list[dict[str, Any]]:
+        return self._extract_ratio_bounds_from_query_by_target(
+            query=query,
+            target_pattern=self.LDK_RATIO_QUERY_TARGET_RE,
+        )
+
+    def _extract_document_ratio_constraints_from_query(
+        self, query: str
+    ) -> list[tuple[str, list[dict[str, Any]]]]:
+        constraints: list[tuple[str, list[dict[str, Any]]]] = []
+        windowless_bounds = self._extract_windowless_ratio_bounds_from_query(query)
+        if windowless_bounds:
+            constraints.append(("windowless", windowless_bounds))
+        storage_bounds = self._extract_storage_ratio_bounds_from_query(query)
+        if storage_bounds:
+            constraints.append(("storage", storage_bounds))
+        ldk_bounds = self._extract_ldk_ratio_bounds_from_query(query)
+        if ldk_bounds:
+            constraints.append(("ldk", ldk_bounds))
+        return constraints
+
+    def _extract_ratio_values_from_document_by_keyword(
+        self, document: str, keyword_re: re.Pattern[str]
+    ) -> list[float]:
+        text = re.sub(r"\s+", " ", str(document or "")).strip()
+        if not text:
+            return []
+
+        segments = [seg.strip() for seg in re.split(r"\n+", text) if seg.strip()]
+        candidate_segments: list[str] = []
+        clause_splitter = re.compile(r"(?:,|;|\||그리고|및|이고|이며|또는)")
+        for seg in segments:
+            clauses = [clause.strip() for clause in clause_splitter.split(seg) if clause.strip()]
+            matched_clauses = [clause for clause in clauses if keyword_re.search(clause)]
+            if matched_clauses:
+                candidate_segments.extend(matched_clauses)
+                continue
+            if keyword_re.search(seg):
+                candidate_segments.append(seg)
+
+        if not candidate_segments:
+            for match in keyword_re.finditer(text):
+                snippet = text[max(0, match.start() - 36) : min(len(text), match.end() + 36)].strip()
+                if snippet:
+                    candidate_segments.append(snippet)
+        if not candidate_segments and keyword_re.search(text):
+            candidate_segments = [text]
+
+        values_with_order: list[tuple[int, float]] = []
+        for seg in candidate_segments:
+            non_threshold_candidates: list[tuple[int, float]] = []
+            for match in re.finditer(r"(-?\d+(?:\.\d+)?)\s*%", seg):
+                try:
+                    value = float(match.group(1))
+                except (TypeError, ValueError):
+                    continue
+                pre = seg[max(0, match.start() - 10) : match.start()]
+                post = seg[match.end() : match.end() + 12]
+                if re.search(r"^\s*(이하|이상|미만|초과)", post):
+                    continue
+                if re.search(r"(권장|기준)[^0-9%]{0,3}$", pre):
+                    continue
+                non_threshold_candidates.append((match.start(), value))
+            if non_threshold_candidates:
+                non_threshold_candidates.sort(key=lambda item: item[0])
+                values_with_order.extend(non_threshold_candidates)
+
+        if not values_with_order:
+            return []
+
+        values_with_order.sort(key=lambda item: item[0])
+        values: list[float] = []
+        for _, val in values_with_order:
+            if val not in values:
+                values.append(val)
+        return values
+
+    def _extract_windowless_ratio_values_from_document(self, document: str) -> list[float]:
+        return self._extract_ratio_values_from_document_by_keyword(
+            document=document,
+            keyword_re=self.WINDOWLESS_RATIO_DOC_KEYWORD_RE,
+        )
+
+    def _extract_storage_ratio_values_from_document(self, document: str) -> list[float]:
+        return self._extract_ratio_values_from_document_by_keyword(
+            document=document,
+            keyword_re=self.STORAGE_RATIO_DOC_KEYWORD_RE,
+        )
+
+    def _extract_ldk_ratio_values_from_document(self, document: str) -> list[float]:
+        return self._extract_ratio_values_from_document_by_keyword(
+            document=document,
+            keyword_re=self.LDK_RATIO_DOC_KEYWORD_RE,
+        )
+
+    def _extract_windowless_ratio_from_document(self, document: str) -> Optional[float]:
+        values = self._extract_windowless_ratio_values_from_document(document)
+        return values[0] if values else None
+
+    def _is_ratio_bound_satisfied(self, actual: float, op: str, target: float) -> bool:
+        if op == "이상":
+            return actual >= target
+        if op == "이하":
+            return actual <= target
+        if op == "초과":
+            return actual > target
+        if op == "미만":
+            return actual < target
+        if op == "동일":
+            return abs(actual - target) <= self.RATIO_EQUAL_TOLERANCE
+        return True
+
+    def _ratio_values_match_bounds(
+        self, values: list[float], bounds: list[dict[str, Any]]
+    ) -> bool:
+        if not values or not bounds:
+            return False
+        evaluated = False
+        for bound in bounds:
+            op = self._normalize_ratio_operator(bound.get("op"))
+            val = self._parse_float(bound.get("val"))
+            if op is None or val is None:
+                continue
+            evaluated = True
+            target = float(val)
+            if op in {"이하", "미만"}:
+                actual = max(values)
+                if not self._is_ratio_bound_satisfied(actual, op, target):
+                    return False
+                continue
+            if op in {"이상", "초과"}:
+                actual = min(values)
+                if not self._is_ratio_bound_satisfied(actual, op, target):
+                    return False
+                continue
+            if op == "동일":
+                if not any(self._is_ratio_bound_satisfied(actual, op, target) for actual in values):
+                    return False
+                continue
+            if not any(self._is_ratio_bound_satisfied(actual, op, target) for actual in values):
+                return False
+        return evaluated
+
+    def _document_matches_windowless_ratio(
+        self, document: str, bounds: list[dict[str, Any]]
+    ) -> bool:
+        values = self._extract_windowless_ratio_values_from_document(document)
+        return self._ratio_values_match_bounds(values, bounds)
+
+    def _document_matches_document_ratio_constraints(
+        self,
+        document: str,
+        constraints: list[tuple[str, list[dict[str, Any]]]],
+    ) -> bool:
+        if not constraints:
+            return True
+        return self._document_ratio_match_count(document, constraints) == len(constraints)
+
+    def _document_ratio_match_count(
+        self,
+        document: str,
+        constraints: list[tuple[str, list[dict[str, Any]]]],
+    ) -> int:
+        if not constraints:
+            return 0
+        text = str(document or "")
+        matched = 0
+        for target, bounds in constraints:
+            if target == "windowless":
+                values = self._extract_windowless_ratio_values_from_document(text)
+            elif target == "storage":
+                values = self._extract_storage_ratio_values_from_document(text)
+            elif target == "ldk":
+                values = self._extract_ldk_ratio_values_from_document(text)
+            else:
+                continue
+            if self._ratio_values_match_bounds(values, bounds):
+                matched += 1
+        return matched
+
+    def _count_matches_by_document_ratio_constraints(
+        self,
+        filters: dict[str, Any],
+        constraints: list[tuple[str, list[dict[str, Any]]]],
+        min_match_count: int = 1,
+    ) -> int:
+        if not constraints:
+            return 0
+        threshold = max(1, int(min_match_count))
+        where_sql, params = self._build_filter_where_parts(filters)
+        sql = (
+            "SELECT fa.analysis_description "
+            "FROM floorplan_analysis fa "
+            "JOIN floorplan f ON fa.floorplan_id = f.id "
+            f"WHERE {where_sql}"
+        )
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        return sum(
+            1
+            for row in rows
+            if self._document_ratio_match_count(
+                str(row[0] if row and len(row) > 0 else ""), constraints
+            ) >= threshold
+        )
+
     def _is_floorplan_image_name(self, query: str) -> bool:
         normalized = query.strip()
         return bool(
@@ -1470,6 +1899,44 @@ class ArchitecturalHybridRAG:
             ]
             joined = " OR ".join(f'"{term}"' for term in storage_terms)
             base = f"({base}) OR ({joined})"
+
+        doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(text)
+        if doc_ratio_constraints:
+            doc_ratio_terms: list[str] = []
+            for target, _ in doc_ratio_constraints:
+                if target == "windowless":
+                    doc_ratio_terms.extend(
+                        [
+                            "무창 공간 비율",
+                            "무창 비율",
+                            "무창실 비율",
+                            "창 없는 공간 비율",
+                            "windowless",
+                        ]
+                    )
+                elif target == "storage":
+                    doc_ratio_terms.extend(
+                        [
+                            "수납 비율",
+                            "수납 공간 비율",
+                            "storage ratio",
+                            "드레스룸 비율",
+                            "팬트리 비율",
+                        ]
+                    )
+                elif target == "ldk":
+                    doc_ratio_terms.extend(
+                        [
+                            "LDK 비율",
+                            "엘디케이 비율",
+                            "리빙 다이닝 키친 비율",
+                            "living dining kitchen ratio",
+                        ]
+                    )
+            unique_terms = list(dict.fromkeys(doc_ratio_terms))
+            if unique_terms:
+                joined = " OR ".join(f'"{term}"' for term in unique_terms)
+                base = f"({base}) OR ({joined})"
 
         if not re.search(r"(발코니|베란다)", text, flags=re.IGNORECASE):
             return base
@@ -1605,6 +2072,242 @@ class ArchitecturalHybridRAG:
         cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
         return cleaned if cleaned else "확인 필요"
 
+    @staticmethod
+    def _normalize_document_id_for_match(document_id: str) -> str:
+        normalized = str(document_id or "").strip().lower()
+        if not normalized:
+            return ""
+        return re.sub(r"\.(png|jpg|jpeg|bmp|tif|tiff|webp)$", "", normalized, flags=re.IGNORECASE)
+
+    def _normalize_compliance_item_label(self, label: str) -> str:
+        normalized = self._normalize_core_eval_label_for_output(label)
+        compact = re.sub(r"[\s_\-]+", "", normalized).lower()
+        if compact in {"채광", "환기", "가족융화", "수납"}:
+            if compact == "가족융화":
+                return "가족 융화"
+            return normalized
+        return ""
+
+    def _split_compliance_items_text(self, text: str) -> list[str]:
+        raw = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not raw:
+            return []
+        if raw in {"없음", "해당 없음", "없습니다", "none", "None"}:
+            return []
+
+        chunks = [chunk.strip() for chunk in re.split(r"[,;·|]", raw) if chunk.strip()]
+        items: list[str] = []
+        for chunk in chunks:
+            cleaned = re.sub(r"^[\-\[\(]+|[\]\)]+$", "", chunk).strip()
+            if not cleaned or cleaned in {"없음", "해당 없음", "없습니다"}:
+                continue
+            normalized = self._normalize_compliance_item_label(cleaned)
+            item = normalized or cleaned
+            if item not in items:
+                items.append(item)
+        return items
+
+    def _extract_explicit_compliance_items(
+        self, document: str
+    ) -> tuple[list[str], list[str]]:
+        text = str(document or "")
+        if not text.strip():
+            return [], []
+
+        fit_items: list[str] = []
+        unfit_items: list[str] = []
+        patterns = (
+            ("적합", fit_items),
+            ("부적합", unfit_items),
+        )
+        for prefix, bucket in patterns:
+            for match in re.finditer(
+                rf"(?mi)^\s*(?:[-•]\s*)?{prefix}\s*항목\s*:\s*(?P<items>[^\n]+)$",
+                text,
+            ):
+                for item in self._split_compliance_items_text(match.group("items")):
+                    if item not in bucket:
+                        bucket.append(item)
+        return fit_items, unfit_items
+
+    def _infer_document_compliance_polarity(self, text: str) -> Optional[str]:
+        normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not normalized:
+            return None
+
+        primary_clause = re.split(r"[.!?]", normalized, maxsplit=1)[0].strip()
+        if not primary_clause:
+            primary_clause = normalized
+
+        total_positive_hits = len(self.DOCUMENT_COMPLIANCE_POSITIVE_RE.findall(normalized))
+        total_negative_hits = len(self.DOCUMENT_COMPLIANCE_NEGATIVE_RE.findall(normalized))
+        primary_positive_hits = len(self.DOCUMENT_COMPLIANCE_POSITIVE_RE.findall(primary_clause))
+        primary_negative_hits = len(self.DOCUMENT_COMPLIANCE_NEGATIVE_RE.findall(primary_clause))
+        uncertain_hits = len(self.DOCUMENT_COMPLIANCE_UNCERTAIN_RE.findall(normalized))
+
+        if total_positive_hits == 0 and total_negative_hits == 0:
+            return None
+        if total_positive_hits > 0 and total_negative_hits == 0:
+            return "positive"
+        if total_negative_hits > 0 and total_positive_hits == 0:
+            return "negative"
+
+        # Mixed-signals case:
+        # prioritize the leading judgment sentence and treat uncertainty language
+        # as non-failing context rather than immediate disqualification.
+        score = (
+            (primary_positive_hits * 2)
+            + total_positive_hits
+            - (primary_negative_hits * 2)
+            - total_negative_hits
+            + uncertain_hits
+        )
+        if score >= 0:
+            return "positive"
+        return "negative"
+
+    def _extract_design_eval_compliance_items(
+        self, document: str
+    ) -> tuple[list[str], list[str]]:
+        text = str(document or "")
+        if not text.strip():
+            return [], []
+
+        design_match = re.search(
+            r"(?is)\[\s*설계\s*평가\s*\](?P<body>.*?)(?=\[\s*(?:공간\s*분석|공간\s*구성\s*분석|핵심\s*평가|주요\s*공간별\s*상세\s*분석|전체\s*평가)\s*\]|\Z)",
+            text,
+        )
+        design_text = design_match.group("body") if design_match else text
+        label_matches = list(self.DOCUMENT_COMPLIANCE_ITEM_LABEL_RE.finditer(design_text))
+        if not label_matches:
+            return [], []
+
+        fit_items: list[str] = []
+        unfit_items: list[str] = []
+        for idx, match in enumerate(label_matches):
+            raw_label = match.group(1)
+            label = self._normalize_compliance_item_label(raw_label)
+            if not label:
+                continue
+            start = match.end()
+            end = label_matches[idx + 1].start() if idx + 1 < len(label_matches) else len(design_text)
+            snippet = re.sub(r"^[\s,.;:]+|[\s,.;:]+$", "", design_text[start:end])
+            polarity = self._infer_document_compliance_polarity(snippet)
+            if polarity == "positive":
+                if label not in fit_items:
+                    fit_items.append(label)
+                continue
+            if polarity == "negative":
+                if label not in unfit_items:
+                    unfit_items.append(label)
+        return fit_items, unfit_items
+
+    def _extract_compliance_items_from_document(self, document: str) -> dict[str, list[str]]:
+        fit_items, unfit_items = self._extract_explicit_compliance_items(document)
+        parsed_fit, parsed_unfit = self._extract_design_eval_compliance_items(document)
+
+        for item in parsed_fit:
+            if item not in fit_items and item not in unfit_items:
+                fit_items.append(item)
+        for item in parsed_unfit:
+            if item not in unfit_items:
+                unfit_items.append(item)
+            if item in fit_items:
+                fit_items = [existing for existing in fit_items if existing != item]
+
+        if not fit_items and not unfit_items:
+            for signal in self._extract_document_signals(document):
+                label = self._normalize_compliance_item_label(signal.get("label", ""))
+                if not label:
+                    continue
+                polarity = self._infer_signal_polarity(signal.get("value", ""))
+                if polarity == "positive" and label not in fit_items and label not in unfit_items:
+                    fit_items.append(label)
+                elif polarity == "negative" and label not in unfit_items:
+                    unfit_items.append(label)
+                    if label in fit_items:
+                        fit_items = [existing for existing in fit_items if existing != label]
+
+        return {
+            "fit_items": fit_items,
+            "unfit_items": unfit_items,
+        }
+
+    @staticmethod
+    def _format_compliance_items_for_output(items: list[str]) -> str:
+        return ", ".join(items) if items else "없음"
+
+    def _replace_or_insert_compliance_item_line(
+        self, text: str, label: str, value: str
+    ) -> str:
+        pattern = re.compile(rf"(?m)^(?P<indent>\s*)(?:[-•]\s*)?{label}\s*항목\s*:\s*.+$")
+        replacement = rf"\g<indent>• {label} 항목: {value}"
+        if pattern.search(text):
+            return pattern.sub(replacement, text, count=1)
+
+        grade_line = re.search(
+            r"(?m)^(?P<line>\s*■\s*(?:\*\*)?\s*종합\s*등급\s*(?:\*\*)?\s*:\s*.+)$",
+            text,
+        )
+        if not grade_line:
+            return text
+        insert_at = grade_line.end()
+        inserted = f"\n• {label} 항목: {value}"
+        return f"{text[:insert_at]}{inserted}{text[insert_at:]}"
+
+    def _enforce_compliance_items_for_single_answer(
+        self, answer: str, candidate: Optional[dict[str, Any]]
+    ) -> str:
+        text = str(answer or "")
+        if not text or not candidate:
+            return text
+        fit_items = candidate.get("compliance_fit_items", []) or []
+        unfit_items = candidate.get("compliance_unfit_items", []) or []
+        fit_text = self._format_compliance_items_for_output(fit_items)
+        unfit_text = self._format_compliance_items_for_output(unfit_items)
+        updated = self._replace_or_insert_compliance_item_line(text, "적합", fit_text)
+        updated = self._replace_or_insert_compliance_item_line(updated, "부적합", unfit_text)
+        return updated
+
+    def _enforce_compliance_items_for_general_answer(
+        self, answer: str, candidates: list[dict[str, Any]]
+    ) -> str:
+        text = str(answer or "")
+        if not text.strip() or not candidates:
+            return text
+
+        candidate_map: dict[str, dict[str, Any]] = {}
+        for candidate in candidates:
+            key = self._normalize_document_id_for_match(candidate.get("document_id", ""))
+            if key and key not in candidate_map:
+                candidate_map[key] = candidate
+
+        if not candidate_map:
+            return text
+
+        block_pattern = re.compile(
+            r"(?ms)^(?P<header>\s*(?:#{1,6}\s*)?\[\s*도면\s*#\d+\s*\]\s*(?P<doc>[^\n]+?)\s*\n)(?P<body>.*?)(?=^\s*(?:#{1,6}\s*)?\[\s*도면\s*#\d+\s*\]\s*[^\n]+\n|\Z)"
+        )
+
+        def _replace_block(match: re.Match[str]) -> str:
+            doc_id = match.group("doc").strip()
+            key = self._normalize_document_id_for_match(doc_id)
+            candidate = candidate_map.get(key)
+            if not candidate:
+                return match.group(0)
+
+            fit_items = candidate.get("compliance_fit_items", []) or []
+            unfit_items = candidate.get("compliance_unfit_items", []) or []
+            fit_text = self._format_compliance_items_for_output(fit_items)
+            unfit_text = self._format_compliance_items_for_output(unfit_items)
+
+            body = match.group("body")
+            body = self._replace_or_insert_compliance_item_line(body, "적합", fit_text)
+            body = self._replace_or_insert_compliance_item_line(body, "부적합", unfit_text)
+            return f"{match.group('header')}{body}"
+
+        return block_pattern.sub(_replace_block, text)
+
     def _extract_query_signal_preferences(self, query: str) -> dict[str, str]:
         text = str(query or "")
         if not text.strip():
@@ -1713,6 +2416,22 @@ class ArchitecturalHybridRAG:
         query: str,
         filters: Optional[dict[str, Any]] = None,
     ) -> list[tuple[Any, ...]]:
+        doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(query)
+        if doc_ratio_constraints and docs:
+            ranked_docs: list[tuple[int, float, tuple[Any, ...]]] = []
+            for row in docs:
+                document_text = str(row[2] if len(row) > 2 else "")
+                match_count = self._document_ratio_match_count(
+                    document_text,
+                    doc_ratio_constraints,
+                )
+                if match_count <= 0:
+                    continue
+                base_score = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
+                ranked_docs.append((match_count, base_score, row))
+            ranked_docs.sort(key=lambda item: (item[0], item[1]), reverse=True)
+            return [row for _, _, row in ranked_docs]
+
         preferences = self._extract_query_signal_preferences(query)
         ratio_proximity = self._extract_ratio_proximity_target(query, filters or {})
         if (not preferences and ratio_proximity is None) or not docs:
@@ -1790,7 +2509,7 @@ class ArchitecturalHybridRAG:
             fa.analysis_description AS document,
             fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
             fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-            fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+            fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
             fa.has_special_space, fa.has_etc_space,
             1.0::double precision AS similarity
             FROM floorplan_analysis fa
@@ -1819,12 +2538,13 @@ class ArchitecturalHybridRAG:
             room_count,
             bathroom_count,
             compliance_grade,
-            ventilation_grade,
+            ventilation_quality,
             has_special_space,
             has_etc_space,
             similarity,
         ) = row
         space_labels_hint = self._extract_space_labels_from_document(document)
+        compliance_items = self._extract_compliance_items_from_document(document)
         return {
             "rank": rank,
             "floorplan_id": floorplan_id,
@@ -1839,13 +2559,15 @@ class ArchitecturalHybridRAG:
                 "balcony_ratio": balcony_ratio,
                 "windowless_count": windowless_count,
                 "structure_type": structure_type,
-                "ventilation_quality": ventilation_grade,
+                "ventilation_quality": ventilation_quality,
                 "has_special_space": has_special_space,
                 "has_etc_space": has_etc_space,
                 "compliance_grade": compliance_grade,
             },
             "document": document,
             "document_signals": self._extract_document_signals(document),
+            "compliance_fit_items": compliance_items.get("fit_items", []),
+            "compliance_unfit_items": compliance_items.get("unfit_items", []),
             "space_labels_hint": space_labels_hint,
             "similarity": similarity,
         }
@@ -1854,82 +2576,120 @@ class ArchitecturalHybridRAG:
         candidate = self._row_to_candidate(doc, rank=1)
         candidate_json = json.dumps(candidate, ensure_ascii=False, indent=2)
 
-        system_prompt = """ You are a specialized assistant for architectural floor plan retrieval.
-Purpose:
-1) Sections 1 and 2 must follow the fixed format exactly, and
-2) Section 3 should be rewritten into a user-friendly version of the original internal evaluation.
+        system_prompt = """You are a specialized assistant for architectural floor plan retrieval.
 
-Important rules:
-- Do not invent any new facts that are not present in the original text or the JSON.
-- You may keep the evaluation wording(ex: 미흡, 부족, 우수) that already appears in the original text.
-- The model must not add its own judgments, design suggestions, or improvement recommendations.
-- Do not repeat the same facts redundantly.
-- Rewrite the sentences in natural Korean.
+## OUTPUT REQUIREMENTS (Read First)
+- Respond ONLY in Korean.
+- Follow the fixed output format exactly for every floor plan — do not skip, reorder, or rename any section.
+- Section 1 and Section 2 must preserve the exact format structure.
+- Section 3 must rewrite the original internal evaluation into natural, user-friendly Korean.
+- Never invent facts not present in the original text or JSON.
+- Never add design suggestions, improvement recommendations, or your own judgments.
+- Always use formal Korean (합니다/습니다 체). Never use 반말 (예: ~다, ~이다).
 
-Output Format (Must Be Preserved, Repeated for Each Floor Plan)
-- All content must be written in Korean.
+---
+
+## DO NOT (Negative Rules — Apply to All Sections)
+- Do NOT output internal field names (e.g., `bay_count`, `room_count`, `has_special_space`).
+- Do NOT add conditions to "찾는 조건" that the user did not explicitly state.
+- Do NOT use meta-expressions: "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다", "요청", "선호", "조건으로 처리".
+- Do NOT use technical memo-style bracket notation: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`.
+- Do NOT split or hyphenate compound Korean terms: `드레스룸` must always be written as one word — never `드레`, `스룸`, or `드레+스룸`.
+- Do NOT use status labels in parentheses after item names: `(좋음)`, `(미흡)` etc. are forbidden.
+- Do NOT use alternate label formats: `주방및식당`, `현관및기타공간` — always use `주방/식당`, `현관/기타`.
+- Do NOT repeat the same facts across sentences or sections.
+- Do NOT make definitive claims that go beyond the source data.
+
+---
+
+## ERROR HANDLING
+- If a metadata value is missing or null, output `정보 없음` for that field.
+- If a judgment cannot be confirmed, write `기능을 확정할 수 없습니다`.
+- If evidence is insufficient for an evaluation item, write `정보가 부족합니다`.
+- `적합 항목` and `부적합 항목` must always be filled — write `없음` if none apply.
+- `documents` field in Section 3 must always be used if present; do not silently discard it.
+
+---
+
+## FEW-SHOT EXAMPLES
+
+### Example B — Section 2 (공간 구성 여부 값)
+has_special_space=true, has_etc_space=false
+
+✅ Correct output:
+• 특화 공간: 존재
+• 기타 공간: 없음
+
+❌ Wrong output:
+• 특화 공간: true  ← boolean 그대로 출력 금지
+• 기타 공간: has_etc_space=false  ← 필드명 출력 금지
+
+---
+
+### Example C — Section 3 (핵심 설계 평가 문장 스타일)
+Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
+
+✅ Correct output:
+[채광] 거실의 채광 환경이 우수합니다.
+[환기] 주방의 환기 성능이 미흡합니다.
+[안방] 드레스룸이 연결된 구조입니다.
+
+❌ Wrong output:
+채광은(는) 우수합니다.  ← 어색한 조사 금지
+[안방] 드레+스룸이 연결(door/window)되어 있습니다.  ← 분리 표기 및 기술 메모 금지
+채광이 우수하므로 남향 배치를 권장합니다.  ← 설계 제안 추가 금지
+
+---
+
+## OUTPUT FORMAT (Fixed — Repeat for Each Floor Plan)
 
 ### 1. 검색된 도면 id: {document_id}
 
 ### 2. 도면 기본 정보 📊
-■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
-true → 존재, false → 없음
-
-출력 형식(고정):
-■ **공간 개수**
+■ 공간 개수
 • 방: {room_count}
 • 화장실: {bathroom_count}
 • Bay: {bay_count}
 • 무창 공간: {windowless_count}
-■ **전체 면적 대비 공간 비율 (%)**
+■ 전체 면적 대비 공간 비율 (%)
 • 거실: {living_room_ratio}
 • 주방: {kitchen_ratio}
 • 욕실: {bathroom_ratio}
 • 발코니: {balcony_ratio}
-■ **구조 및 성능**
+■ 구조 및 성능
 • 건물 구조 유형: {structure_type}
 • 환기: {ventilation_quality}
-■ **공간 구성 여부**
+■ 공간 구성 여부
 • 특화 공간: {has_special_space}
 • 기타 공간: {has_etc_space}
 
 ### 3. 도면 공간 구성 설명 🧩
-Reformat the original internal evaluation into a user-friendly version, but strictly output it in the fixed format below.
-
-구성 규칙:
-* 원문과 JSON(document, document_signals)에 있는 사실만 사용한다.
-* "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다" 같은 메타 표현은 제거한다.
-* "채광은(는)"처럼 어색한 조사 표기는 자연스러운 한국어로 정리한다.
-* 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
-* 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
-* 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
-* 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
-* `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
-* 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.
-* 사실 범위를 벗어나는 단정은 금지한다.
-
-출력 형식(고정):
 ■ 종합 등급: {compliance_grade}
-• 적합 항목: {적합한 공간/요소를 콤마(,)로 나열, 없으면 없음}
-• 부적합 항목: {부적합한 공간/요소를 콤마(,)로 나열, 없으면 없음}
-■ **핵심 설계 평가**
-• [평가 항목명]: ...
-• [평가 항목명]: ...
-■ **주요 공간별 상세 분석**
+• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
+• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
+■ 핵심 설계 평가
+[평가 항목명] ...
+[평가 항목명] ...
+■ 주요 공간별 상세 분석
 [공간명] ...
 [공간명] ...
 
-세부 형식 규칙:
-* 제목은 `■ 종합 등급`, `■ 핵심 설계 평가`, `■ 주요 공간별 상세 분석` 세 개를 이 순서로 출력한다.
-* `적합 항목`, `부적합 항목`은 반드시 채운다. 해당 없음이면 `없음`으로 출력한다.
-* 핵심 설계 평가 라벨은 고정 텍스트를 강제하지 않고 `analysis_description` 기반으로 작성한다.
-* 항목 라벨 뒤 괄호 상태 표기(예: `(좋음)`, `(미흡)`)를 쓰지 않는다.
-* 공간 라벨은 `space_labels_hint`가 있으면 우선 반영하고, 없으면 원문 근거 기반으로 작성한다.
-* 공간 라벨은 존재하는 항목만 작성하고, 각 줄을 `[공간명] 내용` 형식으로 쓴다.
-* 라벨 표기는 `주방/식당`, `현관/기타` 형식으로 통일하고, `주방및식당`, `현관및기타공간` 표기는 금지한다.
-* 동일 성격의 공간은 합쳐서 표기할 수 있다(예: 기타 7~10).
-* 각 항목은 2~3문장으로 작성할 수 있다.
+---
+
+## DETAILED RULES BY SECTION
+
+### Section 3 Rules
+- Use only facts from the original text and JSON (document, document_signals).
+- If document_signals is present, prioritize those labels and states.
+- `적합 항목`과 `부적합 항목`은 query 일치 여부가 아니라 document에서 추출된 `compliance_fit_items`, `compliance_unfit_items`를 그대로 사용한다.
+- Include benchmark comparisons (e.g., 권장 30~40%, 30% 이하) ONLY if stated in the source.
+- Merge sentences with identical meaning; do not repeat the same fact.
+- Each item may be written in 2–3 sentences.
+- Section headers must appear in this exact order: ■ 종합 등급 → ■ 핵심 설계 평가 → ■ 주요 공간별 상세 분석
+- Space labels: use space_labels_hint if provided; otherwise derive from source text.
+- Space labels format: [주방/식당], [현관/기타] — never [주방및식당], [현관및기타공간]
+- Spaces of the same character may be grouped (e.g., 기타 7~10).
+- 수납 공간은 반드시 `드레스룸`으로 표기한다.
 """
 
         space_labels_hint_text = ", ".join(candidate.get("space_labels_hint", [])) or "없음"
@@ -1952,11 +2712,12 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             )
             return (response.choices[0].message.content or "").strip()
 
-        return self._run_validated_generation(
+        answer = self._run_validated_generation(
             mode="document_id",
             generate_fn=_call_llm,
             expected_document_id=document_id.strip(),
         )
+        return self._enforce_compliance_items_for_single_answer(answer, candidate)
 
     def _build_filter_where_parts(self, filters: dict[str, Any]) -> tuple[str, list[Any]]:
         where_clauses = []
@@ -1966,7 +2727,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             value = filters.get(column)
             if value is None:
                 continue
-            db_col = f"fa.{self._DB_COLUMN_MAP.get(column, column)}"
+            db_col = f"fa.{column}"
             if column in self.FLOAT_FILTERS:
                 ratio_filter = self._coerce_ratio_filter(value)
                 bounds = self._ratio_filter_to_bounds(ratio_filter)
@@ -1991,6 +2752,13 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         raw_query = query_json.get("raw_query", "") or ""
         semantic_query = f"{documents} {raw_query}".strip() or raw_query or documents
         text_query = str(documents).strip() or str(raw_query).strip()
+        requested_top_k = max(1, int(top_k))
+        doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(
+            raw_query or text_query
+        )
+        effective_top_k = (
+            max(requested_top_k, 5000) if doc_ratio_constraints else requested_top_k
+        )
 
         embedding = self._embed_text(semantic_query)
         embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
@@ -2002,7 +2770,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             *filter_params,
             self.vector_weight,
             self.text_weight,
-            top_k,
+            effective_top_k,
             max(0, int(offset)),
         ]
 
@@ -2012,7 +2780,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                 fa.analysis_description AS document,
                 fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
                 fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
                 fa.has_special_space, fa.has_etc_space,
                 (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
                 ts_rank_cd(
@@ -2026,7 +2794,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             SELECT floorplan_id, document_id, document,
             windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
             structure_type, bay_count, room_count, bathroom_count,
-            compliance_grade, ventilation_grade, has_special_space, has_etc_space,
+            compliance_grade, ventilation_quality, has_special_space, has_etc_space,
             (%s * vector_similarity + %s * text_score) AS similarity
             FROM scored
             ORDER BY similarity DESC
@@ -2038,13 +2806,12 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             """하이브리드 검색 SQL 실행 헬퍼"""
             if use_text:
                 p = [embedding_vector, text_query, *w_params,
-                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                     self.vector_weight, self.text_weight, effective_top_k, max(0, int(offset))]
                 ts_expr = "ts_rank_cd(to_tsvector('simple', COALESCE(fa.analysis_description, '')), websearch_to_tsquery('simple', %s))"
             else:
                 p = [embedding_vector, *w_params,
-                     self.vector_weight, self.text_weight, top_k, max(0, int(offset))]
+                     self.vector_weight, self.text_weight, effective_top_k, max(0, int(offset))]
                 ts_expr = "0.0::double precision"
-                # text_query placeholder 제거
             text_placeholder = "%s, " if use_text else ""
             q = f"""
                 WITH scored AS (
@@ -2052,7 +2819,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     fa.analysis_description AS document,
                     fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio, fa.bathroom_ratio, fa.kitchen_ratio,
                     fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
                     fa.has_special_space, fa.has_etc_space,
                     (1 - (fa.embedding <=> %s::vector)) AS vector_similarity,
                     {ts_expr} AS text_score
@@ -2063,7 +2830,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                 SELECT floorplan_id, document_id, document,
                 windowless_count, balcony_ratio, living_room_ratio, bathroom_ratio, kitchen_ratio,
                 structure_type, bay_count, room_count, bathroom_count,
-                compliance_grade, ventilation_grade, has_special_space, has_etc_space,
+                compliance_grade, ventilation_quality, has_special_space, has_etc_space,
                 (%s * vector_similarity + %s * text_score) AS similarity
                 FROM scored
                 ORDER BY similarity DESC
@@ -2094,7 +2861,23 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     if results:
                         break
 
-            return results
+            if doc_ratio_constraints:
+                # 문서 기반 비율 질의(무창/수납/LDK):
+                # 제약 만족 개수(3→2→1) 우선, 동률은 유사도 순으로 정렬
+                ranked_results: list[tuple[int, float, tuple[Any, ...]]] = []
+                for row in results:
+                    doc_text = str(row[2] if row and len(row) > 2 else "")
+                    match_count = self._document_ratio_match_count(
+                        doc_text, doc_ratio_constraints
+                    )
+                    if match_count <= 0:
+                        continue
+                    similarity = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
+                    ranked_results.append((match_count, similarity, row))
+                ranked_results.sort(key=lambda item: (item[0], item[1]), reverse=True)
+                results = [row for _, _, row in ranked_results]
+
+            return results[:requested_top_k]
         except Exception as exc:
             self.conn.rollback()
             if text_query:
@@ -2107,11 +2890,25 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     error=str(exc),
                 )
                 try:
-                    return _exec_hybrid(where_sql, filter_params, use_text=False)
+                    fallback_results = _exec_hybrid(where_sql, filter_params, use_text=False)
                 except Exception:
                     self.conn.rollback()
                     # 필터 전체 제거 후 최종 시도
-                    return _exec_hybrid("TRUE", [], use_text=False)
+                    fallback_results = _exec_hybrid("TRUE", [], use_text=False)
+                if doc_ratio_constraints:
+                    ranked_results: list[tuple[int, float, tuple[Any, ...]]] = []
+                    for row in fallback_results:
+                        doc_text = str(row[2] if row and len(row) > 2 else "")
+                        match_count = self._document_ratio_match_count(
+                            doc_text, doc_ratio_constraints
+                        )
+                        if match_count <= 0:
+                            continue
+                        similarity = float(row[16] if len(row) > 16 and row[16] is not None else 0.0)
+                        ranked_results.append((match_count, similarity, row))
+                    ranked_results.sort(key=lambda item: (item[0], item[1]), reverse=True)
+                    fallback_results = [row for _, _, row in ranked_results]
+                return fallback_results[:requested_top_k]
             raise
 
     def retrieve_by_embedding(
@@ -2142,7 +2939,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                 fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
                 fa.bathroom_ratio, fa.kitchen_ratio,
                 fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
                 fa.has_special_space, fa.has_etc_space,
                 (1 - (fa.embedding <=> %s::vector)) AS similarity
             FROM floorplan_analysis fa
@@ -2169,7 +2966,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
                     fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
                     fa.bathroom_ratio, fa.kitchen_ratio,
                     fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                    fa.compliance_grade, fa.ventilation_quality AS ventilation_grade,
+                    fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
                     fa.has_special_space, fa.has_etc_space,
                     (1 - (fa.embedding <=> %s::vector)) AS similarity
                 FROM floorplan_analysis fa
@@ -2314,7 +3111,7 @@ Reformat the original internal evaluation into a user-friendly version, but stri
     # 평가성 필터 → 비율 필터 → 부울 필터 → 구조 필터 순으로 제거
     _FILTER_DROP_PRIORITY = [
         # 1단계: 평가성 필터 (가장 제한적, 먼저 제거)
-        {"compliance_grade", "ventilation_grade"},
+        {"compliance_grade", "ventilation_quality"},
         # 2단계: 비율 필터 + 부울 필터
         {"balcony_ratio", "living_room_ratio", "bathroom_ratio", "kitchen_ratio",
          "has_special_space", "has_etc_space"},
@@ -2340,6 +3137,25 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         where_sql, params = self._build_filter_where_parts(filters)
 
         normalized_documents = str(documents or "").strip()
+        doc_ratio_constraints = self._extract_document_ratio_constraints_from_query(
+            normalized_documents
+        )
+        if doc_ratio_constraints:
+            # 문서 기반 비율 질의(무창/수납/LDK):
+            # 최소 1개 제약 만족 도면을 카운트(정렬은 retrieve 단계에서 3→2→1 우선)
+            self._log_event(
+                event="count_matches_document_ratio_enforced",
+                level=logging.INFO,
+                text_query=normalized_documents,
+                ratio_targets=[name for name, _ in doc_ratio_constraints],
+                filter_count=len(filters),
+            )
+            return self._count_matches_by_document_ratio_constraints(
+                filters=filters,
+                constraints=doc_ratio_constraints,
+                min_match_count=1,
+            )
+
         if normalized_documents:
             where_sql = (
                 f"{where_sql} AND "
@@ -2427,59 +3243,98 @@ Reformat the original internal evaluation into a user-friendly version, but stri
         candidates = [self._row_to_candidate(row, rank) for rank, row in enumerate(top_docs, start=1)]
         candidates_json = json.dumps(candidates, ensure_ascii=False, indent=2)
 
-        system_prompt = """You are a specialized assistant for architectural floor plan retrieval.
-Purpose:
-1) Sections 1 and 2 must follow the fixed format exactly, and
-2) Section 3 should be rewritten into a user-friendly version of the original internal evaluation.
+        system_prompt = """
+You are a specialized assistant for architectural floor plan retrieval.
 
-Important rules:
-- Do not invent any new facts that are not present in the original text or the JSON.
-- You may keep the evaluation wording(ex: 미흡, 부족, 우수) that already appears in the original text.
-- The model must not add its own judgments, design suggestions, or improvement recommendations.
-- Do not repeat the same facts redundantly.
-- Rewrite the sentences in natural Korean.
+## OUTPUT REQUIREMENTS (Read First)
+- Respond ONLY in Korean.
+- Follow the fixed output format exactly for every floor plan — do not skip, reorder, or rename any section.
+- Section 1 and Section 2 must preserve the exact format structure.
+- Section 3 must rewrite the original internal evaluation into natural, user-friendly Korean.
+- Never invent facts not present in the original text or JSON.
+- Never add design suggestions, improvement recommendations, or your own judgments.
+- Always use formal Korean (합니다/습니다 체). Never use 반말 (예: ~다, ~이다).
+- 조건을 만족하는 도면 총 개수: {total_count}는 처음 한 번만 언급한다. 
 
-Output Format (Must Be Preserved, Repeated for Each Floor Plan)
-- All content must be written in Korean.
+---
+
+## DO NOT (Negative Rules — Apply to All Sections)
+- Do NOT output internal field names (e.g., `bay_count`, `room_count`, `has_special_space`).
+- Do NOT add conditions to "찾는 조건" that the user did not explicitly state.
+- Do NOT use meta-expressions: "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다", "요청", "선호", "조건으로 처리".
+- Do NOT use technical memo-style bracket notation: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`.
+- Do NOT split or hyphenate compound Korean terms: `드레스룸` must always be written as one word — never `드레`, `스룸`, or `드레+스룸`.
+- Do NOT use status labels in parentheses after item names: `(좋음)`, `(미흡)` etc. are forbidden.
+- Do NOT use alternate label formats: `주방및식당`, `현관및기타공간` — always use `주방/식당`, `현관/기타`.
+- Do NOT repeat the same facts across sentences or sections.
+- Do NOT make definitive claims that go beyond the source data.
+
+---
+
+## ERROR HANDLING
+- If a metadata value is missing or null, output `정보 없음` for that field.
+- If a judgment cannot be confirmed, write `기능을 확정할 수 없습니다`.
+- If evidence is insufficient for an evaluation item, write `정보가 부족합니다`.
+- `적합 항목` and `부적합 항목` must always be filled — write `없음` if none apply.
+- `documents` field in Section 3 must always be used if present; do not silently discard it.
+
+---
+
+## FEW-SHOT EXAMPLES
+
+### Example A — Section 1 (도면 선택 근거)
+User query: "방 3개, 발코니 비율 15% 이상, 판상형 구조"
+Floor plan metadata: room_count=3, balcony_ratio=18.2, structure_type=판상형
+
+✅ Correct output:
+• 찾는 조건: 방 3개, 발코니 비율 15% 이상, 판상형 구조
+• 일치 조건: 방 수=3개, 발코니 비율=18.2%, 건물 구조 유형=판상형
+
+❌ Wrong output:
+• 찾는 조건: 방 3개, 발코니 비율 15% 이상, 판상형 구조, 남향 배치  ← 사용자가 말하지 않은 조건 추가 금지
+• 일치 조건: bay_count=4  ← 내부 필드명 출력 금지
+
+---
+
+### Example B — Section 2 (공간 구성 여부 값)
+has_special_space=true, has_etc_space=false
+
+✅ Correct output:
+• 특화 공간: 존재
+• 기타 공간: 없음
+
+❌ Wrong output:
+• 특화 공간: true  ← boolean 그대로 출력 금지
+• 기타 공간: has_etc_space=false  ← 필드명 출력 금지
+
+---
+
+### Example C — Section 3 (핵심 설계 평가 문장 스타일)
+Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
+
+✅ Correct output:
+[채광] 거실의 채광 환경이 우수합니다.
+[환기] 주방의 환기 성능이 미흡합니다.
+[안방] 드레스룸이 연결된 구조입니다.
+
+❌ Wrong output:
+채광은(는) 우수합니다.  ← 어색한 조사 금지
+[안방] 드레+스룸이 연결(door/window)되어 있습니다.  ← 분리 표기 및 기술 메모 금지
+채광이 우수하므로 남향 배치를 권장합니다.  ← 설계 제안 추가 금지
+
+---
+
+## OUTPUT FORMAT (Fixed — Repeat for Each Floor Plan)
 
 조건을 만족하는 도면 총 개수: {total_count}
 
-Repeat the format below **for each representative floor plan**.
 ### [도면 #{rank}] {document_id}
 
 ### 1. 도면 선택 근거 🔍
-This section outputs **only the correspondence between the user’s search conditions and the floor plan information**.
-
-**[General Rules]**
-* All item labels must be written in **Korean**.
-* **Internal field names** (e.g., `bay_count`) must **never** be output.
-* Do **not** abbreviate or summarize values.
-* Do **not** use meta expressions such as “request,” “preference,” or “treated as a condition.”
-* Do **not** generate any additional explanatory sentences.
-
-**[Rules for Writing “Search Conditions”]**
-* “Search Conditions” must list the user’s input query, refined while preserving its original meaning.
-* Conditions that are not explicitly stated in the user’s query must **never** be added to “Search Conditions.”
-
-**[Rules for Generating “Matched Conditions”]**
-* “Matched Conditions” must include each user-specified condition that satisfies **at least one** of the following:
-  1. It can be directly verified from the floor plan metadata.
-  2. An identical or semantically equivalent expression is explicitly stated in the document description.
-* Conditions supported by the document may be included **even if no corresponding metadata field exists**.
-
-* Examples of **document-based conditions**:
-  • "발코니 활용 가능" ↔ "외부 공간으로 활용", "활용도가 높음"
-  • "주방 환기창 존재" ↔ "주방/식당에 환기창이 있음"
-
-출력 형식(고정):
 • 찾는 조건: {사용자 조건을 한국어 표현으로 나열}
 • 일치 조건: {도면 메타데이터 및 document에서 확인된 일치 항목을 한국어 항목명=값 형태로 나열}
 
 ### 2. 도면 기본 정보 📊
-■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
-true → 존재, false → 없음
-
-출력 형식(고정):
 ■ 공간 개수
 • 방: {room_count}
 • 화장실: {bathroom_count}
@@ -2498,42 +3353,38 @@ true → 존재, false → 없음
 • 기타 공간: {has_etc_space}
 
 ### 3. 도면 공간 구성 설명 🧩
-Reformat the original internal evaluation into a user-friendly version, but strictly output it in the fixed format below.
-
-구성 규칙:
-* 원문과 JSON(document, document_signals)에 있는 사실만 사용한다.
-* "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다" 같은 메타 표현은 제거한다.
-* "채광은(는)"처럼 어색한 조사 표기는 자연스러운 한국어로 정리한다.
-* 모든 설명 문장은 존댓말(합니다/습니다 체)로 작성하고, 반말 종결(예: ~다, ~이다)은 사용하지 않는다.
-* 수납 용어는 반드시 `드레스룸`으로 통일한다. `드레`, `스룸`, `드레+스룸` 같은 분리 표기는 금지한다.
-* 기술 메모형 괄호 표기(예: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`)는 절대 쓰지 않는다.
-* 판단 근거가 불충분한 항목은 "정보가 부족합니다"처럼 간결하게 표현하고, 기능 확정이 어려운 경우 "기능을 확정할 수 없습니다"로 표현한다.
-* 같은 의미의 문장은 합치고, 중복 사실은 반복하지 않는다.
-* `document_signals`가 있으면 해당 라벨과 일치하는 상태를 우선 반영한다.
-* 비교 기준(예: 권장 30~40%, 30% 이하) 정보가 원문에 있을 때만 포함한다.
-* 사실 범위를 벗어나는 단정은 금지한다.
-
-출력 형식(고정):
 ■ 종합 등급: {compliance_grade}
-• 적합 항목: {적합한 공간/요소를 콤마(,)로 나열, 없으면 없음}
-• 부적합 항목: {부적합한 공간/요소를 콤마(,)로 나열, 없으면 없음}
+• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
+• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
 ■ 핵심 설계 평가
-• [평가 항목명]: ...
-• [평가 항목명]: ...
+[평가 항목명] ...
+[평가 항목명] ...
 ■ 주요 공간별 상세 분석
 [공간명] ...
 [공간명] ...
 
-세부 형식 규칙:
-* 제목은 `■ 종합 등급`, `■ 핵심 설계 평가`, `■ 주요 공간별 상세 분석` 세 개를 이 순서로 출력한다.
-* `적합 항목`, `부적합 항목`은 반드시 채운다. 해당 없음이면 `없음`으로 출력한다.
-* 핵심 설계 평가 라벨은 고정 텍스트를 강제하지 않고 `analysis_description` 기반으로 작성한다.
-* 항목 라벨 뒤 괄호 상태 표기(예: `(좋음)`, `(미흡)`)를 쓰지 않는다.
-* 공간 라벨은 `space_labels_hint`가 있으면 우선 반영하고, 없으면 원문 근거 기반으로 작성한다.
-* 공간 라벨은 존재하는 항목만 작성하고, 각 줄을 `[공간명] 내용` 형식으로 쓴다.
-* 라벨 표기는 `주방/식당`, `현관/기타` 형식으로 통일하고, `주방및식당`, `현관및기타공간` 표기는 금지한다.
-* 동일 성격의 공간은 합쳐서 표기할 수 있다(예: 기타 7~10).
-* 각 항목은 2~3문장으로 작성할 수 있다.
+---
+
+## DETAILED RULES BY SECTION
+
+### Section 1 Rules
+- "찾는 조건": List only what the user explicitly stated, refined in natural Korean.
+- "일치 조건": Include each user condition verifiable from metadata OR semantically confirmed in the document description.
+  • Document-based examples: "발코니 활용 가능" ↔ "외부 공간으로 활용", "활용도가 높음"
+  • "주방 환기창 존재" ↔ "주방/식당에 환기창이 있음"
+
+### Section 3 Rules
+- Use only facts from the original text and JSON (document, document_signals).
+- If document_signals is present, prioritize those labels and states.
+- `적합 항목`과 `부적합 항목`은 query 일치 여부가 아니라 document에서 추출된 `compliance_fit_items`, `compliance_unfit_items`를 그대로 사용한다.
+- Include benchmark comparisons (e.g., 권장 30~40%, 30% 이하) ONLY if stated in the source.
+- Merge sentences with identical meaning; do not repeat the same fact.
+- Each item may be written in 2–3 sentences.
+- Section headers must appear in this exact order: ■ 종합 등급 → ■ 핵심 설계 평가 → ■ 주요 공간별 상세 분석
+- Space labels: use space_labels_hint if provided; otherwise derive from source text.
+- Space labels format: [주방/식당], [현관/기타] — never [주방및식당], [현관및기타공간]
+- Spaces of the same character may be grouped (e.g., 기타 7~10).
+- 수납 공간은 반드시 `드레스룸`으로 표기한다.
 """
 
         user_content = (
@@ -2557,7 +3408,8 @@ Reformat the original internal evaluation into a user-friendly version, but stri
             )
             return (response.choices[0].message.content or "").strip()
 
-        return self._run_validated_generation(mode="general", generate_fn=_call_llm)
+        answer = self._run_validated_generation(mode="general", generate_fn=_call_llm)
+        return self._enforce_compliance_items_for_general_answer(answer, candidates)
 
     def _generate_no_match_answer(self, total_match_count: int = 0) -> str:
         return (
