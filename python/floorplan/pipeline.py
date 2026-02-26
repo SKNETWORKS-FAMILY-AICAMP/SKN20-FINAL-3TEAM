@@ -3141,144 +3141,6 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 return fallback_results[:requested_top_k]
             raise
 
-    def retrieve_by_embedding(
-        self,
-        embedding: list[float],
-        filters: dict[str, Any] | None = None,
-        top_k: int = 3,
-    ) -> list:
-        """
-        Pre-computed embedding 기반 유사 도면 검색.
-        CV 분석에서 생성된 embedding 벡터를 직접 사용하여 DB에서 유사 도면을 찾는다.
-
-        Args:
-            embedding: 1024-dim embedding vector (qwen3-embedding-0.6b)
-            filters: 메트릭 기반 필터 (structure_type, room_count 등). None이면 필터 없이 검색.
-            top_k: 반환할 최대 도면 수
-        Returns:
-            list of tuples (_retrieve_hybrid와 동일 형식)
-        """
-        embedding_vector = "[" + ",".join(map(str, embedding)) + "]"
-
-        where_sql, filter_params = self._build_filter_where_parts(filters or {})
-        params = [embedding_vector, *filter_params, top_k]
-
-        sql = f"""
-            SELECT f.id AS floorplan_id, f.name AS document_id,
-                fa.analysis_description AS document,
-                fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
-                fa.bathroom_ratio, fa.kitchen_ratio,
-                fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
-                fa.has_special_space, fa.has_etc_space,
-                (1 - (fa.embedding <=> %s::vector)) AS similarity
-            FROM floorplan_analysis fa
-            JOIN floorplan f ON fa.floorplan_id = f.id
-            WHERE {where_sql}
-            ORDER BY similarity DESC
-            LIMIT %s
-        """
-
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(sql, params)
-                results = cur.fetchall()
-        except Exception:
-            self.conn.rollback()
-            results = []
-
-        if len(results) < top_k and filters:
-            fallback_params = [embedding_vector, top_k]
-            fallback_sql = """
-                SELECT f.id AS floorplan_id, f.name AS document_id,
-                    fa.analysis_description AS document,
-                    fa.windowless_count, fa.balcony_ratio, fa.living_room_ratio,
-                    fa.bathroom_ratio, fa.kitchen_ratio,
-                    fa.structure_type, fa.bay_count, fa.room_count, fa.bathroom_count,
-                    fa.compliance_grade, fa.ventilation_quality AS ventilation_quality,
-                    fa.has_special_space, fa.has_etc_space,
-                    (1 - (fa.embedding <=> %s::vector)) AS similarity
-                FROM floorplan_analysis fa
-                JOIN floorplan f ON fa.floorplan_id = f.id
-                ORDER BY similarity DESC
-                LIMIT %s
-            """
-            try:
-                with self.conn.cursor() as cur:
-                    cur.execute(fallback_sql, fallback_params)
-                    fallback_results = cur.fetchall()
-                # 기존 결과 ID를 제외하고 부족분 채우기
-                existing_ids = {row[0] for row in results}
-                for row in fallback_results:
-                    if row[0] not in existing_ids:
-                        results.append(row)
-                        existing_ids.add(row[0])
-                    if len(results) >= top_k:
-                        break
-            except Exception:
-                self.conn.rollback()
-
-        return results[:top_k]
-
-    def search_by_description(
-        self, description: str, top_k: int = 3,
-        explicit_filters: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """
-        텍스트 설명(document)으로 유사 도면 검색.
-        이미지 분석 후 생성된 document를 검색 쿼리로 사용한다.
-        run()과 달리 세션/히스토리 부작용 없이 검색+리랭킹만 수행.
-
-        Args:
-            description: 자연어 도면 설명 (to_natural_language() 결과)
-            top_k: 최종 반환할 도면 수
-            explicit_filters: 명시적 필터 (LLM 추출 필터를 덮어씀, 이미지 검색용)
-        Returns:
-            {"docs": [...], "query_json": {...}, "total_count": int}
-        """
-        query_json = self._analyze_query(description)
-        filters = query_json.get("filters", {}) or {}
-        documents = query_json.get("documents", "") or ""
-
-        # 명시적 필터가 있으면 LLM 추출 필터에 병합 (명시적 필터 우선)
-        if explicit_filters:
-            self.logger.info("[search_by_description] LLM 추출 필터: %s", filters)
-            self.logger.info("[search_by_description] 명시적 필터: %s", explicit_filters)
-            filters.update(explicit_filters)
-            query_json["filters"] = filters
-
-        self.logger.info("[search_by_description] 최종 필터: %s", filters)
-        self.logger.info("[search_by_description] documents: %s", documents[:100] if documents else "(없음)")
-
-        count_context = self._count_matches_context(filters, documents)
-        total_count = int(count_context.get("display_count", 0) or 0)
-        retrieve_count = int(count_context.get("retrieve_count", 0) or 0)
-        self.logger.info(
-            "[search_by_description] 매칭 도면: display=%d retrieve=%d",
-            total_count,
-            retrieve_count,
-        )
-
-        if retrieve_count <= 0:
-            return {"docs": [], "query_json": query_json, "total_count": 0}
-
-        retrieve_k = min(max(retrieve_count, top_k), 50)
-        docs = self._retrieve_hybrid(query_json, top_k=retrieve_k)
-
-        docs = self._rerank_by_query_signal_preferences(
-            docs, description, filters,
-        )
-
-        return {
-            "docs": docs[:top_k],
-            "query_json": query_json,
-            "total_count": total_count,
-        }
-
-    def count_by_filters(self, filters: dict[str, Any] | None = None) -> int:
-        """필터 조건에 맞는 도면 총 개수 반환 (public wrapper)"""
-        return self._count_matches(filters or {})
-
     def generate_similar_answer(
         self,
         analysis_metrics: dict[str, Any],
@@ -3291,7 +3153,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
 
         Args:
             analysis_metrics: CV 분석 메트릭 (room_count, bay_count 등)
-            docs: retrieve_by_embedding 결과 (tuple list)
+            docs: 유사 도면 검색 결과 (tuple list)
             total_count: 필터 조건에 맞는 전체 도면 수
         Returns:
             [유사 도면 #N] 마커가 포함된 구조화된 답변 문자열
@@ -3350,8 +3212,16 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         # 2단계: 비율 필터 + 부울 필터
         {"balcony_ratio", "living_room_ratio", "bathroom_ratio", "kitchen_ratio",
          "has_special_space", "has_etc_space"},
-        # 3단계: 구조 필터 (마지막까지 유지, 최후에 제거)
-        {"structure_type", "bay_count", "room_count", "bathroom_count", "windowless_count"},
+        # 3단계: 무창 공간 (정확히 일치하기 어려움)
+        {"windowless_count"},
+        # 4단계: 화장실 수
+        {"bathroom_count"},
+        # 5단계: 베이 수
+        {"bay_count"},
+        # 6단계: 구조 타입 (판상형/타워형)
+        {"structure_type"},
+        # 7단계: 방 수 (최후까지 유지 — 가장 중요한 필터)
+        {"room_count"},
     ]
 
     def _relax_filters(self, filters: dict[str, Any]) -> list[dict[str, Any]]:
