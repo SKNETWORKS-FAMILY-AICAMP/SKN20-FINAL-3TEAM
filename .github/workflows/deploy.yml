@@ -18,7 +18,23 @@ jobs:
           script: |
             cd /home/ubuntu/SKN20-FINAL-3TEAM
             git pull origin backtopython
+
+            # Python FastAPI
             source venv/bin/activate
             pip install -r python/requirements.txt --quiet
             sudo systemctl restart skn20
-            echo "Deploy completed!"
+
+            # Spring Boot
+            cd Backend
+            mvn package -DskipTests -q
+            sudo systemctl restart springboot
+            cd ..
+
+            # React
+            cd final-frontend-ts
+            npm install --silent
+            npx vite build
+            sudo systemctl restart nginx
+            cd ..
+
+            echo "All services deployed!"
