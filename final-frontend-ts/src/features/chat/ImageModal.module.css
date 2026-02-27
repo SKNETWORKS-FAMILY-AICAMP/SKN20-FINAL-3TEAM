@@ -52,6 +52,8 @@
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .image {
@@ -59,6 +61,49 @@
   max-height: 75vh;
   object-fit: contain;
   border-radius: 0.375rem;
+  user-select: none;
+}
+
+/* 줌 컨트롤 */
+.zoomControls {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  z-index: 10;
+}
+
+.zoomControlBtn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 0.25rem;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.zoomControlBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.zoomLevelText {
+  color: #fff;
+  font-size: 0.8rem;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 오른쪽: 설명 카드 */
