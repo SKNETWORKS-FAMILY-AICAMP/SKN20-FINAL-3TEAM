@@ -115,7 +115,7 @@ export interface FloorPlanUploadResponse {
   topologyImageUrl?: string;          // 위상 그래프 이미지 URL (data:image/png;base64,...)
   llmAnalysisJson?: string;           // llm_analysis.json (FloorPlanAnalysis 전체, compliance 포함)
   analysisDescription?: string;       // 상세 분석 설명
-  embedding?: number[];               // 임베딩 벡터 (1536차원)
+  embedding?: number[];               // 임베딩 벡터 (1024차원, Qwen3-Embedding-0.6B)
 
   // 13개 분석 지표
   windowlessRatio?: number;           // 무창실 비율

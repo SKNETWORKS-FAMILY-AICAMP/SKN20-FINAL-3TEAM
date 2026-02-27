@@ -65,10 +65,64 @@ ANALYSIS_PROMPT_TEMPLATE = """
 출력 형식은 FloorPlanAnalysis 스키마를 따르세요.
 """
 
+def _slim_topology(topology_data: dict) -> dict:
+    """LLM 프롬프트용으로 불필요한 픽셀 좌표 제거 (원본 미변경)"""
+    slim = {}
+
+    if "image_info" in topology_data:
+        slim["image_info"] = {"file_name": topology_data["image_info"].get("file_name", "")}
+
+    if "nodes" in topology_data:
+        slim_nodes = []
+        for node in topology_data["nodes"]:
+            slim_node = {
+                "node_id": node.get("node_id"),
+                "label": node.get("label"),
+                "space_type": node.get("space_type"),
+                "is_outside": node.get("is_outside"),
+                "area": node.get("area"),
+                "area_ratio": node.get("area_ratio"),
+            }
+            contains = node.get("contains", {})
+            slim_contains = {}
+            if contains.get("objects"):
+                slim_contains["objects"] = [
+                    obj.get("category_name") if isinstance(obj, dict) else obj
+                    for obj in contains["objects"]
+                ]
+            if contains.get("ocr_labels"):
+                slim_contains["ocr_labels"] = contains["ocr_labels"]
+            if contains.get("structures"):
+                slim_contains["structures"] = [
+                    (s.get("type") or s.get("category_name")) if isinstance(s, dict) else s
+                    for s in contains["structures"]
+                ]
+            if slim_contains:
+                slim_node["contains"] = slim_contains
+            slim_nodes.append(slim_node)
+        slim["nodes"] = slim_nodes
+
+    if "edges" in topology_data:
+        slim["edges"] = [
+            {
+                "source_node": e.get("source_node"),
+                "target_node": e.get("target_node"),
+                "connection_type": e.get("connection_type"),
+            }
+            for e in topology_data["edges"]
+        ]
+
+    if "statistics" in topology_data:
+        slim["statistics"] = topology_data["statistics"]
+
+    return slim
+
+
 def build_analysis_prompt(topology_data: dict, rag_context: str) -> str:
     """분석 프롬프트 생성"""
     import json
-    topology_json = json.dumps(topology_data, ensure_ascii=False, indent=2)
+    slim_data = _slim_topology(topology_data)
+    topology_json = json.dumps(slim_data, ensure_ascii=False, indent=2)
 
     return ANALYSIS_PROMPT_TEMPLATE.format(
         topology_json=topology_json,

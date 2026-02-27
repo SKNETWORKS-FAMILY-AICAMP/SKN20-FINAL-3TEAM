@@ -11,6 +11,8 @@ from typing import Any, Callable, Optional
 import psycopg2
 from openai import OpenAI
 
+from CV.rag_system.embeddings import EmbeddingManager
+
 
 @dataclass
 class AnswerValidationResult:
@@ -390,11 +392,11 @@ class ArchitecturalHybridRAG:
         text = re.sub(r"[ \t]+,", ",", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
         # Normalize parenthetical evidence and collapse accidental adjacent duplicates.
-        text = re.sub(
-            r"\(\s*([^()]*?)\s*\)",
-            lambda m: f"({re.sub(r'\\s+', ' ', m.group(1)).strip()})",
-            text,
-        )
+        def _normalize_parens(m: re.Match) -> str:
+            inner = re.sub(r'\s+', ' ', m.group(1)).strip()
+            return f"({inner})"
+
+        text = re.sub(r"\(\s*([^()]*?)\s*\)", _normalize_parens, text)
         text = re.sub(r"(\([^()]+\))(?:\s*\1)+", r"\1", text)
 
         def _rewrite(match: re.Match[str]) -> str:
