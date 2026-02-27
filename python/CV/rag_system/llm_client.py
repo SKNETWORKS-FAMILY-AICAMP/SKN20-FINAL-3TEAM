@@ -16,10 +16,11 @@ class LLMClient(ABC):
         pass
 
 class OpenAIClient(LLMClient):
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.1):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.1, max_tokens: int = 16000):
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
+        self.max_tokens = max_tokens
 
     def query(self, messages: List[Dict], response_model: Optional[Type[BaseModel]] = None):
         """
@@ -38,7 +39,8 @@ class OpenAIClient(LLMClient):
                 model=self.model,
                 messages=messages,
                 response_format=response_model,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
             )
             return response.choices[0].message.parsed
         else:
@@ -46,7 +48,8 @@ class OpenAIClient(LLMClient):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=self.temperature
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
             )
             return response.choices[0].message.content
 
