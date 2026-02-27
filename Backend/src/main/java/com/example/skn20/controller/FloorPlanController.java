@@ -37,7 +37,6 @@ public class FloorPlanController {
 			FloorplanPreviewResponse preview = floorPlanService.analyzeFloorplan(file);
 			return ResponseEntity.ok(preview);
 		} catch (Exception e) {
-			e.printStackTrace();
 			return ResponseEntity.status(500).body("분석 중 오류 발생: " + e.getMessage());
 		}
 	}

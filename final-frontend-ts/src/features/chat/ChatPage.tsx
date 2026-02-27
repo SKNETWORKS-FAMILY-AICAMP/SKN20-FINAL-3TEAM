@@ -273,14 +273,11 @@ const ChatPage: React.FC = () => {
     if (currentRoomId !== null) {
       // 새 채팅방 생성 직후에는 히스토리 로드 스킵
       if (skipLoadHistoryRef.current) {
-        console.log('[ChatPage] 새 채팅방이므로 히스토리 로드 스킵');
         skipLoadHistoryRef.current = false;
         return;
       }
-      console.log('[ChatPage] 채팅 기록 로드:', currentRoomId);
       loadChatHistory(currentRoomId);
     } else {
-      console.log('[ChatPage] 새 채팅 - 메시지 초기화');
       setMessages([]);
     }
   }, [currentRoomId, loadChatHistory]);
@@ -448,8 +445,6 @@ const ChatPage: React.FC = () => {
     setInputMessage('');
     setIsSending(true);
 
-    console.log('[ChatPage] 메시지 전송 시작, currentRoomId:', currentRoomId);
-
     // 사용자 메시지 즉시 표시
     const userMessage: ChatMessageType = {
       id: `temp-user-${Date.now()}`,
@@ -462,10 +457,7 @@ const ChatPage: React.FC = () => {
         description: '업로드한 도면 이미지',
       }] : undefined,
     };
-    setMessages((prev) => {
-      console.log('[ChatPage] 사용자 메시지 추가, 이전 메시지 수:', prev.length);
-      return [...prev, userMessage];
-    });
+    setMessages((prev) => [...prev, userMessage]);
 
     // 이미지 상태 초기화 (blob URL은 유지 - 메시지에서 사용 중)
     const imageToSend = selectedImage;
@@ -483,8 +475,6 @@ const ChatPage: React.FC = () => {
         question,
         image: imageToSend || undefined,
       });
-
-      console.log('[ChatPage] API 응답 받음, chatRoomId:', response.chatRoomId);
 
       const isNewRoom = currentRoomId === null;
 
@@ -566,14 +556,10 @@ const ChatPage: React.FC = () => {
         timestamp: new Date(),
         images: hasFloorplans ? floorplanImages : undefined,
       };
-      setMessages((prev) => {
-        console.log('[ChatPage] AI 응답 추가, 이전 메시지 수:', prev.length);
-        return [...prev, aiMessage];
-      });
+      setMessages((prev) => [...prev, aiMessage]);
 
       // 새 채팅방이면 세션 목록에 추가하고 현재 방 ID 설정
       if (isNewRoom) {
-        console.log('[ChatPage] 새 채팅방 생성');
         const newSession: ChatSession = {
           id: String(response.chatRoomId),
           title: question.slice(0, 30),
@@ -584,10 +570,7 @@ const ChatPage: React.FC = () => {
         
         // 새 채팅방이므로 useEffect에서 히스토리 로드 스킵
         skipLoadHistoryRef.current = true;
-        console.log('[ChatPage] skipLoadHistoryRef 설정 완료, roomId 변경:', response.chatRoomId);
         setCurrentRoomId(response.chatRoomId);
-      } else {
-        console.log('[ChatPage] 기존 채팅방에 메시지 추가');
       }
 
     } catch (error) {

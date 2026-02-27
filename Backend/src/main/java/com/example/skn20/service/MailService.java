@@ -50,10 +50,8 @@ public class MailService {
             emailVerificationMap.put(mail, new VerificationData(number, LocalDateTime.now()));
             lastSentMap.put(mail, LocalDateTime.now());
             logger.info("인증번호 " + number + "가 " + mail + " 이메일로 전송되었습니다.");
-            System.out.println("인증번호 " + number + "가 " + mail + " 이메일로 전송되었습니다.");
 
         } catch (MessagingException e) {
-            e.printStackTrace();
             throw new RuntimeException("메일 전송에 실패했습니다.", e);
         }
     }

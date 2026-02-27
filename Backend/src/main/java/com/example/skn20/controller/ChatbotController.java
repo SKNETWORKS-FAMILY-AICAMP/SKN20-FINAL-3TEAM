@@ -105,7 +105,7 @@ public class ChatbotController {
 	        try {
 	            imageUrlsJson = new ObjectMapper().writeValueAsString(imageUrls);
 	        } catch (Exception e) {
-	            e.printStackTrace();
+	            // JSON 직렬화 실패 시 무시
 	        }
 	    }
 
@@ -140,7 +140,6 @@ public class ChatbotController {
 	    response.put("answer", answer);
 	    response.put("chatRoomId", responseChatRoomId);
 	    response.put("image_urls", result.get("image_urls"));
-	    System.out.println(response);
 	    return ResponseEntity.ok(response);
 	}
 	
@@ -163,11 +162,6 @@ public class ChatbotController {
 	public ResponseEntity<String> deleteRoom(@AuthenticationPrincipal UD user, @RequestParam Long chatRoomId) {
 		User userinfo = userservice.findByEmail(user.getEmail());
 		ChatRoom chatRoom = chatRoomRep.findChatRoomById(chatRoomId);
-		if (chatRoom != null) {
-			System.out.println("ChatRoom ID: " + chatRoom.getId());
-			System.out.println("ChatRoom User: " + (chatRoom.getUser() != null ? chatRoom.getUser().getId() : "NULL"));
-		}
-		
 		if (chatRoom == null) {
 			return ResponseEntity.status(404).body("ChatRoom not found");
 		}

@@ -83,11 +83,6 @@ const FileUploadPage: React.FC = () => {
     // 오버레이는 이미지 위에 직접 배치되므로 offset 불필요
     setImageScale({ scaleX, scaleY, offsetX: 0, offsetY: 0 });
 
-    console.log('이미지 스케일 계산:', {
-      natural: `${naturalWidth}x${naturalHeight}`,
-      rendered: `${renderedWidth}x${renderedHeight}`,
-      scale: `${scaleX.toFixed(4)}, ${scaleY.toFixed(4)}`,
-    });
   }, []);
 
   useEffect(() => {
@@ -154,14 +149,9 @@ const FileUploadPage: React.FC = () => {
     setHoveredItems([]);
     setTopologyGraphUrl(null);
 
-    console.log('=== 도면 분석 시작 ===');
-    console.log('파일명:', file.name);
-
     try {
       // 1. 백엔드 API 호출 (Python 서버에서 실시간 분석)
-      console.log('백엔드 API 호출 중...');
       const apiResult = await uploadFloorPlan(file);
-      console.log('API 응답:', apiResult);
 
       // API 응답에서 필요한 데이터 추출
       let result: FloorPlanUploadResponse;
@@ -169,8 +159,6 @@ const FileUploadPage: React.FC = () => {
       // 백엔드 응답 형식에 따라 파싱
       // 백엔드 FloorplanPreviewResponse 필드명: topologyJson, topologyImageUrl, analysisDescription
       const topologyData = apiResult.topologyJson || apiResult.elementJson;
-      console.log('topologyData 존재 여부:', !!topologyData);
-      console.log('topologyData 타입:', typeof topologyData);
 
       if (topologyData) {
         // 백엔드가 { topologyJson, topologyImageUrl, analysisDescription, embedding } 형태로 반환하는 경우
@@ -178,17 +166,9 @@ const FileUploadPage: React.FC = () => {
           ? JSON.parse(topologyData)
           : topologyData;
 
-        console.log('파싱된 jsonData:', jsonData);
-        console.log('isTopologyFormat:', isTopologyFormat(jsonData));
-
         if (isTopologyFormat(jsonData)) {
-          console.log('Topology 형식으로 변환 시작...');
           result = convertTopologyToFloorPlan(jsonData as TopologyData, file.name);
-          console.log('변환된 result.rooms:', result.rooms);
-          console.log('변환된 result.structures:', result.structures);
-          console.log('변환된 result.objects:', result.objects);
         } else {
-          console.log('COCO 형식으로 변환 시작...');
           result = convertCocoToFloorPlan(jsonData as CocoData, file.name);
         }
 
@@ -252,7 +232,6 @@ const FileUploadPage: React.FC = () => {
         setAiSummary(generateSummary(result));
       }
 
-      console.log('변환 결과:', result);
       setAnalysisResult(result);
       setAnalysisStatus('completed');
       setJsonResult(JSON.stringify(result, null, 2));
