@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatImage } from './types/chat.types';
 import styles from './ImageModal.module.css';
@@ -26,6 +26,11 @@ const toMarkdown = (text: string): string => {
 };
 
 const ImageModal: React.FC<ImageModalProps> = ({ image, onClose }) => {
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -34,10 +39,47 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // 이미지 변경 시 줌 리셋
+  useEffect(() => {
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  }, [image.url]);
+
   const formattedDescription = useMemo(
     () => (image.description ? toMarkdown(image.description) : ''),
     [image.description],
   );
+
+  const handleZoomWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoomLevel((prev) => Math.min(Math.max(prev + delta, 0.5), 5));
+  };
+
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+    }
+  };
+
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (isPanning && zoomLevel > 1) {
+      setPanPosition({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+    }
+  };
+
+  const handlePanEnd = () => {
+    setIsPanning(false);
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -45,13 +87,46 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose }) => {
         &times;
       </button>
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-        {/* 왼쪽: 도면 이미지 */}
-        <div className={styles.imageSection}>
+        {/* 왼쪽: 도면 이미지 (확대/축소/패닝) */}
+        <div
+          className={styles.imageSection}
+          onWheel={handleZoomWheel}
+          onMouseDown={handlePanStart}
+          onMouseMove={handlePanMove}
+          onMouseUp={handlePanEnd}
+          onMouseLeave={handlePanEnd}
+          style={{ cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default' }}
+        >
           <img
             src={image.url}
             alt={image.name}
             className={styles.image}
+            style={{
+              transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+              transition: isPanning ? 'none' : 'transform 0.1s ease',
+            }}
+            draggable={false}
           />
+          <div className={styles.zoomControls}>
+            <button
+              className={styles.zoomControlBtn}
+              onClick={() => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5))}
+            >
+              −
+            </button>
+            <span className={styles.zoomLevelText}>{Math.round(zoomLevel * 100)}%</span>
+            <button
+              className={styles.zoomControlBtn}
+              onClick={() => setZoomLevel((prev) => Math.min(prev + 0.25, 5))}
+            >
+              +
+            </button>
+            {zoomLevel !== 1 && (
+              <button className={styles.zoomControlBtn} onClick={handleZoomReset}>
+                ↺
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 오른쪽: 설명 카드 */}
