@@ -61,7 +61,7 @@ class LocalLLMClient(LLMClient):
     beta.chat.completions.parse()로 구조화 출력 지원.
     """
 
-    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 8000):
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 16000):
         self.client = OpenAI(api_key="EMPTY", base_url=base_url)
         self.model = model
         self.temperature = temperature
