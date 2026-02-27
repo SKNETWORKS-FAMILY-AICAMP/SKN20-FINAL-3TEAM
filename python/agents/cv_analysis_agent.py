@@ -35,8 +35,8 @@ class CVAnalysisAgent(BaseAgent):
         """기존 싱글톤 서비스 참조 (lazy loading)"""
         if self._cv_service is not None:
             return
-        from services.cv_service import cv_service
-        from services.rag_service import rag_service
+        from services.cv_inference_service import cv_service
+        from services.floorplan_analysis_service import rag_service
         from services.embedding_service import embedding_service
         self._cv_service = cv_service
         self._rag_service = rag_service

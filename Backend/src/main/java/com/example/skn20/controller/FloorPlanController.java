@@ -21,7 +21,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/floorplan")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = { "http://localhost:3000", "http://43.200.42.14:3000" })
 public class FloorPlanController {
 
 	private final FloorPlanService floorPlanService;

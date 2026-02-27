@@ -25,6 +25,7 @@ class FloorplanSearchAgent(BaseAgent):
     def __init__(self):
         self._rag = None
         self._config = None
+        self._db_conn = None
 
     def _load_components(self):
         if self._rag is not None:
@@ -41,7 +42,10 @@ class FloorplanSearchAgent(BaseAgent):
             "password": self._config.POSTGRES_PASSWORD,
         }
 
-        from floorplan.pipeline import ArchitecturalHybridRAG
+        import psycopg2
+        self._db_conn = psycopg2.connect(**db_config)
+
+        from services.floorplan_text_search_service import ArchitecturalHybridRAG
         self._rag = ArchitecturalHybridRAG(
             db_config=db_config,
             openai_api_key=self._config.OPENAI_API_KEY,
@@ -103,7 +107,9 @@ class FloorplanSearchAgent(BaseAgent):
     # ===== image_search 모드 =====
 
     def _execute_image_search(self, cv_result: CVAnalysisResult) -> dict:
-        """CV 분석 결과 → 섹션 1,2 답변 + document 기반 유사 도면 검색"""
+        """CV 분석 결과 → 분석 텍스트 + 유사 도면 검색 (image_search 모듈 사용)"""
+        from services.floorplan_image_search_service import search_similar
+
         logger.info("=" * 50)
         logger.info("[image_search] 이미지 분석 + 유사 도면 검색 시작")
         logger.info("=" * 50)
@@ -113,8 +119,7 @@ class FloorplanSearchAgent(BaseAgent):
         analysis_text = self._generate_answer_sections_2_3(cv_result)
         logger.info("[1/3] 분석 텍스트 생성 완료")
 
-        # 2. 메트릭 핵심 정보 + Overall summary → 검색 쿼리 구성
-        #    → _analyze_query()가 자동으로 필터 추출 + _retrieve_hybrid()가 벡터+텍스트 하이브리드 검색
+        # 2. 검색 쿼리 + 필터 구성
         metrics = cv_result.metrics or {}
         metric_parts = []
         if metrics.get("structure_type"):
@@ -133,26 +138,25 @@ class FloorplanSearchAgent(BaseAgent):
         summary_match = re.search(r'Overall summary:\s*(.+?)(?:\n|$)', analysis_text)
         overall_summary = summary_match.group(1).strip() if summary_match else ""
 
-        # 메트릭 요약 + Overall summary 결합
         metrics_prefix = ", ".join(metric_parts) + ". " if metric_parts else ""
         search_query = metrics_prefix + overall_summary
         if not search_query.strip():
             search_query = (cv_result.document or "")[:200]
 
-        # 메트릭에서 명시적 필터 구성 (LLM 추출 필터보다 정확)
-        explicit_filters = {}
+        filters = {}
         for key in ("structure_type", "room_count", "bay_count", "bathroom_count", "windowless_count"):
             if metrics.get(key) is not None:
-                explicit_filters[key] = metrics[key]
+                filters[key] = metrics[key]
         if metrics.get("living_room_ratio") is not None:
-            explicit_filters["living_room_ratio"] = {"op": "동일", "val": metrics["living_room_ratio"]}
+            filters["living_room_ratio"] = {"op": "동일", "val": metrics["living_room_ratio"]}
 
+        # 3. 유사 도면 검색 (image_search 모듈 — 임베딩 유사도 + 필터 완화)
         logger.info("[2/3] 유사 도면 검색 시작...")
-        logger.info("  검색 쿼리: %s", search_query)
-        logger.info("  명시적 필터: %s", explicit_filters)
-
-        search_result = self._rag.search_by_description(
-            search_query, top_k=3, explicit_filters=explicit_filters,
+        search_result = search_similar(
+            conn=self._db_conn,
+            description=search_query,
+            filters=filters,
+            top_k=3,
         )
         docs = search_result["docs"]
         total_count = search_result["total_count"]
@@ -163,7 +167,7 @@ class FloorplanSearchAgent(BaseAgent):
             len(floorplan_ids), total_count, floorplan_ids,
         )
 
-        # 3. 유사 도면 구조화된 설명 생성 (LLM)
+        # 4. 유사 도면 구조화된 설명 생성 (LLM)
         answer = analysis_text
         if docs:
             logger.info("[3/3] 유사 도면 구조화된 설명 생성 중 (LLM)...")

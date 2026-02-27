@@ -1,6 +1,6 @@
 """
 법/조례 검색 에이전트
-chatbot_service_v2 래핑
+chatbot_law_service 래핑
 """
 
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger("RegulationSearchAgent")
 
 
 class RegulationSearchAgent(BaseAgent):
-    """법/조례 검색 에이전트 — chatbot_service_v2 래핑"""
+    """법/조례 검색 에이전트 — chatbot_law_service 래핑"""
 
     @property
     def name(self) -> str:
@@ -24,7 +24,7 @@ class RegulationSearchAgent(BaseAgent):
     def _load_components(self):
         if self._chatbot_service is not None:
             return
-        from services.chatbot_service_v2 import chatbot_service
+        from services.chatbot_law_service import chatbot_service
         self._chatbot_service = chatbot_service
         logger.info("RegulationSearchAgent 컴포넌트 로드 완료")
 

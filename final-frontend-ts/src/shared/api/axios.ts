@@ -107,6 +107,13 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       console.error('인증 오류: 토큰이 만료되었거나 유효하지 않습니다.');
       removeToken();
+
+      // 확인 버튼 누른 뒤 로그인 페이지로 리다이렉트
+      alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+
+      if (window.location.pathname !== '/auth') {
+        window.location.href = '/auth';
+      }
     }
 
     // 403 Forbidden: 권한 없음

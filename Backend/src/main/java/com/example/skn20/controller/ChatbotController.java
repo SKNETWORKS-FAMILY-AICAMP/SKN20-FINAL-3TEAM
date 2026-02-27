@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/chatbot")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:8000" })
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:8000", "http://43.200.42.14:3000" })
 public class ChatbotController {
 
 	private final UserService userservice;

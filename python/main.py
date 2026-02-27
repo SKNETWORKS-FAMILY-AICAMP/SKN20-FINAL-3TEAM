@@ -5,12 +5,16 @@ Spring Boot와 연동하여 도면 이미지를 분석하고 결과를 반환
 
 import json
 import logging
+import os
 from typing import Optional
 
 import cv2
 import numpy as np
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv()
 
 # 스키마
 from api_models.schemas import (
@@ -23,7 +27,7 @@ from agents.orchestrator import OrchestratorAgent
 from agents.cv_analysis_agent import CVAnalysisAgent
 
 # /generate-metadata 에서만 직접 사용
-from services.rag_service import rag_service
+from services.floorplan_analysis_service import rag_service
 from services.embedding_service import embedding_service
 
 from api_utils.image_utils import image_to_base64
@@ -41,7 +45,7 @@ app = FastAPI(title="건축 평면도 분석 API")
 # CORS 설정 (Spring Boot와 통신을 위해)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://localhost:3000"],
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://localhost:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
