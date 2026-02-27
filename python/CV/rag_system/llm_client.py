@@ -1,8 +1,13 @@
 """LLM API 추상화 계층"""
+import json
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Type
+
 from pydantic import BaseModel
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 class LLMClient(ABC):
     @abstractmethod
@@ -45,20 +50,51 @@ class OpenAIClient(LLMClient):
             )
             return response.choices[0].message.content
 
-# 로컬 모델로 교체 가능
 class LocalLLMClient(LLMClient):
     """
-    나중에 Qwen 3, Llama 등 로컬 모델로 교체
+    vLLM 서버 기반 로컬 LLM 클라이언트
 
-    예시:
-    - ollama API
-    - vllm 서버
-    - transformers 직접 로드
+    OpenAI 호환 API를 통해 vLLM 서버와 통신.
+    beta.chat.completions.parse()로 구조화 출력 지원.
     """
-    def __init__(self, model_path: str):
-        self.model_path = model_path
-        # TODO: 로컬 모델 초기화
+
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 8000):
+        self.client = OpenAI(api_key="EMPTY", base_url=base_url)
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        logger.info(f"LocalLLMClient 초기화: base_url={base_url}, model={model}")
 
     def query(self, messages: List[Dict], response_model: Optional[Type[BaseModel]] = None):
-        # TODO: 로컬 모델 추론
-        pass
+        """
+        vLLM 서버 API 호출
+
+        Args:
+            messages: [{"role": "system", "content": "..."}, ...]
+            response_model: Pydantic 모델 (구조화된 출력)
+
+        Returns:
+            response_model 인스턴스 또는 문자열
+        """
+        if response_model:
+            response = self.client.beta.chat.completions.parse(
+                model=self.model,
+                messages=messages,
+                response_format=response_model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            parsed = response.choices[0].message.parsed
+            if parsed is None:
+                logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
+                raw = response.choices[0].message.content
+                return response_model(**json.loads(raw))
+            return parsed
+        else:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            return response.choices[0].message.content

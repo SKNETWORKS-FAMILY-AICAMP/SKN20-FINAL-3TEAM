@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 
 from CV.rag_system.config import RAGConfig
 from CV.rag_system.embeddings import EmbeddingManager
-from CV.rag_system.llm_client import OpenAIClient
+from CV.rag_system.llm_client import LLMClient, OpenAIClient, LocalLLMClient
 from CV.rag_system.schemas import FloorPlanAnalysis
 from CV.rag_system.prompts import SYSTEM_PROMPT, build_analysis_prompt
 from services.pgvector_service import pgvector_service
@@ -22,7 +22,7 @@ class RAGService:
     def __init__(self):
         self.config: Optional[RAGConfig] = None
         self.embedding_manager: Optional[EmbeddingManager] = None
-        self.llm_client: Optional[OpenAIClient] = None
+        self.llm_client: Optional[LLMClient] = None
 
     def load_components(self):
         """RAG 컴포넌트를 lazy loading 방식으로 로드"""
@@ -34,11 +34,22 @@ class RAGService:
         try:
             self.config = RAGConfig()
             self.embedding_manager = EmbeddingManager()
-            self.llm_client = OpenAIClient(
-                api_key=self.config.OPENAI_API_KEY,
-                model=self.config.OPENAI_MODEL,
-                temperature=self.config.OPENAI_TEMPERATURE
-            )
+
+            if self.config.LLM_BACKEND == "vllm":
+                self.llm_client = LocalLLMClient(
+                    base_url=self.config.VLLM_BASE_URL,
+                    model=self.config.VLLM_MODEL_NAME,
+                    temperature=self.config.OPENAI_TEMPERATURE,
+                )
+                logger.info("LLM 백엔드: vLLM (%s)", self.config.VLLM_BASE_URL)
+            else:
+                self.llm_client = OpenAIClient(
+                    api_key=self.config.OPENAI_API_KEY,
+                    model=self.config.OPENAI_MODEL,
+                    temperature=self.config.OPENAI_TEMPERATURE,
+                )
+                logger.info("LLM 백엔드: OpenAI (%s)", self.config.OPENAI_MODEL)
+
             logger.info("RAG 컴포넌트 로딩 완료!")
         except Exception as e:
             logger.error(f"RAG 컴포넌트 로딩 실패: {e}")
