@@ -9,12 +9,10 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import numpy as np
 
 from agents.base import BaseAgent
 from api_models.schemas import CVAnalysisResult
-from api_utils.image_utils import image_to_base64
 
 logger = logging.getLogger("CVAnalysisAgent")
 
@@ -65,7 +63,7 @@ class CVAnalysisAgent(BaseAgent):
 
         # ===== 공통 (preview + full) =====
 
-        # 1. CV 추론
+        # 1. CV 추론 (RunPod GPU)
         logger.info(f"[{mode}] CV 추론 시작: {filename}")
         results = self._cv_service.analyze_image(
             image=image,
@@ -73,15 +71,14 @@ class CVAnalysisAgent(BaseAgent):
             save_json=True,
             save_visualization=True,
         )
-        topology_data = results.get("topology_graph", {})
+        topology_data = results.get("topology_json", results.get("topology_graph", {}))
 
-        # 2. topology 이미지 base64
-        topology_image_path = self._cv_service.get_topology_image_path(filename)
-        if topology_image_path.exists():
-            topo_img = cv2.imread(str(topology_image_path))
-            topology_image_base64 = f"data:image/png;base64,{image_to_base64(topo_img)}"
+        # 2. topology 이미지 base64 (RunPod 응답에서 직접 가져옴)
+        topo_b64 = results.get("topology_image_base64", "")
+        if topo_b64:
+            topology_image_base64 = f"data:image/png;base64,{topo_b64}"
         else:
-            logger.warning(f"Topology 이미지 없음: {topology_image_path}")
+            logger.warning("Topology 이미지가 RunPod 응답에 없음")
             topology_image_base64 = ""
 
         # 3. LLM 분석 (RAG)
@@ -93,8 +90,8 @@ class CVAnalysisAgent(BaseAgent):
             else llm_analysis.dict()
         )
 
-        # 3-1. llm_analysis.json 파일 저장 (임시)
-        output_dir = self._cv_service.pipeline.config.OUTPUT_PATH / Path(filename).stem
+        # 3-1. llm_analysis.json 파일 저장 (임시, 로컬 디버그용)
+        output_dir = Path("/tmp/cv_output") / Path(filename).stem
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
             llm_analysis_path = output_dir / "llm_analysis.json"
