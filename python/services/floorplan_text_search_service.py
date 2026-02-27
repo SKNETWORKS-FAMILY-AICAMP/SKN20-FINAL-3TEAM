@@ -306,42 +306,14 @@ class ArchitecturalHybridRAG:
         return ""
 
     def _ensure_local_embedding_model(self):
-        if self._local_embedding_model is not None:
-            return self._local_embedding_model
-        if not self._local_embedding_model_name:
-            raise ValueError("Local embedding model is not configured.")
-        try:
-            from sentence_transformers import SentenceTransformer
-        except Exception as exc: 
-            raise RuntimeError(
-                "sentence-transformers is required for qwen local embedding mode."
-            ) from exc
-
-        self._log_event(
-            event="local_embedding_model_load_start",
-            level=logging.INFO,
-            model=self._local_embedding_model_name,
-        )
-        hf_token = self._resolve_hf_token()
-        init_kwargs = {}
-        if hf_token:
-            os.environ.setdefault("HF_TOKEN", hf_token)
-            init_kwargs["token"] = hf_token
-        self._local_embedding_model = SentenceTransformer(
-            self._local_embedding_model_name, **init_kwargs
-        )
-        self._log_event(
-            event="local_embedding_model_load_done",
-            level=logging.INFO,
-            model=self._local_embedding_model_name,
-        )
-        return self._local_embedding_model
+        """RunPod Serverless 사용 - 로컬 모델 로딩 불필요"""
+        return None
 
     def _embed_text(self, text: str) -> list[float]:
         if self._local_embedding_model_name:
-            model = self._ensure_local_embedding_model()
-            encoded = model.encode(text, normalize_embeddings=True)
-            embedding = encoded.tolist() if hasattr(encoded, "tolist") else list(encoded)
+            # RunPod Serverless로 임베딩 생성
+            from services.runpod_client import embed_text_sync
+            embedding = embed_text_sync(text[:8000])
         else:
             embedding_resp = self.client.embeddings.create(
                 model=self.embedding_model,

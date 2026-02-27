@@ -7,11 +7,11 @@ import logging
 from typing import Optional, Dict, Any
 
 from CV.rag_system.config import RAGConfig
-from CV.rag_system.embeddings import EmbeddingManager
 from CV.rag_system.llm_client import OpenAIClient
 from CV.rag_system.schemas import FloorPlanAnalysis
 from CV.rag_system.prompts import SYSTEM_PROMPT, build_analysis_prompt
 from services.internal_eval_service import pgvector_service
+from services.runpod_client import embed_text_sync
 
 logger = logging.getLogger("RAGService")
 
@@ -21,7 +21,6 @@ class RAGService:
 
     def __init__(self):
         self.config: Optional[RAGConfig] = None
-        self.embedding_manager: Optional[EmbeddingManager] = None
         self.llm_client: Optional[OpenAIClient] = None
 
     def load_components(self):
@@ -33,13 +32,12 @@ class RAGService:
 
         try:
             self.config = RAGConfig()
-            self.embedding_manager = EmbeddingManager()
             self.llm_client = OpenAIClient(
                 api_key=self.config.OPENAI_API_KEY,
                 model=self.config.OPENAI_MODEL,
                 temperature=self.config.OPENAI_TEMPERATURE
             )
-            logger.info("RAG 컴포넌트 로딩 완료!")
+            logger.info("RAG 컴포넌트 로딩 완료! (임베딩: RunPod Serverless)")
         except Exception as e:
             logger.error(f"RAG 컴포넌트 로딩 실패: {e}")
             raise
@@ -59,7 +57,7 @@ class RAGService:
         # 쿼리 생성 및 임베딩
         stats = topology_data.get('statistics', {})
         query_text = f"{stats.get('structure_type', '혼합형')} 건축물 {stats.get('bay_count', 0)}Bay 침실 {stats.get('room_count', 0)}개"
-        query_embedding = self.embedding_manager.embed_text(query_text)
+        query_embedding = embed_text_sync(query_text)
         
         # RAG 검색 (PostgreSQL pgvector)
         rag_results = pgvector_service.search_internal_eval(

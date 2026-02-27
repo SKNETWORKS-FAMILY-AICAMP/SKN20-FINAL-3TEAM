@@ -43,34 +43,16 @@ _FILTER_DROP_PRIORITY = [
     {"room_count"},
 ]
 
-# ── 임베딩 모델 싱글턴 ────────────────────────────────
+# ── 임베딩 (RunPod Serverless) ────────────────────────
 
-_LOCAL_MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 _EMBEDDING_DIM = 1024
-_local_model = None
-
-
-def _get_embedding_model():
-    """Qwen3-Embedding-0.6B 모델 로드 (최초 1회)"""
-    global _local_model
-    if _local_model is not None:
-        return _local_model
-
-    from sentence_transformers import SentenceTransformer
-
-    logger.info("임베딩 모델 로드 시작: %s", _LOCAL_MODEL_NAME)
-    hf_token = os.getenv("HF_TOKEN", "").strip()
-    kwargs = {"token": hf_token} if hf_token else {}
-    _local_model = SentenceTransformer(_LOCAL_MODEL_NAME, **kwargs)
-    logger.info("임베딩 모델 로드 완료")
-    return _local_model
 
 
 def embed_text(text: str) -> list[float]:
-    """텍스트 → 1024-dim 임베딩 벡터"""
-    model = _get_embedding_model()
-    encoded = model.encode(text, normalize_embeddings=True)
-    embedding = encoded.tolist() if hasattr(encoded, "tolist") else list(encoded)
+    """텍스트 → 1024-dim 임베딩 벡터 (RunPod GPU)"""
+    from services.runpod_client import embed_text_sync
+
+    embedding = embed_text_sync(text[:8000])
     if len(embedding) != _EMBEDDING_DIM:
         raise ValueError(
             f"Embedding dim mismatch: expected={_EMBEDDING_DIM}, actual={len(embedding)}"

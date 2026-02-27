@@ -1,110 +1,102 @@
 """
 CV 파이프라인 서비스
-도면 이미지 분석 및 topology 생성
+RunPod Serverless GPU를 통한 도면 이미지 분석
 """
 
+import base64
 import logging
-from pathlib import Path
 from typing import Optional, Dict, Any
 
 import cv2
 import numpy as np
 
-from CV.cv_inference.pipeline import InferencePipeline
-from CV.cv_inference.config import InferenceConfig
+from services.runpod_client import cv_inference_async
 
 logger = logging.getLogger("CVService")
 
 
 class CVService:
-    """CV 파이프라인 관리 서비스"""
-    
+    """CV 파이프라인 관리 서비스 (RunPod 기반)"""
+
     def __init__(self):
-        self.pipeline: Optional[InferencePipeline] = None
-        
+        self._loaded = True  # RunPod는 항상 사용 가능
+
     def load_pipeline(self):
-        """CV 파이프라인을 lazy loading 방식으로 로드"""
-        if self.pipeline is not None:
-            return self.pipeline
-        
-        logger.info("=" * 60)
-        logger.info("첫 요청 감지 - CV 모델 로딩 중...")
-        logger.info("=" * 60)
-        
-        try:
-            config = InferenceConfig()
-            config.OUTPUT_PATH = Path("./temp_output")
-            config.OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
-            
-            self.pipeline = InferencePipeline(config)
-            self.pipeline.load_models()
-            
-            logger.info("CV 모델 로딩 완료!")
-            return self.pipeline
-        except Exception as e:
-            logger.error(f"CV 모델 로딩 실패: {e}")
-            raise
-    
+        """RunPod 기반이므로 로컬 로딩 불필요"""
+        logger.info("CV 서비스: RunPod Serverless 사용")
+        return self
+
+    async def analyze_image_async(
+        self,
+        image: np.ndarray,
+        filename: str,
+        save_json: bool = True,
+        save_visualization: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        이미지 분석 실행 (RunPod GPU)
+
+        Args:
+            image: OpenCV 이미지
+            filename: 파일명
+            save_json: JSON 저장 여부 (RunPod에서 처리)
+            save_visualization: 시각화 저장 여부 (RunPod에서 처리)
+
+        Returns:
+            분석 결과 딕셔너리
+        """
+        logger.info(f"이미지 분석 시작 (RunPod): {filename}")
+
+        # OpenCV 이미지 -> base64
+        _, buffer = cv2.imencode('.png', image)
+        image_b64 = base64.b64encode(buffer).decode('utf-8')
+
+        # RunPod 호출
+        results = await cv_inference_async(image_b64, filename)
+
+        logger.info("이미지 분석 완료 (RunPod)!")
+        return results
+
     def analyze_image(
         self,
         image: np.ndarray,
         filename: str,
         save_json: bool = True,
-        save_visualization: bool = True
+        save_visualization: bool = True,
     ) -> Dict[str, Any]:
         """
-        이미지 분석 실행
-        
-        Args:
-            image: OpenCV 이미지
-            filename: 파일명
-            save_json: JSON 저장 여부
-            save_visualization: 시각화 저장 여부
-            
-        Returns:
-            분석 결과 딕셔너리
+        동기 버전 (기존 코드 호환용)
+        asyncio 이벤트 루프에서 비동기 호출
         """
-        # 파이프라인 로드 (모델 포함)
-        self.load_pipeline()
-        
-        # 임시 파일로 저장
-        temp_dir = Path("./temp_input")
-        temp_dir.mkdir(exist_ok=True)
-        temp_path = temp_dir / filename
-        cv2.imwrite(str(temp_path), image)
-        
-        logger.info(f"이미지 분석 시작: {filename}")
-        
-        # CV 파이프라인 실행 (self.pipeline 사용)
-        results = self.pipeline.run(
-            temp_path,
-            save_json=save_json,
-            save_visualization=save_visualization
-        )
-        
-        # 임시 입력 파일 정리
-        temp_path.unlink(missing_ok=True)
-        # temp_input 디렉터리가 비어있으면 삭제
-        try:
-            if temp_dir.exists() and not any(temp_dir.iterdir()):
-                temp_dir.rmdir()
-        except Exception:
-            pass
+        import asyncio
 
-        logger.info("이미지 분석 완료!")
+        logger.info(f"이미지 분석 시작 (RunPod, sync): {filename}")
+
+        # OpenCV 이미지 -> base64
+        _, buffer = cv2.imencode('.png', image)
+        image_b64 = base64.b64encode(buffer).decode('utf-8')
+
+        # 이벤트 루프에서 비동기 호출
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                results = pool.submit(
+                    asyncio.run, cv_inference_async(image_b64, filename)
+                ).result()
+        else:
+            results = asyncio.run(cv_inference_async(image_b64, filename))
+
+        logger.info("이미지 분석 완료 (RunPod, sync)!")
         return results
-    
-    def get_topology_image_path(self, filename: str) -> Path:
-        """topology 이미지 경로 반환"""
-        if self.pipeline is None:
-            raise RuntimeError("파이프라인이 로드되지 않았습니다.")
-        
-        file_stem = Path(filename).stem
-        return self.pipeline.config.OUTPUT_PATH / file_stem / "topology_result.png"
-    
+
+    def get_topology_image_base64(self) -> Optional[str]:
+        """RunPod 응답에서 topology 이미지 base64가 포함됨"""
+        return None
+
     def is_loaded(self) -> bool:
-        """파이프라인 로드 여부 확인"""
-        return self.pipeline is not None
+        """RunPod 기반이므로 항상 True"""
+        return True
 
 
 # 싱글톤 인스턴스
