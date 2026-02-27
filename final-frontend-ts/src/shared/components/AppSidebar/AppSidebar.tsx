@@ -240,9 +240,6 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
         </>
       )}
 
-      {/* Spacer */}
-      <div className={styles.spacer} />
-
       {/* Bottom - Profile */}
       <div className={styles.bottomSection}>
         <div
