@@ -91,9 +91,9 @@ class RAGService:
         logger.info(
             "[analyze_topology] 프롬프트 구성: "
             "nodes=%d, edges=%d, rag_context=%d chars, "
-            "total_prompt=%d chars (~%d tokens)",
+            "total_prompt=%d chars",
             node_count, edge_count, len(rag_context),
-            prompt_chars, prompt_chars // 3,
+            prompt_chars,
         )
 
         messages = [
