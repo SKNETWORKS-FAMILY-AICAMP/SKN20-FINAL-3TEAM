@@ -1300,6 +1300,7 @@ class ArchitecturalHybridRAG:
         )
 
         try:
+            _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
             response = self.client.chat.completions.create(
                 model=self.llm_model_name,
                 messages=[
@@ -1307,6 +1308,7 @@ class ArchitecturalHybridRAG:
                     {"role": "user", "content": normalized_query},
                 ],
                 response_format={"type": "json_object"},
+                extra_body=_extra,
             )
             raw_text = response.choices[0].message.content or ""
             raw_text = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw_text)
@@ -3384,6 +3386,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         )
 
         def _call_llm() -> str:
+            _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
             response = self.client.chat.completions.create(
                 model=self.llm_model_name,
                 messages=[
@@ -3391,6 +3394,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0.1,
+                extra_body=_extra,
             )
             raw = response.choices[0].message.content or ""
             raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
@@ -4215,6 +4219,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         )
 
         def _call_llm() -> str:
+            _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
             response = self.client.chat.completions.create(
                 model=self.llm_model_name,
                 messages=[
@@ -4222,6 +4227,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     {"role": "user", "content": user_content},
                 ],
                 temperature=0.0,
+                extra_body=_extra,
             )
             raw = response.choices[0].message.content or ""
             raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
@@ -4262,6 +4268,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     f"사용자 질의 원문:\n{query}\n\n"
                     "단일 도면 블록만 작성하고, 총 개수 라인은 절대 출력하지 마세요."
                 )
+                _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
                 response = self.client.chat.completions.create(
                     model=self.llm_model_name,
                     messages=[
@@ -4269,6 +4276,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                         {"role": "user", "content": chunk_user_content},
                     ],
                     temperature=0.2,
+                    extra_body=_extra,
                 )
                 raw_chunk = response.choices[0].message.content or ""
                 raw_chunk = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw_chunk)

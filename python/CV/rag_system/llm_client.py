@@ -63,6 +63,9 @@ class LocalLLMClient(LLMClient):
     max_tokens를 지정하지 않아 vLLM이 (max_model_len - prompt_tokens)로 자동 계산.
     """
 
+    # Qwen3 thinking 비활성화 — 불필요한 <think> 토큰 생성 방지
+    _NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
+
     def __init__(self, base_url: str, model: str, temperature: float = 0.1):
         self.client = OpenAI(api_key="EMPTY", base_url=base_url)
         self.model = model
@@ -96,6 +99,7 @@ class LocalLLMClient(LLMClient):
                     messages=messages,
                     response_format=response_model,
                     temperature=self.temperature,
+                    extra_body=self._NO_THINK,
                 )
             except LengthFinishReasonError as e:
                 logger.warning("vLLM 응답이 max_tokens에서 잘림 — 수동 JSON 파싱 시도")
@@ -113,5 +117,6 @@ class LocalLLMClient(LLMClient):
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,
+                extra_body=self._NO_THINK,
             )
             return self._strip_think(response.choices[0].message.content)

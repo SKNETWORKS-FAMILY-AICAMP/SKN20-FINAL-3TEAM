@@ -210,6 +210,7 @@ class FloorplanSearchAgent(BaseAgent):
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         raw = response.choices[0].message.content or ""
         raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
