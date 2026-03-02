@@ -1301,7 +1301,7 @@ class ArchitecturalHybridRAG:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model=self.llm_model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": normalized_query},
