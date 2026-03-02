@@ -25,6 +25,7 @@ class RAGConfig(BaseSettings):
     # vLLM 설정 (LLM_BACKEND=vllm)
     VLLM_BASE_URL: str = ""
     VLLM_MODEL_NAME: str = ""
+    VLLM_SEARCH_MODEL_NAME: str = ""
 
     # RAG 파라미터
     TOP_K: int = 5

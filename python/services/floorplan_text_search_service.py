@@ -287,6 +287,9 @@ class ArchitecturalHybridRAG:
         parallel_workers: int = 2,
         db_pool_minconn: int = 1,
         db_pool_maxconn: int = 6,
+        llm_backend: str = "openai",
+        vllm_base_url: str = "",
+        vllm_search_model_name: str = "",
         enable_chunk_parallel_generation: bool = True,
         chunk_parallel_workers: int = 3,
         chunk_parallel_min_docs: int = 2,
@@ -324,7 +327,13 @@ class ArchitecturalHybridRAG:
         self.chunk_parallel_workers = max(1, int(chunk_parallel_workers))
         self.chunk_parallel_min_docs = max(1, int(chunk_parallel_min_docs))
         self._ensure_ratio_cmp_function()
-        self.client = OpenAI(api_key=openai_api_key)
+        self.llm_backend = llm_backend
+        if llm_backend == "vllm" and vllm_base_url:
+            self.client = OpenAI(api_key="EMPTY", base_url=vllm_base_url)
+            self.llm_model_name = vllm_search_model_name or "search_agent"
+        else:
+            self.client = OpenAI(api_key=openai_api_key)
+            self.llm_model_name = "gpt-5.2-2025-12-11"
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_dimensions
         self.vector_weight, self.text_weight = self._normalize_hybrid_weights(
@@ -3374,7 +3383,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
 
         def _call_llm() -> str:
             response = self.client.chat.completions.create(
-                model="gpt-5.2-2025-12-11",
+                model=self.llm_model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
@@ -4202,7 +4211,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
 
         def _call_llm() -> str:
             response = self.client.chat.completions.create(
-                model="gpt-5.2-2025-12-11",
+                model=self.llm_model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
@@ -4246,7 +4255,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     "단일 도면 블록만 작성하고, 총 개수 라인은 절대 출력하지 마세요."
                 )
                 response = self.client.chat.completions.create(
-                    model="gpt-5.2-2025-12-11",
+                    model=self.llm_model_name,
                     messages=[
                         {"role": "system", "content": chunk_prompt},
                         {"role": "user", "content": chunk_user_content},

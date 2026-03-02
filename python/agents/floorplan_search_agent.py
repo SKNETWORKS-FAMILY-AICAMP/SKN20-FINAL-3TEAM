@@ -49,6 +49,9 @@ class FloorplanSearchAgent(BaseAgent):
         self._rag = ArchitecturalHybridRAG(
             db_config=db_config,
             openai_api_key=self._config.OPENAI_API_KEY,
+            llm_backend=self._config.LLM_BACKEND,
+            vllm_base_url=self._config.VLLM_BASE_URL,
+            vllm_search_model_name=self._config.VLLM_SEARCH_MODEL_NAME,
         )
         logger.info("FloorplanSearchAgent 컴포넌트 로드 완료")
 
@@ -201,7 +204,7 @@ class FloorplanSearchAgent(BaseAgent):
         user_content = self._build_image_mode_user_content(metrics, document)
 
         response = self._rag.client.chat.completions.create(
-            model="gpt-5.2-2025-12-11",
+            model=self._rag.llm_model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
