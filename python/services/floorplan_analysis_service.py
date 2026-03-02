@@ -3,6 +3,7 @@ RAG 시스템 서비스
 평면도 분석 및 메타데이터 추출
 """
 
+import json
 import logging
 from typing import Optional, Dict, Any
 
@@ -82,6 +83,19 @@ class RAGService:
 
         # LLM 분석 생성
         prompt = build_analysis_prompt(topology_data, rag_context)
+
+        # 디버그: 프롬프트 크기 로그
+        node_count = len(topology_data.get("nodes", []))
+        edge_count = len(topology_data.get("edges", []))
+        prompt_chars = len(SYSTEM_PROMPT) + len(prompt)
+        logger.info(
+            "[analyze_topology] 프롬프트 구성: "
+            "nodes=%d, edges=%d, rag_context=%d chars, "
+            "total_prompt=%d chars (~%d tokens)",
+            node_count, edge_count, len(rag_context),
+            prompt_chars, prompt_chars // 3,
+        )
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}

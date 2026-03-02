@@ -163,16 +163,19 @@ class LocalLLMClient(LLMClient):
                     extra_body=self._NO_THINK,
                 )
             except LengthFinishReasonError as e:
-                logger.warning("vLLM 응답이 max_tokens에서 잘림 — JSON 복구 시도")
                 response = e.completion
+                usage = response.usage
                 raw = self._strip_think(response.choices[0].message.content)
-                logger.info(f"잘린 원본 길이: {len(raw)} chars")
-                try:
-                    repaired = _repair_truncated_json(raw)
-                    return response_model.model_validate(repaired)
-                except Exception as repair_err:
-                    logger.warning(f"JSON 복구/검증 실패 — 기본값으로 생성: {repair_err}")
-                    return response_model.model_validate({})
+                logger.warning(
+                    "vLLM 응답이 max_tokens에서 잘림 — "
+                    "prompt=%d, completion=%d, total=%d, output_len=%d chars",
+                    usage.prompt_tokens if usage else -1,
+                    usage.completion_tokens if usage else -1,
+                    usage.total_tokens if usage else -1,
+                    len(raw),
+                )
+                repaired = _repair_truncated_json(raw)
+                return response_model.model_validate(repaired)
             parsed = response.choices[0].message.parsed
             if parsed is None:
                 logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
