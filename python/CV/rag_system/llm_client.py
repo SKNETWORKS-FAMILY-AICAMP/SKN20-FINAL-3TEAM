@@ -74,7 +74,9 @@ class LocalLLMClient(LLMClient):
         """Qwen3 <think>...</think> 블록 제거"""
         if text is None:
             return ""
-        return re.sub(r"<think>[\s\S]*?</think>\s*", "", text).strip()
+        text = re.sub(r"<think>[\s\S]*?</think>\s*", "", text)
+        text = re.sub(r"</?think>\s*", "", text)
+        return text.strip()
 
     def query(self, messages: List[Dict], response_model: Optional[Type[BaseModel]] = None):
         """
