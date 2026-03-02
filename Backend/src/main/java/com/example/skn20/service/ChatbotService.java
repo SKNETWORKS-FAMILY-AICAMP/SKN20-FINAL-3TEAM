@@ -67,12 +67,16 @@ public class ChatbotService {
 			HttpHeaders headers = new HttpHeaders();
 			headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
-			// 2. Form 데이터 구성
+			// 2. Form 데이터 구성 (각 필드를 HttpEntity로 감싸야 multipart에서 정상 전달)
 			MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-			body.add("email", user != null ? user.getEmail() : "anonymous");
-			body.add("question", question != null ? question : "");
+
+			HttpHeaders textHeaders = new HttpHeaders();
+			textHeaders.setContentType(MediaType.TEXT_PLAIN);
+
+			body.add("email", new HttpEntity<>(user != null ? user.getEmail() : "anonymous", textHeaders));
+			body.add("question", new HttpEntity<>(question != null ? question : "", textHeaders));
 			if (chatRoomId != null) {
-				body.add("chat_room_id", chatRoomId.toString());
+				body.add("chat_room_id", new HttpEntity<>(chatRoomId.toString(), textHeaders));
 			}
 
 			// 3. 이미지가 있으면 file 필드 추가
