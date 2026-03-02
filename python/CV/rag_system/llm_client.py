@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Type
 
 from pydantic import BaseModel
-from openai import OpenAI
+from openai import OpenAI, LengthFinishReasonError
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class LocalLLMClient(LLMClient):
     beta.chat.completions.parse()로 구조화 출력 지원.
     """
 
-    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 4096):
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 7000):
         self.client = OpenAI(api_key="EMPTY", base_url=base_url)
         self.model = model
         self.temperature = temperature
@@ -88,13 +88,19 @@ class LocalLLMClient(LLMClient):
             response_model 인스턴스 또는 문자열
         """
         if response_model:
-            response = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=messages,
-                response_format=response_model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
+            try:
+                response = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    response_format=response_model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+            except LengthFinishReasonError as e:
+                logger.warning("vLLM 응답이 max_tokens에서 잘림 — 수동 JSON 파싱 시도")
+                response = e.completion
+                raw = self._strip_think(response.choices[0].message.content)
+                return response_model(**json.loads(raw))
             parsed = response.choices[0].message.parsed
             if parsed is None:
                 logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
