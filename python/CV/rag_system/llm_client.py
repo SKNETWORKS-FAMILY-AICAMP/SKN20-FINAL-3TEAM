@@ -1,5 +1,6 @@
 """LLM API 추상화 계층"""
 import json
+import re
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Type
@@ -68,6 +69,13 @@ class LocalLLMClient(LLMClient):
         self.max_tokens = max_tokens
         logger.info(f"LocalLLMClient 초기화: base_url={base_url}, model={model}")
 
+    @staticmethod
+    def _strip_think(text: str) -> str:
+        """Qwen3 <think>...</think> 블록 제거"""
+        if text is None:
+            return ""
+        return re.sub(r"<think>[\s\S]*?</think>\s*", "", text).strip()
+
     def query(self, messages: List[Dict], response_model: Optional[Type[BaseModel]] = None):
         """
         vLLM 서버 API 호출
@@ -90,7 +98,7 @@ class LocalLLMClient(LLMClient):
             parsed = response.choices[0].message.parsed
             if parsed is None:
                 logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
-                raw = response.choices[0].message.content
+                raw = self._strip_think(response.choices[0].message.content)
                 return response_model(**json.loads(raw))
             return parsed
         else:
@@ -100,4 +108,4 @@ class LocalLLMClient(LLMClient):
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
-            return response.choices[0].message.content
+            return self._strip_think(response.choices[0].message.content)

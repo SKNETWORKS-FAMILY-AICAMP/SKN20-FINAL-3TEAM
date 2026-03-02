@@ -1308,7 +1308,7 @@ class ArchitecturalHybridRAG:
                 ],
                 response_format={"type": "json_object"},
             )
-            raw_text = (response.choices[0].message.content or "").strip()
+            raw_text = re.sub(r"<think>[\s\S]*?</think>\s*", "", (response.choices[0].message.content or "")).strip()
             if not raw_text:
                 raise ValueError("Analyzer returned empty content")
 
@@ -3390,7 +3390,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 ],
                 temperature=0.1,
             )
-            return (response.choices[0].message.content or "").strip()
+            return re.sub(r"<think>[\s\S]*?</think>\s*", "", (response.choices[0].message.content or "")).strip()
 
         answer = self._run_validated_generation(
             mode="document_id",
@@ -4218,7 +4218,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 ],
                 temperature=0.0,
             )
-            return (response.choices[0].message.content or "").strip()
+            return re.sub(r"<think>[\s\S]*?</think>\s*", "", (response.choices[0].message.content or "")).strip()
 
         chunk_mode_enabled = (
             self.enable_chunk_parallel_generation
@@ -4262,7 +4262,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     ],
                     temperature=0.2,
                 )
-                raw_chunk = (response.choices[0].message.content or "").strip()
+                raw_chunk = re.sub(r"<think>[\s\S]*?</think>\s*", "", (response.choices[0].message.content or "")).strip()
                 return self._normalize_single_general_block(
                     raw_chunk,
                     rank=candidate_rank,

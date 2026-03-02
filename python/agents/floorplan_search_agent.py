@@ -211,7 +211,7 @@ class FloorplanSearchAgent(BaseAgent):
             ],
             temperature=0.0,
         )
-        return (response.choices[0].message.content or "").strip()
+        return re.sub(r"<think>[\s\S]*?</think>\s*", "", (response.choices[0].message.content or "")).strip()
 
     def _build_image_mode_system_prompt(self) -> str:
         """기존 _generate_answer() 프롬프트에서 섹션 1 제거한 버전"""
