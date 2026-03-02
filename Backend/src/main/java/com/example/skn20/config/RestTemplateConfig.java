@@ -17,7 +17,7 @@ public class RestTemplateConfig {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setBufferRequestBody(true);
         factory.setConnectTimeout(Duration.ofSeconds(30));
-        factory.setReadTimeout(Duration.ofMinutes(5));
+        factory.setReadTimeout(Duration.ofMinutes(10));
 
         return builder
                 .requestFactory(() -> factory)
