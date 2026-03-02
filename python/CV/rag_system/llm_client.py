@@ -10,6 +10,67 @@ from openai import OpenAI, LengthFinishReasonError
 
 logger = logging.getLogger(__name__)
 
+
+def _repair_truncated_json(raw: str) -> dict:
+    """
+    vLLM 토큰 제한으로 잘린 JSON을 복구한다.
+
+    전략:
+    1. 우선 그대로 파싱 시도
+    2. 실패 시 열린 문자열·배열·객체를 닫아 복구
+    """
+    # 1차: 그대로 파싱
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    text = raw.rstrip()
+
+    # 열린 문자열 닫기 — 마지막 쌍따옴표가 닫히지 않았으면 닫아줌
+    quote_count = 0
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '\\':
+            i += 2
+            continue
+        if ch == '"':
+            quote_count += 1
+        i += 1
+    if quote_count % 2 == 1:
+        text += '"'
+
+    # 마지막 불완전한 key-value 쌍 제거 (trailing comma 등)
+    text = re.sub(r',\s*"[^"]*"\s*:\s*"?$', '', text)
+    text = re.sub(r',\s*$', '', text)
+
+    # 열린 괄호 닫기
+    open_braces = text.count('{') - text.count('}')
+    open_brackets = text.count('[') - text.count(']')
+    text += ']' * max(open_brackets, 0)
+    text += '}' * max(open_braces, 0)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 최후 수단: 마지막 완전한 값까지만 남기고 재시도
+    for trim in range(1, min(200, len(text))):
+        candidate = text[:-trim]
+        candidate = re.sub(r',\s*$', '', candidate)
+        ob = candidate.count('{') - candidate.count('}')
+        obt = candidate.count('[') - candidate.count(']')
+        candidate += ']' * max(obt, 0)
+        candidate += '}' * max(ob, 0)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+
+    raise ValueError(f"JSON 복구 실패 (원본 길이: {len(raw)})")
+
 class LLMClient(ABC):
     @abstractmethod
     def query(self, messages: List[Dict], response_model: Optional[Type[BaseModel]] = None):
@@ -102,15 +163,22 @@ class LocalLLMClient(LLMClient):
                     extra_body=self._NO_THINK,
                 )
             except LengthFinishReasonError as e:
-                logger.warning("vLLM 응답이 max_tokens에서 잘림 — 수동 JSON 파싱 시도")
+                logger.warning("vLLM 응답이 max_tokens에서 잘림 — JSON 복구 시도")
                 response = e.completion
                 raw = self._strip_think(response.choices[0].message.content)
-                return response_model(**json.loads(raw))
+                logger.info(f"잘린 원본 길이: {len(raw)} chars")
+                try:
+                    repaired = _repair_truncated_json(raw)
+                    return response_model.model_validate(repaired)
+                except Exception as repair_err:
+                    logger.warning(f"JSON 복구/검증 실패 — 기본값으로 생성: {repair_err}")
+                    return response_model.model_validate({})
             parsed = response.choices[0].message.parsed
             if parsed is None:
                 logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
                 raw = self._strip_think(response.choices[0].message.content)
-                return response_model(**json.loads(raw))
+                repaired = _repair_truncated_json(raw)
+                return response_model.model_validate(repaired)
             return parsed
         else:
             response = self.client.chat.completions.create(
