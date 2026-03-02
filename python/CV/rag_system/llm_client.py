@@ -60,13 +60,13 @@ class LocalLLMClient(LLMClient):
 
     OpenAI 호환 API를 통해 vLLM 서버와 통신.
     beta.chat.completions.parse()로 구조화 출력 지원.
+    max_tokens를 지정하지 않아 vLLM이 (max_model_len - prompt_tokens)로 자동 계산.
     """
 
-    def __init__(self, base_url: str, model: str, temperature: float = 0.1, max_tokens: int = 7000):
+    def __init__(self, base_url: str, model: str, temperature: float = 0.1):
         self.client = OpenAI(api_key="EMPTY", base_url=base_url)
         self.model = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
         logger.info(f"LocalLLMClient 초기화: base_url={base_url}, model={model}")
 
     @staticmethod
@@ -94,7 +94,6 @@ class LocalLLMClient(LLMClient):
                     messages=messages,
                     response_format=response_model,
                     temperature=self.temperature,
-                    max_tokens=self.max_tokens,
                 )
             except LengthFinishReasonError as e:
                 logger.warning("vLLM 응답이 max_tokens에서 잘림 — 수동 JSON 파싱 시도")
@@ -112,6 +111,5 @@ class LocalLLMClient(LLMClient):
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
             )
             return self._strip_think(response.choices[0].message.content)
