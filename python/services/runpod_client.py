@@ -3,6 +3,7 @@ RunPod Serverless API 클라이언트
 CV 추론, 임베딩, 리랭킹을 RunPod GPU에서 실행
 """
 
+import asyncio
 import os
 import time
 import logging
@@ -34,7 +35,7 @@ def _headers() -> dict:
 
 async def call_runpod_async(action: str, payload: dict, timeout: int = 120) -> dict:
     """
-    RunPod Serverless 비동기 호출 (runsync)
+    RunPod Serverless 비동기 호출 (runsync + IN_PROGRESS 폴링)
 
     Args:
         action: 핸들러 액션 (cv_inference, embed, embed_batch, rerank)
@@ -55,8 +56,25 @@ async def call_runpod_async(action: str, payload: dict, timeout: int = 120) -> d
         resp.raise_for_status()
         result = resp.json()
 
+        status = result.get("status", "UNKNOWN")
+
+        # IN_PROGRESS인 경우 폴링으로 완료 대기
+        if status == "IN_PROGRESS":
+            job_id = result.get("id", "")
+            poll_url = f"{RUNPOD_BASE_URL}/status/{job_id}"
+            logger.info(f"[RunPod] IN_PROGRESS — 폴링 시작: job_id={job_id}")
+
+            while time.time() - start < timeout:
+                await asyncio.sleep(2)
+                poll_resp = await client.get(poll_url, headers=_headers())
+                poll_resp.raise_for_status()
+                result = poll_resp.json()
+                status = result.get("status", "UNKNOWN")
+
+                if status in ("COMPLETED", "FAILED"):
+                    break
+
     elapsed = time.time() - start
-    status = result.get("status", "UNKNOWN")
     logger.info(f"[RunPod] 응답: status={status}, {elapsed:.2f}s")
 
     if status == "COMPLETED":
@@ -65,12 +83,12 @@ async def call_runpod_async(action: str, payload: dict, timeout: int = 120) -> d
         error = result.get("error", "Unknown error")
         raise RuntimeError(f"RunPod 작업 실패: {error}")
     else:
-        raise RuntimeError(f"RunPod 예상치 못한 상태: {status}, result={result}")
+        raise RuntimeError(f"RunPod 작업 타임아웃 ({timeout}s): status={status}")
 
 
 def call_runpod_sync(action: str, payload: dict, timeout: int = 120) -> dict:
     """
-    RunPod Serverless 동기 호출 (runsync)
+    RunPod Serverless 동기 호출 (runsync + IN_PROGRESS 폴링)
     비동기 환경이 아닌 곳에서 사용
     """
     url = f"{RUNPOD_BASE_URL}/runsync"
@@ -84,8 +102,25 @@ def call_runpod_sync(action: str, payload: dict, timeout: int = 120) -> dict:
         resp.raise_for_status()
         result = resp.json()
 
+        status = result.get("status", "UNKNOWN")
+
+        # IN_PROGRESS인 경우 폴링으로 완료 대기
+        if status == "IN_PROGRESS":
+            job_id = result.get("id", "")
+            poll_url = f"{RUNPOD_BASE_URL}/status/{job_id}"
+            logger.info(f"[RunPod] IN_PROGRESS — 폴링 시작: job_id={job_id}")
+
+            while time.time() - start < timeout:
+                time.sleep(2)
+                poll_resp = client.get(poll_url, headers=_headers())
+                poll_resp.raise_for_status()
+                result = poll_resp.json()
+                status = result.get("status", "UNKNOWN")
+
+                if status in ("COMPLETED", "FAILED"):
+                    break
+
     elapsed = time.time() - start
-    status = result.get("status", "UNKNOWN")
     logger.info(f"[RunPod] 동기 응답: status={status}, {elapsed:.2f}s")
 
     if status == "COMPLETED":
@@ -94,7 +129,7 @@ def call_runpod_sync(action: str, payload: dict, timeout: int = 120) -> dict:
         error = result.get("error", "Unknown error")
         raise RuntimeError(f"RunPod 작업 실패: {error}")
     else:
-        raise RuntimeError(f"RunPod 예상치 못한 상태: {status}, result={result}")
+        raise RuntimeError(f"RunPod 작업 타임아웃 ({timeout}s): status={status}")
 
 
 # ── 편의 함수 ──
