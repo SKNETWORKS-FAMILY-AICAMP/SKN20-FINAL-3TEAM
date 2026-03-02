@@ -13,10 +13,14 @@ public class RestTemplateConfig {
 
     @Bean
     public RestTemplate restTemplate(RestTemplateBuilder builder) {
-        // Python CV 모델 로딩 및 분석 시간을 고려한 타임아웃 설정
+        // Body buffering 활성화: Expect: 100-continue 헤더 방지 (uvicorn 호환)
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setBufferRequestBody(true);
+        factory.setConnectTimeout(Duration.ofSeconds(30));
+        factory.setReadTimeout(Duration.ofMinutes(5));
+
         return builder
-                .setConnectTimeout(Duration.ofSeconds(30))  // 연결 타임아웃: 30초
-                .setReadTimeout(Duration.ofMinutes(5))      // 읽기 타임아웃: 5분 (CV 처리 시간)
+                .requestFactory(() -> factory)
                 .build();
     }
 }
