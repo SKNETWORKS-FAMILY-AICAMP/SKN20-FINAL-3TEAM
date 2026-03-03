@@ -77,6 +77,20 @@ QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX = """
 """.strip()
 
 
+# 내부 전문 용어 제거 패턴 (space_12, edge, door/window 등)
+_INTERNAL_JARGON_RE = re.compile(
+    r"\s*\("
+    r"(?:space_\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|"
+    r"창호[^)]*|거실-주방[^)]*연결[^)]*)"
+    r"\)\s*"
+)
+
+
+def _clean_llm_output(text: str) -> str:
+    """sLLM 응답에서 내부 전문 용어 괄호 표현을 제거한다."""
+    return _INTERNAL_JARGON_RE.sub("", text)
+
+
 @dataclass
 class AnswerValidationResult:
     ok: bool
@@ -3346,7 +3360,7 @@ class ArchitecturalHybridRAG:
             raw = response.choices[0].message.content or ""
             raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
             raw = re.sub(r"</?think>\s*", "", raw)
-            return raw.strip()
+            return _clean_llm_output(raw.strip())
 
         answer = self._run_validated_generation(
             mode="document_id",
@@ -4063,7 +4077,7 @@ class ArchitecturalHybridRAG:
             raw = response.choices[0].message.content or ""
             raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
             raw = re.sub(r"</?think>\s*", "", raw)
-            return raw.strip()
+            return _clean_llm_output(raw.strip())
 
         chunk_mode_enabled = (
             self.enable_chunk_parallel_generation
@@ -4135,6 +4149,7 @@ class ArchitecturalHybridRAG:
                 raw_chunk = response.choices[0].message.content or ""
                 raw_chunk = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw_chunk)
                 raw_chunk = re.sub(r"</?think>\s*", "", raw_chunk).strip()
+                raw_chunk = _clean_llm_output(raw_chunk)
                 return self._normalize_single_general_block(
                     raw_chunk,
                     rank=candidate_rank,
