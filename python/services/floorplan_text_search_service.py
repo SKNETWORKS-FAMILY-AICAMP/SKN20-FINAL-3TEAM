@@ -79,17 +79,25 @@ QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX = """
 
 
 # 내부 전문 용어 제거 패턴 (space_12, edge, door/window 등)
-_INTERNAL_JARGON_RE = re.compile(
+_JARGON_PAREN_RE = re.compile(
     r"\s*\("
-    r"(?:space_\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|"
+    r"(?:space_?\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|"
     r"창호[^)]*|거실-주방[^)]*연결[^)]*)"
     r"\)\s*"
 )
+# 괄호 없이 등장하는 space_N, ELEV\.HALL 등
+_JARGON_BARE_RE = re.compile(r"\bspace_?\d+\b", re.IGNORECASE)
 
 
 def _clean_llm_output(text: str) -> str:
     """sLLM 응답에서 내부 전문 용어 괄호 표현을 제거한다."""
-    return _INTERNAL_JARGON_RE.sub("", text)
+    text = _JARGON_PAREN_RE.sub("", text)
+    text = _JARGON_BARE_RE.sub("", text)
+    # 제거 후 남는 빈 괄호 정리: "침실()은" → "침실은"
+    text = re.sub(r"\(\s*\)", "", text)
+    # 연속 공백 정리
+    text = re.sub(r"  +", " ", text)
+    return text
 
 
 @dataclass
@@ -3320,8 +3328,8 @@ class ArchitecturalHybridRAG:
                 "windowless_count": windowless_count,
                 "structure_type": structure_type,
                 "ventilation_quality": ventilation_quality,
-                "has_special_space": has_special_space,
-                "has_etc_space": has_etc_space,
+                "has_special_space": "존재" if has_special_space else "없음",
+                "has_etc_space": "존재" if has_etc_space else "없음",
                 "compliance_grade": compliance_grade,
             },
             "document": document,

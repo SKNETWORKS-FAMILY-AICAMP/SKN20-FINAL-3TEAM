@@ -234,9 +234,12 @@ class FloorplanSearchAgent(BaseAgent):
         raw = re.sub(r"</?think>\s*", "", raw)
         # 내부 전문 용어 제거: (space_12), (edge), (door/window) 등
         raw = re.sub(
-            r"\s*\((?:space_\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|창호[^)]*|거실-주방[^)]*연결[^)]*)\)\s*",
+            r"\s*\((?:space_?\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|창호[^)]*|거실-주방[^)]*연결[^)]*)\)\s*",
             "", raw,
         )
+        raw = re.sub(r"\bspace_?\d+\b", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\(\s*\)", "", raw)
+        raw = re.sub(r"  +", " ", raw)
         logger.info("[Step1-도면분석] 응답 길이 — %d chars", len(raw.strip()))
         return raw.strip()
 
