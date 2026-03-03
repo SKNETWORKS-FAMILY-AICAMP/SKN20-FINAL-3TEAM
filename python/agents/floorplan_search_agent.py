@@ -25,7 +25,7 @@ class FloorplanSearchAgent(BaseAgent):
     def __init__(self):
         self._rag = None
         self._config = None
-        self._db_conn = None
+        self._db_pool = None
 
     def _load_components(self):
         if self._rag is not None:
@@ -42,8 +42,8 @@ class FloorplanSearchAgent(BaseAgent):
             "password": self._config.POSTGRES_PASSWORD,
         }
 
-        import psycopg2
-        self._db_conn = psycopg2.connect(**db_config)
+        from psycopg2.pool import ThreadedConnectionPool
+        self._db_pool = ThreadedConnectionPool(minconn=1, maxconn=4, **db_config)
 
         from services.floorplan_text_search_service import ArchitecturalHybridRAG
         self._rag = ArchitecturalHybridRAG(
@@ -155,12 +155,16 @@ class FloorplanSearchAgent(BaseAgent):
 
         # 3. 유사 도면 검색 (image_search 모듈 — 임베딩 유사도 + 필터 완화)
         logger.info("[2/3] 유사 도면 검색 시작...")
-        search_result = search_similar(
-            conn=self._db_conn,
-            description=search_query,
-            filters=filters,
-            top_k=3,
-        )
+        conn = self._db_pool.getconn()
+        try:
+            search_result = search_similar(
+                conn=conn,
+                description=search_query,
+                filters=filters,
+                top_k=3,
+            )
+        finally:
+            self._db_pool.putconn(conn)
         docs = search_result["docs"]
         total_count = search_result["total_count"]
         floorplan_ids = [row[0] for row in docs] if docs else []

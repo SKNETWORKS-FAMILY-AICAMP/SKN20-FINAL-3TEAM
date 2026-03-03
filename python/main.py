@@ -60,7 +60,7 @@ cv_analysis_agent = CVAnalysisAgent()
 # ===== API 엔드포인트 =====
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_floorplan(file: UploadFile = File(...)):
+def analyze_floorplan(file: UploadFile = File(...)):
     """
     도면 이미지 분석 엔드포인트
 
@@ -72,7 +72,7 @@ async def analyze_floorplan(file: UploadFile = File(...)):
 
     try:
         # 이미지 파일 읽기
-        contents = await file.read()
+        contents = file.file.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -105,7 +105,7 @@ async def analyze_floorplan(file: UploadFile = File(...)):
 
 
 @app.post("/generate-metadata", response_model=SaveResponse)
-async def generate_metadata(request: SaveRequest):
+def generate_metadata(request: SaveRequest):
     """
     메타데이터 생성 엔드포인트
 
@@ -148,7 +148,7 @@ async def generate_metadata(request: SaveRequest):
 
 
 @app.post("/orchestrate", response_model=OrchestrateResponse)
-async def orchestrate_query(
+def orchestrate_query(
     email: str = Form(...),
     question: str = Form(""),
     chat_room_id: Optional[int] = Form(None),
@@ -170,7 +170,7 @@ async def orchestrate_query(
         filename = ""
 
         if file is not None:
-            contents = await file.read()
+            contents = file.file.read()
             nparr = np.frombuffer(contents, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             filename = file.filename or ""

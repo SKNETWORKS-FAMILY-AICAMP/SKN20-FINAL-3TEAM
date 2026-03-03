@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time  # [V2 변경] 성능 측정용
 from typing import Optional, Dict, Any, List, Tuple
 from collections import OrderedDict  # [V2 변경] LRU 캐시용
@@ -380,15 +381,23 @@ class ChatbotService:
         self.config: Optional[RAGConfig] = None
         self.embedding_manager = None  # RunPod Serverless 사용
         self.openai_client: Optional[OpenAI] = None
-        self.db_conn = None
+        self._local = threading.local()  # 스레드별 DB 커넥션
         self._reranker = None  # [V2 변경] Cross-encoder reranker
         self._reranker_available = False  # [V2 변경] Reranker 사용 가능 여부
         self._embedding_cache = EmbeddingCache(max_size=500)  # [V2 변경] 임베딩 캐시
 
+    @property
+    def db_conn(self):
+        """스레드별 독립 DB 커넥션 반환"""
+        return getattr(self._local, "conn", None)
+
+    @db_conn.setter
+    def db_conn(self, value):
+        self._local.conn = value
+
     def _get_cursor(self):
         """
-        DB 커서 반환 (연결 끊김 시 자동 재연결)
-        - SELECT 1 핑 제거: closed 속성 + OperationalError catch로 대체
+        DB 커서 반환 (연결 끊김 시 자동 재연결, 스레드별 독립 커넥션)
         """
         try:
             if self.db_conn is None or self.db_conn.closed:
