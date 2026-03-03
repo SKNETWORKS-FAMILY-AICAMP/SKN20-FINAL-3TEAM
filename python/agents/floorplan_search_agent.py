@@ -239,7 +239,6 @@ class FloorplanSearchAgent(BaseAgent):
         """CV 분석 결과를 정해진 포맷으로 출력하는 sLLM 전용 프롬프트"""
         return """주어진 메타데이터와 document를 아래 고정 형식에 맞춰 한국어로 출력하라.
 값을 그대로 사용하고, 판단·평가·추천은 절대 하지 마라.
-공간 구성 여부: true → 존재, false → 없음
 
 ### 1. 도면 기본 정보 📊
 ■ 공간 개수
@@ -270,18 +269,7 @@ class FloorplanSearchAgent(BaseAgent):
 
 ## FEW-SHOT EXAMPLES
 
-### Section 1 (공간 구성 여부 값)
-has_special_space=true, has_etc_space=false
-
-Correct:
-• 특화 공간: 존재
-• 기타 공간: 없음
-
-Wrong:
-• 특화 공간: true
-• 기타 공간: has_etc_space=false
-
-### Section 2 (핵심 설계 평가 문장 스타일)
+### 핵심 설계 평가 문장 스타일
 Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
 
 Correct:
