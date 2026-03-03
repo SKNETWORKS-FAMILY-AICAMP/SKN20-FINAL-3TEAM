@@ -34,7 +34,7 @@ from api_utils.image_utils import image_to_base64
 
 # 로깅 설정
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='[%(asctime)s][%(levelname)s] %(message)s'
 )
 logger = logging.getLogger("FastAPI")
