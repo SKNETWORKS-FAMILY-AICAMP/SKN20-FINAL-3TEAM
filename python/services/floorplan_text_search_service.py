@@ -86,10 +86,11 @@ QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX = """
 """.strip()
 
 
-# 내부 전문 용어 제거 패턴 (space_12, edge, door/window 등)
+# 내부 전문 용어 제거 패턴 (space_12, edge, contains.windows 등)
 _JARGON_PAREN_RE = re.compile(
     r"\s*\("
     r"(?:space_?\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|"
+    r"contains\.[^)]*|발코니측[^)]*|"
     r"창호[^)]*|거실-주방[^)]*연결[^)]*)"
     r"\)\s*"
 )
