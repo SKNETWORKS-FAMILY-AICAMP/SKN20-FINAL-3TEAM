@@ -4220,6 +4220,14 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
 
         def _call_llm() -> str:
             _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
+            self._log_event(
+                event="generate_answer_llm_call",
+                level=logging.INFO,
+                system_prompt_chars=len(system_prompt),
+                user_content_chars=len(user_content),
+                candidate_count=len(candidates),
+                model=self.llm_model_name,
+            )
             response = self.client.chat.completions.create(
                 model=self.llm_model_name,
                 messages=[
@@ -4229,6 +4237,24 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                 temperature=0.0,
                 extra_body=_extra,
             )
+            usage = response.usage
+            finish = response.choices[0].finish_reason
+            if usage:
+                self._log_event(
+                    event="generate_answer_llm_done",
+                    level=logging.INFO,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    total_tokens=usage.total_tokens,
+                    finish_reason=finish,
+                )
+            if finish == "length":
+                self._log_event(
+                    event="generate_answer_llm_TRUNCATED",
+                    level=logging.WARNING,
+                    prompt_tokens=usage.prompt_tokens if usage else -1,
+                    completion_tokens=usage.completion_tokens if usage else -1,
+                )
             raw = response.choices[0].message.content or ""
             raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
             raw = re.sub(r"</?think>\s*", "", raw)
@@ -4269,6 +4295,14 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     "단일 도면 블록만 작성하고, 총 개수 라인은 절대 출력하지 마세요."
                 )
                 _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self.llm_backend == "vllm" else {}
+                self._log_event(
+                    event="generate_chunk_llm_call",
+                    level=logging.INFO,
+                    chunk_rank=candidate_rank,
+                    chunk_doc_id=candidate_document_id,
+                    system_chars=len(chunk_prompt),
+                    user_chars=len(chunk_user_content),
+                )
                 response = self.client.chat.completions.create(
                     model=self.llm_model_name,
                     messages=[
@@ -4278,6 +4312,25 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
                     temperature=0.2,
                     extra_body=_extra,
                 )
+                usage = response.usage
+                finish = response.choices[0].finish_reason
+                if usage:
+                    self._log_event(
+                        event="generate_chunk_llm_done",
+                        level=logging.INFO,
+                        chunk_rank=candidate_rank,
+                        prompt_tokens=usage.prompt_tokens,
+                        completion_tokens=usage.completion_tokens,
+                        total_tokens=usage.total_tokens,
+                        finish_reason=finish,
+                    )
+                if finish == "length":
+                    self._log_event(
+                        event="generate_chunk_TRUNCATED",
+                        level=logging.WARNING,
+                        chunk_rank=candidate_rank,
+                        prompt_tokens=usage.prompt_tokens if usage else -1,
+                    )
                 raw_chunk = response.choices[0].message.content or ""
                 raw_chunk = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw_chunk)
                 raw_chunk = re.sub(r"</?think>\s*", "", raw_chunk).strip()

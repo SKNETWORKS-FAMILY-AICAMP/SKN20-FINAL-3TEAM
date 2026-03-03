@@ -203,6 +203,11 @@ class FloorplanSearchAgent(BaseAgent):
         system_prompt = self._build_image_mode_system_prompt()
         user_content = self._build_image_mode_user_content(metrics, document)
 
+        logger.info(
+            "[Step1-도면분석] 프롬프트 준비 — system=%d chars, user=%d chars, model=%s",
+            len(system_prompt), len(user_content), self._rag.llm_model_name,
+        )
+
         response = self._rag.client.chat.completions.create(
             model=self._rag.llm_model_name,
             messages=[
@@ -212,9 +217,21 @@ class FloorplanSearchAgent(BaseAgent):
             temperature=0.0,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
+
+        usage = response.usage
+        finish = response.choices[0].finish_reason
+        if usage:
+            logger.info(
+                "[Step1-도면분석] 토큰 사용량 — prompt=%d, completion=%d, total=%d, finish=%s",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, finish,
+            )
+        if finish == "length":
+            logger.warning("[Step1-도면분석] ⚠️ max_tokens에서 잘림! 출력이 불완전할 수 있음")
+
         raw = response.choices[0].message.content or ""
         raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
         raw = re.sub(r"</?think>\s*", "", raw)
+        logger.info("[Step1-도면분석] 응답 길이 — %d chars", len(raw.strip()))
         return raw.strip()
 
     def _build_image_mode_system_prompt(self) -> str:

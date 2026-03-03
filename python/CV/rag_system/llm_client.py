@@ -167,7 +167,7 @@ class LocalLLMClient(LLMClient):
                 usage = response.usage
                 raw = self._strip_think(response.choices[0].message.content)
                 logger.warning(
-                    "vLLM 응답이 max_tokens에서 잘림 — "
+                    "[CV-LLM] ⚠️ max_tokens 잘림 — "
                     "prompt=%d, completion=%d, total=%d, output_len=%d chars",
                     usage.prompt_tokens if usage else -1,
                     usage.completion_tokens if usage else -1,
@@ -176,9 +176,16 @@ class LocalLLMClient(LLMClient):
                 )
                 repaired = _repair_truncated_json(raw)
                 return response_model.model_validate(repaired)
+            usage = response.usage
+            if usage:
+                logger.info(
+                    "[CV-LLM] 토큰 사용량 — prompt=%d, completion=%d, total=%d, finish=%s",
+                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+                    response.choices[0].finish_reason,
+                )
             parsed = response.choices[0].message.parsed
             if parsed is None:
-                logger.warning("vLLM parsed 결과 None — 수동 JSON 파싱 시도")
+                logger.warning("[CV-LLM] parsed 결과 None — 수동 JSON 파싱 시도")
                 raw = self._strip_think(response.choices[0].message.content)
                 repaired = _repair_truncated_json(raw)
                 return response_model.model_validate(repaired)
@@ -190,4 +197,11 @@ class LocalLLMClient(LLMClient):
                 temperature=self.temperature,
                 extra_body=self._NO_THINK,
             )
+            usage = response.usage
+            if usage:
+                logger.info(
+                    "[CV-LLM] 토큰 사용량 — prompt=%d, completion=%d, total=%d, finish=%s",
+                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+                    response.choices[0].finish_reason,
+                )
             return self._strip_think(response.choices[0].message.content)
