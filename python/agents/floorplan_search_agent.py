@@ -218,49 +218,37 @@ class FloorplanSearchAgent(BaseAgent):
         return raw.strip()
 
     def _build_image_mode_system_prompt(self) -> str:
-        """기존 _generate_answer() 프롬프트에서 섹션 1 제거한 버전"""
-        return """You are a **specialized sLLM for architectural floor plan analysis**.
+        """CV 분석 결과를 정해진 포맷으로 출력하는 sLLM 전용 프롬프트"""
+        return """주어진 메타데이터와 document를 아래 고정 형식에 맞춰 한국어로 출력하라.
+값을 그대로 사용하고, 판단·평가·추천은 절대 하지 마라.
+공간 구성 여부: true → 존재, false → 없음
 
-Your role is to describe the uploaded floor plan image analysis results:
-1. Present the **metadata of the floor plan in a neutral manner**
-2. Summarize the **document content clearly and concisely**
-
-You must **never perform judgment, evaluation, recommendation, or interpretation**.
-
-========================
-Output Format (Korean)
-========================
-
-1. 도면 기본 정보 📊
-■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
-- true → 존재
-- false → 없음
-
-출력 형식(고정):
+### 1. 도면 기본 정보 📊
 ■ 공간 개수
-    - 방 개수: {room_count}
-    - 화장실 개수: {bathroom_count}
-    - Bay 개수: {bay_count}
-    - 무창 공간 개수: {windowless_count}
+• 방: {room_count}
+• 화장실: {bathroom_count}
+• Bay: {bay_count}
+• 무창 공간: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
-    - 거실 공간: {living_room_ratio}
-    - 주방 공간: {kitchen_ratio}
-    - 욕실 공간: {bathroom_ratio}
-    - 발코니 공간: {balcony_ratio}
+• 거실: {living_room_ratio}
+• 주방: {kitchen_ratio}
+• 욕실: {bathroom_ratio}
+• 발코니: {balcony_ratio}
 ■ 구조 및 성능
-    - 건물 구조 유형: {structure_type}
-    - 환기: {ventilation_quality}
+• 건물 구조 유형: {structure_type}
+• 환기: {ventilation_quality}
 ■ 공간 구성 여부
-    - 특화 공간: {has_special_space}
-    - 기타 공간: {has_etc_space}
-■ 종합 평가
-    - 평가 결과: {compliance_grade}
+• 특화 공간: {has_special_space}
+• 기타 공간: {has_etc_space}
 
-2. 도면 공간 구성 설명 🧩
-* Overall summary: 1–2 sentences
-* Followed by space-by-space descriptions (■ prefix)
-* One sentence per space
-* If multiple spaces have exactly the same description, merge into one line
+### 2. 도면 공간 구성 설명 🧩
+■ 종합 등급: {compliance_grade}
+• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
+• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
+■ 핵심 설계 평가
+[평가 항목명] 한 줄 설명
+■ 주요 공간별 상세 분석
+[공간명] 한 줄 설명
 """
 
     def _build_image_mode_user_content(self, metrics: dict, document: str) -> str:
