@@ -262,10 +262,10 @@ class FloorplanSearchAgent(BaseAgent):
 ■ 종합 등급: {compliance_grade}
 • 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
 • 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
-■ 핵심 설계 평가 (최대 4개)
-[평가 항목명] 한 줄 설명
-■ 주요 공간별 상세 분석 (거실, 침실, 주방, 욕실, 발코니, 현관 각 1줄씩, 최대 6개)
-[공간명] 한 줄 설명
+■ 핵심 설계 평가
+[평가 항목명] ...
+■ 주요 공간별 상세 분석
+[공간명] ...
 
 ## FEW-SHOT EXAMPLES
 
