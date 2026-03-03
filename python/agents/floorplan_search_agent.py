@@ -297,8 +297,13 @@ Wrong:
 """
 
     def _build_image_mode_user_content(self, metrics: dict, document: str) -> str:
+        # boolean → 한글 변환 (sLLM이 true/false를 그대로 출력하는 문제 방지)
+        display = {**metrics}
+        for key in ("has_special_space", "has_etc_space"):
+            if key in display:
+                display[key] = "존재" if display[key] else "없음"
         return (
-            f"도면 메타데이터:\n{json.dumps(metrics, ensure_ascii=False, indent=2)}\n\n"
+            f"도면 메타데이터:\n{json.dumps(display, ensure_ascii=False, indent=2)}\n\n"
             f"도면 분석 document:\n{document}\n\n"
             "위 데이터를 기반으로 '1. 도면 기본 정보'와 '2. 도면 공간 구성 설명'을 작성하세요."
         )
