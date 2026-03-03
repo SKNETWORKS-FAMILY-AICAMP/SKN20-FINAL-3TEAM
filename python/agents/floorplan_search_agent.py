@@ -215,6 +215,7 @@ class FloorplanSearchAgent(BaseAgent):
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
+            max_tokens=1500,
             extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
@@ -262,10 +263,37 @@ class FloorplanSearchAgent(BaseAgent):
 ■ 종합 등급: {compliance_grade}
 • 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
 • 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
-■ 핵심 설계 평가
+■ 핵심 설계 평가 (최대 4개)
 [평가 항목명] 한 줄 설명
-■ 주요 공간별 상세 분석
+■ 주요 공간별 상세 분석 (거실, 침실, 주방, 욕실, 발코니, 현관 각 1줄씩, 최대 6개)
 [공간명] 한 줄 설명
+
+## FEW-SHOT EXAMPLES
+
+### Section 1 (공간 구성 여부 값)
+has_special_space=true, has_etc_space=false
+
+Correct:
+• 특화 공간: 존재
+• 기타 공간: 없음
+
+Wrong:
+• 특화 공간: true
+• 기타 공간: has_etc_space=false
+
+### Section 2 (핵심 설계 평가 문장 스타일)
+Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
+
+Correct:
+[채광] 거실의 채광 환경이 우수합니다.
+[환기] 주방의 환기 성능이 미흡합니다.
+[안방] 드레스룸이 연결된 구조입니다.
+
+Wrong:
+[평가 항목명] 한 줄 설명
+
+## 중단 규칙
+동일 공간이 여러 개면 하나로 합쳐라. 절대 반복하지 마라. 위 항목을 모두 작성하면 즉시 종료하라.
 """
 
     def _build_image_mode_user_content(self, metrics: dict, document: str) -> str:

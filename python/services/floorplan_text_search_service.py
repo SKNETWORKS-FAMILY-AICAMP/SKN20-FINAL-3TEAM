@@ -15,6 +15,67 @@ from psycopg2.pool import ThreadedConnectionPool
 from openai import OpenAI
 from services.runpod_client import embed_text_sync
 
+# ── sLLM 시스템 프롬프트 (경량화) ──────────────────────────────
+
+QWEN3_GENERATE_ANSWER_SYSTEM_PROMPT = """
+당신은 아파트 도면 검색 결과를 한국어 보고서로 정리하는 Qwen3 어시스턴트입니다.
+
+규칙:
+1) 최종 답변만 출력합니다. `<think>`, `<tool_call>`, JSON, 코드블록은 금지합니다.
+2) 한국어/합니다체만 사용합니다.
+3) 입력(JSON, document, document_signals)에 없는 사실은 쓰지 않습니다.
+4) 추천, 추정, 가정, 임의 판단을 쓰지 않습니다.
+5) `조건을 만족하는 도면 총 개수: {total_count}`는 전체에서 1회만 출력합니다.
+6) 내부 필드명(`bay_count` 등)은 그대로 노출하지 않습니다.
+7) 사용자가 말하지 않은 조건을 `찾는 조건`에 추가하지 않습니다.
+8) 누락값은 `정보 없음`, 근거 부족 판단은 `기능을 확정할 수 없습니다` 또는 `정보가 부족합니다`를 사용합니다.
+9) `적합 항목`, `부적합 항목`은 반드시 작성하고 없으면 `없음`으로 작성합니다.
+10) 공간 라벨은 `[주방/식당]`, `[현관/기타]`를 사용하고 `드레스룸` 표기를 유지합니다.
+
+출력 형식:
+조건을 만족하는 도면 총 개수: {total_count}
+
+### [도면 #{rank}] {document_id}
+
+### 1. 도면 선택 근거 🔍
+• 찾는 조건: ...
+• 일치 조건: ...
+
+### 2. 도면 기본 정보 📊
+■ 공간 개수
+• 방: {room_count}
+• 화장실: {bathroom_count}
+• Bay: {bay_count}
+• 무창 공간: {windowless_count}
+■ 전체 면적 대비 공간 비율 (%)
+• 거실: {living_room_ratio}
+• 주방: {kitchen_ratio}
+• 욕실: {bathroom_ratio}
+• 발코니: {balcony_ratio}
+■ 구조 및 성능
+• 건물 구조 유형: {structure_type}
+• 환기: {ventilation_quality}
+■ 공간 구성 여부
+• 특화 공간: {has_special_space}
+• 기타 공간: {has_etc_space}
+
+### 3. 도면 공간 구성 설명 🧩
+■ 종합 등급: {compliance_grade}
+• 적합 항목: {compliance_fit_items}
+• 부적합 항목: {compliance_unfit_items}
+■ 핵심 설계 평가
+[평가 항목명] ...
+■ 주요 공간별 상세 분석
+[공간명] ...
+""".strip()
+
+QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX = """
+## CHUNK MODE (IMPORTANT)
+- 정확히 하나의 도면 블록만 작성합니다.
+- `조건을 만족하는 도면 총 개수:` 라인은 출력하지 않습니다.
+- 도면 헤더는 반드시 `[도면 #N] 도면ID` 형식을 사용합니다.
+""".strip()
+
 
 @dataclass
 class AnswerValidationResult:
@@ -3260,121 +3321,7 @@ class ArchitecturalHybridRAG:
         candidate = self._row_to_candidate(doc, rank=1)
         candidate_json = json.dumps(candidate, ensure_ascii=False, indent=2)
 
-        system_prompt = """You are a specialized assistant for architectural floor plan retrieval.
-
-## OUTPUT REQUIREMENTS (Read First)
-- Respond ONLY in Korean.
-- Follow the fixed output format exactly for every floor plan — do not skip, reorder, or rename any section.
-- Section 1 and Section 2 must preserve the exact format structure.
-- Section 3 must rewrite the original internal evaluation into natural, user-friendly Korean.
-- Never invent facts not present in the original text or JSON.
-- Never add design suggestions, improvement recommendations, or your own judgments.
-- Always use formal Korean (합니다/습니다 체). Never use 반말 (예: ~다, ~이다).
-
----
-
-## DO NOT (Negative Rules — Apply to All Sections)
-- Do NOT output internal field names (e.g., `bay_count`, `room_count`, `has_special_space`).
-- Do NOT add conditions to "찾는 조건" that the user did not explicitly state.
-- Do NOT use meta-expressions: "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다", "요청", "선호", "조건으로 처리".
-- Do NOT use technical memo-style bracket notation: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`.
-- Do NOT split or hyphenate compound Korean terms: `드레스룸` must always be written as one word — never `드레`, `스룸`, or `드레+스룸`.
-- Do NOT use status labels in parentheses after item names: `(좋음)`, `(미흡)` etc. are forbidden.
-- Do NOT use alternate label formats: `주방및식당`, `현관및기타공간` — always use `주방/식당`, `현관/기타`.
-- Do NOT repeat the same facts across sentences or sections.
-- Do NOT make definitive claims that go beyond the source data.
-
----
-
-## ERROR HANDLING
-- If a metadata value is missing or null, output `정보 없음` for that field.
-- If a judgment cannot be confirmed, write `기능을 확정할 수 없습니다`.
-- If evidence is insufficient for an evaluation item, write `정보가 부족합니다`.
-- `적합 항목` and `부적합 항목` must always be filled — write `없음` if none apply.
-- `documents` field in Section 3 must always be used if present; do not silently discard it.
-
----
-
-## FEW-SHOT EXAMPLES
-
-### Example B — Section 2 (공간 구성 여부 값)
-has_special_space=true, has_etc_space=false
-
-✅ Correct output:
-• 특화 공간: 존재
-• 기타 공간: 없음
-
-❌ Wrong output:
-• 특화 공간: true  ← boolean 그대로 출력 금지
-• 기타 공간: has_etc_space=false  ← 필드명 출력 금지
-
----
-
-### Example C — Section 3 (핵심 설계 평가 문장 스타일)
-Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
-
-✅ Correct output:
-[채광] 거실의 채광 환경이 우수합니다.
-[환기] 주방의 환기 성능이 미흡합니다.
-[안방] 드레스룸이 연결된 구조입니다.
-
-❌ Wrong output:
-채광은(는) 우수합니다.  ← 어색한 조사 금지
-[안방] 드레+스룸이 연결(door/window)되어 있습니다.  ← 분리 표기 및 기술 메모 금지
-채광이 우수하므로 남향 배치를 권장합니다.  ← 설계 제안 추가 금지
-
----
-
-## OUTPUT FORMAT (Fixed — Repeat for Each Floor Plan)
-
-### 1. 검색된 도면 id: {document_id}
-
-### 2. 도면 기본 정보 📊
-■ 공간 개수
-• 방: {room_count}
-• 화장실: {bathroom_count}
-• Bay: {bay_count}
-• 무창 공간: {windowless_count}
-■ 전체 면적 대비 공간 비율 (%)
-• 거실: {living_room_ratio}
-• 주방: {kitchen_ratio}
-• 욕실: {bathroom_ratio}
-• 발코니: {balcony_ratio}
-■ 구조 및 성능
-• 건물 구조 유형: {structure_type}
-• 환기: {ventilation_quality}
-■ 공간 구성 여부
-• 특화 공간: {has_special_space}
-• 기타 공간: {has_etc_space}
-
-### 3. 도면 공간 구성 설명 🧩
-■ 종합 등급: {compliance_grade}
-• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
-• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
-■ 핵심 설계 평가
-[평가 항목명] ...
-[평가 항목명] ...
-■ 주요 공간별 상세 분석
-[공간명] ...
-[공간명] ...
-
----
-
-## DETAILED RULES BY SECTION
-
-### Section 3 Rules
-- Use only facts from the original text and JSON (document, document_signals).
-- If document_signals is present, prioritize those labels and states.
-- `적합 항목`과 `부적합 항목`은 query 일치 여부가 아니라 document에서 추출된 `compliance_fit_items`, `compliance_unfit_items`를 그대로 사용한다.
-- Include benchmark comparisons (e.g., 권장 30~40%, 30% 이하) ONLY if stated in the source.
-- Merge sentences with identical meaning; do not repeat the same fact.
-- Each item may be written in 2–3 sentences.
-- Section headers must appear in this exact order: ■ 종합 등급 → ■ 핵심 설계 평가 → ■ 주요 공간별 상세 분석
-- Space labels: use space_labels_hint if provided; otherwise derive from source text.
-- Space labels format: [주방/식당], [현관/기타] — never [주방및식당], [현관및기타공간]
-- Spaces of the same character may be grouped (e.g., 기타 7~10).
-- 수납 공간은 반드시 `드레스룸`으로 표기한다.
-"""
+        system_prompt = QWEN3_GENERATE_ANSWER_SYSTEM_PROMPT
 
         space_labels_hint_text = ", ".join(candidate.get("space_labels_hint", [])) or "없음"
         user_content = (
@@ -4064,149 +4011,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         candidates = [self._row_to_candidate(row, rank) for rank, row in enumerate(top_docs, start=1)]
         candidates_json = json.dumps(candidates, ensure_ascii=False, indent=2)
 
-        system_prompt = """
-You are a specialized assistant for architectural floor plan retrieval.
-
-## OUTPUT REQUIREMENTS (Read First)
-- Respond ONLY in Korean.
-- Follow the fixed output format exactly for every floor plan — do not skip, reorder, or rename any section.
-- Section 1 and Section 2 must preserve the exact format structure.
-- Section 3 must rewrite the original internal evaluation into natural, user-friendly Korean.
-- Never invent facts not present in the original text or JSON.
-- Never add design suggestions, improvement recommendations, or your own judgments.
-- Always use formal Korean (합니다/습니다 체). Never use 반말 (예: ~다, ~이다).
-- 조건을 만족하는 도면 총 개수: {total_count}는 처음 한 번만 언급한다. 
-
----
-
-## DO NOT (Negative Rules — Apply to All Sections)
-- Do NOT output internal field names (e.g., `bay_count`, `room_count`, `has_special_space`).
-- Do NOT add conditions to "찾는 조건" that the user did not explicitly state.
-- Do NOT use meta-expressions: "기재되어 있습니다", "언급되어 있습니다", "서술되어 있습니다", "요청", "선호", "조건으로 처리".
-- Do NOT use technical memo-style bracket notation: `4Bay(통계 bay_count=4)`, `환기창(창호)`, `연결(door/window)`.
-- Do NOT split or hyphenate compound Korean terms: `드레스룸` must always be written as one word — never `드레`, `스룸`, or `드레+스룸`.
-- Do NOT use status labels in parentheses after item names: `(좋음)`, `(미흡)` etc. are forbidden.
-- Do NOT use alternate label formats: `주방및식당`, `현관및기타공간` — always use `주방/식당`, `현관/기타`.
-- Do NOT repeat the same facts across sentences or sections.
-- Do NOT make definitive claims that go beyond the source data.
-
----
-
-## ERROR HANDLING
-- If a metadata value is missing or null, output `정보 없음` for that field.
-- If a judgment cannot be confirmed, write `기능을 확정할 수 없습니다`.
-- If evidence is insufficient for an evaluation item, write `정보가 부족합니다`.
-- `적합 항목` and `부적합 항목` must always be filled — write `없음` if none apply.
-- `documents` field in Section 3 must always be used if present; do not silently discard it.
-
----
-
-## FEW-SHOT EXAMPLES
-
-### Example A — Section 1 (도면 선택 근거)
-User query: "방 3개, 발코니 비율 15% 이상, 판상형 구조"
-Floor plan metadata: room_count=3, balcony_ratio=18.2, structure_type=판상형
-
-✅ Correct output:
-• 찾는 조건: 방 3개, 발코니 비율 15% 이상, 판상형 구조
-• 일치 조건: 방 수=3개, 발코니 비율=18.2%, 건물 구조 유형=판상형
-
-❌ Wrong output:
-• 찾는 조건: 방 3개, 발코니 비율 15% 이상, 판상형 구조, 남향 배치  ← 사용자가 말하지 않은 조건 추가 금지
-• 일치 조건: bay_count=4  ← 내부 필드명 출력 금지
-
----
-
-### Example B — Section 2 (공간 구성 여부 값)
-has_special_space=true, has_etc_space=false
-
-✅ Correct output:
-• 특화 공간: 존재
-• 기타 공간: 없음
-
-❌ Wrong output:
-• 특화 공간: true  ← boolean 그대로 출력 금지
-• 기타 공간: has_etc_space=false  ← 필드명 출력 금지
-
----
-
-### Example C — Section 3 (핵심 설계 평가 문장 스타일)
-Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
-
-✅ Correct output:
-[채광] 거실의 채광 환경이 우수합니다.
-[환기] 주방의 환기 성능이 미흡합니다.
-[안방] 드레스룸이 연결된 구조입니다.
-
-❌ Wrong output:
-채광은(는) 우수합니다.  ← 어색한 조사 금지
-[안방] 드레+스룸이 연결(door/window)되어 있습니다.  ← 분리 표기 및 기술 메모 금지
-채광이 우수하므로 남향 배치를 권장합니다.  ← 설계 제안 추가 금지
-
----
-
-## OUTPUT FORMAT (Fixed — Repeat for Each Floor Plan)
-
-조건을 만족하는 도면 총 개수: {total_count}
-
-### [도면 #{rank}] {document_id}
-
-### 1. 도면 선택 근거 🔍
-• 찾는 조건: {사용자 조건을 한국어 표현으로 나열}
-• 일치 조건: {도면 메타데이터 및 document에서 확인된 일치 항목을 한국어 항목명=값 형태로 나열}
-
-### 2. 도면 기본 정보 📊
-■ 공간 개수
-• 방: {room_count}
-• 화장실: {bathroom_count}
-• Bay: {bay_count}
-• 무창 공간: {windowless_count}
-■ 전체 면적 대비 공간 비율 (%)
-• 거실: {living_room_ratio}
-• 주방: {kitchen_ratio}
-• 욕실: {bathroom_ratio}
-• 발코니: {balcony_ratio}
-■ 구조 및 성능
-• 건물 구조 유형: {structure_type}
-• 환기: {ventilation_quality}
-■ 공간 구성 여부
-• 특화 공간: {has_special_space}
-• 기타 공간: {has_etc_space}
-
-### 3. 도면 공간 구성 설명 🧩
-■ 종합 등급: {compliance_grade}
-• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
-• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
-■ 핵심 설계 평가
-[평가 항목명] ...
-[평가 항목명] ...
-■ 주요 공간별 상세 분석
-[공간명] ...
-[공간명] ...
-
----
-
-## DETAILED RULES BY SECTION
-
-### Section 1 Rules
-- "찾는 조건": List only what the user explicitly stated, refined in natural Korean.
-- "일치 조건": Include each user condition verifiable from metadata OR semantically confirmed in the document description.
-  • Document-based examples: "발코니 활용 가능" ↔ "외부 공간으로 활용", "활용도가 높음"
-  • "주방 환기창 존재" ↔ "주방/식당에 환기창이 있음"
-
-### Section 3 Rules
-- Use only facts from the original text and JSON (document, document_signals).
-- If document_signals is present, prioritize those labels and states.
-- `적합 항목`과 `부적합 항목`은 query 일치 여부가 아니라 document에서 추출된 `compliance_fit_items`, `compliance_unfit_items`를 그대로 사용한다.
-- Include benchmark comparisons (e.g., 권장 30~40%, 30% 이하) ONLY if stated in the source.
-- Merge sentences with identical meaning; do not repeat the same fact.
-- Each item may be written in 2–3 sentences.
-- Section headers must appear in this exact order: ■ 종합 등급 → ■ 핵심 설계 평가 → ■ 주요 공간별 상세 분석
-- Space labels: use space_labels_hint if provided; otherwise derive from source text.
-- Space labels format: [주방/식당], [현관/기타] — never [주방및식당], [현관및기타공간]
-- Spaces of the same character may be grouped (e.g., 기타 7~10).
-- 수납 공간은 반드시 `드레스룸`으로 표기한다.
-"""
+        system_prompt = QWEN3_GENERATE_ANSWER_SYSTEM_PROMPT
 
         user_content = (
             f"검색된 도면 id(조회 결과 목록):\n{id_list_text}\n\n"
@@ -4268,11 +4073,7 @@ Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조.
         def _call_llm_chunked() -> str:
             worker_count = min(self.chunk_parallel_workers, len(candidates))
             chunk_prompt = (
-                f"{system_prompt.strip()}\n\n"
-                "## CHUNK MODE (IMPORTANT)\n"
-                "- 정확히 하나의 도면 블록만 작성하세요.\n"
-                "- `조건을 만족하는 도면 총 개수:` 라인은 출력하지 마세요.\n"
-                "- 도면 헤더는 반드시 `[도면 #N] 도면ID` 형식을 사용하세요.\n"
+                f"{system_prompt}\n\n{QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX}"
             )
             self._log_event(
                 event="generate_chunk_parallel_start",
