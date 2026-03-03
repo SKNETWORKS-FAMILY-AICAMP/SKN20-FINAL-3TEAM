@@ -33,7 +33,10 @@ QWEN3_GENERATE_ANSWER_SYSTEM_PROMPT = """
 10) 공간 라벨은 `[주방/식당]`, `[현관/기타]`를 사용하고 `드레스룸` 표기를 유지합니다.
 11) 공간명에는 원문의 내부 식별자(예: space13)를 표기하지 않는다.
 
+---
+
 출력 형식:
+
 조건을 만족하는 도면 총 개수: {total_count}
 
 ### [도면 #{rank}] {document_id}
@@ -68,13 +71,18 @@ QWEN3_GENERATE_ANSWER_SYSTEM_PROMPT = """
 [평가 항목명] ...
 ■ 주요 공간별 상세 분석
 [공간명] ...
+
+---
+
+### 도면 공간 구성 설명 추가 규칙
+- `적합 항목`과 `부적합 항목`은 query 일치 여부가 아니라 document에서 추출된 `compliance_fit_items`, `compliance_unfit_items`를 그대로 사용한다.
 """.strip()
 
 QWEN3_GENERATE_ANSWER_CHUNK_SUFFIX = """
-## CHUNK MODE (IMPORTANT)
+## CHUNK MODE
 - 정확히 하나의 도면 블록만 작성합니다.
 - `조건을 만족하는 도면 총 개수:` 라인은 출력하지 않습니다.
-- 도면 헤더는 반드시 `[도면 #N] 도면ID` 형식을 사용합니다.
+- 도면 헤더는 반드시 `### [도면 #N] 도면ID` 형식을 사용합니다.
 """.strip()
 
 
