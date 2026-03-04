@@ -7,6 +7,7 @@ import logging
 from typing import List, Dict, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
 from CV.rag_system.config import RAGConfig
 
@@ -18,22 +19,22 @@ class PgVectorService:
 
     def __init__(self):
         self.config: Optional[RAGConfig] = None
-        self.connection = None
+        self._pool: Optional[ThreadedConnectionPool] = None
 
-    def _get_connection(self):
-        """PostgreSQL 연결 획득"""
-        if self.config is None:
-            self.config = RAGConfig()
-
-        if self.connection is None or self.connection.closed:
-            self.connection = psycopg2.connect(
+    def _get_pool(self) -> ThreadedConnectionPool:
+        """커넥션 풀 획득 (lazy init)"""
+        if self._pool is None:
+            if self.config is None:
+                self.config = RAGConfig()
+            self._pool = ThreadedConnectionPool(
+                minconn=1, maxconn=4,
                 host=self.config.POSTGRES_HOST,
                 port=self.config.POSTGRES_PORT,
                 database=self.config.POSTGRES_DB,
                 user=self.config.POSTGRES_USER,
-                password=self.config.POSTGRES_PASSWORD
+                password=self.config.POSTGRES_PASSWORD,
             )
-        return self.connection
+        return self._pool
 
     def search_internal_eval(self, query_embedding: List[float], k: int = 5) -> List[Dict]:
         """
@@ -46,9 +47,9 @@ class PgVectorService:
         Returns:
             [{'id': ..., 'document': ..., 'metadata': ..., 'distance': ...}, ...]
         """
+        pool = self._get_pool()
+        conn = pool.getconn()
         try:
-            conn = self._get_connection()
-
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # pgvector cosine distance 검색
                 # embedding <=> query_embedding 은 cosine distance
@@ -82,11 +83,13 @@ class PgVectorService:
         except Exception as e:
             logger.error(f"pgvector 검색 실패: {e}")
             return []
+        finally:
+            pool.putconn(conn)
 
     def close(self):
         """연결 종료"""
-        if self.connection and not self.connection.closed:
-            self.connection.close()
+        if self._pool:
+            self._pool.closeall()
 
     def is_loaded(self) -> bool:
         """서비스 로드 여부 확인"""

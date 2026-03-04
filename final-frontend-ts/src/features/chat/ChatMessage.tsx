@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import { FiUser, FiExternalLink } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 import { useTheme } from '@/shared/contexts/ThemeContext';
@@ -38,6 +39,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             message.content
           ) : (
             <ReactMarkdown
+              remarkPlugins={[remarkBreaks]}
               components={{
                 h2: ({ children }) => <h2 className={styles.mdH2}>{children}</h2>,
                 h3: ({ children }) => <h3 className={styles.mdH3}>{children}</h3>,

@@ -74,52 +74,60 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 ## 3. Tech Stack
 
 ### AI / Analysis
-- **Vision AI**
+- **Vision AI** (RunPod Serverless)
   - 건축 도면 이미지 분석
   - 공간 구성, 면적 비율, Bay 수 등 도면의 정량·구조 정보 추출
   - OBJ: YOLOv5 기반 객체 검출 (위생설비, 주방기기)
   - OCR: YOLOv5 + CRNN 기반 텍스트 검출 및 인식
   - STR/SPA: DeepLabV3+ 기반 구조 및 공간 분석
-  
-- **sLLM**
-  - 도면 요약 텍스트 생성
-  - 사내 기준 문서 기반 도면 평가 텍스트 생성
+
+- **sLLM** (RunPod Pod, vLLM 서빙)
+  - Qwen3-8B 파인튜닝 모델 2개
+  - 도면 요약 텍스트 생성 / 사내 기준 기반 도면 평가 텍스트 생성
   - 판단 주체가 아닌, **결과 정리 및 설명 용도**로 사용
-  - OpenAI GPT-4o-mini
+
+- **임베딩 / 리랭킹** (RunPod Serverless)
+  - Qwen3-Embedding-0.6B (1024차원 벡터 생성)
+  - Cross-encoder 리랭커 (검색 결과 재정렬)
 
 ### Frontend
 | 분야 | 기술 스택 |
 |------|----------|
-| **Framework** | React 19.2 + TypeScript |
-| **Build Tool** | Vite 7.2 |
-| **Routing** | React Router DOM 7.12 |
-| **HTTP Client** | Axios 1.13 |
-| **UI** | React Icons, React Hot Toast |
+| **Framework** | React 19.2.0 + TypeScript 5.9.3 |
+| **Build Tool** | Vite 7.2.4 |
+| **Routing** | React Router DOM 7.12.0 |
+| **HTTP Client** | Axios 1.13.2 |
+| **UI** | React Icons 5.5.0, React Hot Toast 2.6.0, React Markdown 10.1.0 |
 | **Styling** | CSS Modules |
 
 
 ### Backend
 | 분야 | 기술 스택 |
 |------|----------|
-| **Framework** | Spring Boot 3.2.1 |
+| **Framework** | Spring Boot 3.4.3 |
 | **Language** | Java 21 |
-| **ORM** | Spring Data JPA |
+| **ORM** | Spring Data JPA + Hibernate |
+| **Security** | Spring Security + JWT (JJWT 0.12.3) |
 | **API Server** | FastAPI (Python) |
-| **서버 역할** | 도면 처리 파이프라인, 데이터 정규화 및 응답 구성 로직 |
+| **Cloud** | AWS S3 (도면 이미지 저장), AWS RDS (PostgreSQL) |
 
 ### Database
 | 분야 | 기술 스택 |
 |------|----------|
-| **RDBMS** | PostgreSQL |
+| **RDBMS** | PostgreSQL (AWS RDS) |
 | **Vector DB** | pgvector (PostgreSQL Extension) |
 | **저장 데이터** | 도면 메타데이터, 토지 특성 정보, 법규·조례 원문 데이터 |
 | **벡터 데이터** | 도면 요약 및 특성 벡터, 유사 도면 검색용 임베딩 |
 
-### Data Processing
+### Infra / DevOps
 | 분야 | 기술 스택 |
 |------|----------|
-| **Format** | JSON (도면 분석 결과, 평가 결과, 메타데이터) |
-| **Library** | pandas (데이터 검증, 전처리, 샘플 데이터 분석) |
+| **Server** | AWS EC2 (Spring Boot + FastAPI + Nginx) |
+| **Database** | AWS RDS (PostgreSQL + pgvector) |
+| **Storage** | AWS S3 (도면 이미지 저장) |
+| **CI/CD** | GitHub Actions (자동 배포) |
+| **GPU - Pod** | RunPod Pod + vLLM (sLLM 모델 2개 서빙) |
+| **GPU - Serverless** | RunPod Serverless (CV 4모델, 임베딩, 리랭커) |
 
 
 ---
@@ -133,39 +141,41 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 ### Workflow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      사용자 (건축사/검토자)                         │
-└────────────────┬────────────────────────────────┬────────────────┘
-                 │                                │
-                 ▼                                ▼
-    ┌─────────────────────┐          ┌─────────────────────┐
-    │   Frontend (React)  │          │  Admin Dashboard    │
-    │   - TypeScript      │          │  - 도면 관리         │
-    │   - Vite           │          │  - 평가 기준 설정     │
-    └──────────┬──────────┘          └──────────┬──────────┘
-               │                                │
-               ▼                                ▼
-    ┌──────────────────────────────────────────────────────┐
-    │         Backend (Spring Boot + FastAPI)              │
-    │         - 도면 처리 파이프라인                          │
-    │         - 데이터 정규화 및 응답 구성                     │
-    │         - API 엔드포인트 제공                          │
-    └────────────┬─────────────────────────┬───────────────┘
-                 │                         │
-                 ▼                         ▼
-    ┌─────────────────────┐    ┌─────────────────────┐
-    │Database (PostgreSQL)│    │ Vision AI / sLLM    │
-    │ - 도면 메타데이터     │    │ - 도면 이미지 분석   │
-    │ - 토지 특성 정보     │    │ - 구조화 데이터 생성 │
-    │ - 법규·조례 데이터   │    │ - 평가 텍스트 생성   │
-    └─────────────────────┘    └─────────────────────┘
-                 │
-                 ▼
-    ┌──────────────────────────────┐
-    │  pgvector                    │
-    │  - 도면 특성 벡터             │
-    │  - 유사 도면 검색             │
-    └──────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                  사용자 (건축사/검토자)                     │
+└──────────┬───────────────────────────────┬───────────────┘
+           │                               │
+           ▼                               ▼
+┌─────────────────────┐       ┌─────────────────────┐
+│  Frontend (React)   │       │  Admin Dashboard    │
+│  - TypeScript       │       │  - 도면/사용자 관리   │
+│  - Vite             │       │  - 로그 조회         │
+└──────────┬──────────┘       └──────────┬──────────┘
+           │                             │
+           ▼                             ▼
+┌──────────────────────────────────────────────────────┐
+│       Backend (Spring Boot 3.4.3, Java 21)           │
+│       - REST API (Auth, FloorPlan, Admin, Chatbot)   │
+│       - JWT 인증/인가, S3 이미지 저장                  │
+└──────────────────────┬───────────────────────────────┘
+                       │ REST API
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│          Python API Server (FastAPI)                 │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  Orchestrator Agent (의도 분류 & 라우팅)         │  │
+│  │  ├─ FloorplanSearchAgent (도면 검색/평가)       │  │
+│  │  ├─ RegulationSearchAgent (법규·조례 조회)      │  │
+│  │  └─ CVAnalysisAgent (도면 분석)                 │  │
+│  └────────────────────────────────────────────────┘  │
+└───────┬──────────────┬──────────────┬───────────────┘
+        │              │              │
+        ▼              ▼              ▼
+┌──────────────┐ ┌───────────────┐ ┌───────────────┐
+│  PostgreSQL  │ │ RunPod Pod    │ │RunPod         │
+│  + pgvector  │ │ vLLM 서빙     │ │Serverless     │
+│  (AWS RDS)   │ │ sLLM x2      │ │CV·임베딩·리랭커│
+└──────────────┘ └───────────────┘ └───────────────┘
 ```
 
 ### CV 파이프라인 구조
@@ -197,7 +207,7 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 │  │  5️⃣ Aggregator                    │  │
 │  │     └─→ 결과 통합 및 후처리         │  │
 │  │                                   │  │
-│  │  6️⃣ sLLM (GPT-4o-mini)           │  │
+│  │  6️⃣ sLLM (Qwen3-8B Fine-tuned)   │  │
 │  │     └─→ 도면 요약 및 평가 생성     │  │
 │  └───────────────────────────────────┘  │
 └─────────────────────────────────────────┘
@@ -241,129 +251,51 @@ ARAE는 이 문제를 **AI의 추론이 아니라 데이터 구조화와 검색 
 
 ## 6. API 명세
 
-### 도면 분석 API
+### Spring Boot API (포트 8080)
 
-#### `POST /api/floorplan/analyze`
-도면 이미지를 분석하여 구조화된 데이터를 반환합니다.
+#### 인증 (`/api/auth`)
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/auth/signup` | 회원가입 |
+| POST | `/api/auth/login` | 로그인 (JWT 발급) |
+| POST | `/api/auth/refresh` | 토큰 갱신 |
+| GET | `/api/auth/me` | 내 정보 조회 |
+| POST | `/api/auth/change-password` | 비밀번호 변경 |
+| POST | `/api/auth/mailSend` | 인증 메일 발송 |
 
-**Request**
-```http
-POST /api/floorplan/analyze
-Content-Type: multipart/form-data
+#### 도면 (`/api/floorplan`)
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/floorplan/analyze` | 도면 이미지 분석 (CV 파이프라인) |
+| POST | `/api/floorplan/save` | 분석 결과 저장 |
+| GET | `/api/floorplan/my` | 내 도면 목록 조회 |
+| GET | `/api/floorplan/{id}/detail` | 도면 상세 조회 |
+| GET | `/api/floorplan/{id}/image` | 도면 이미지 조회 (S3) |
 
-file: [도면 이미지 파일 (PNG, JPG, PDF)]
-```
+#### 챗봇 (`/api/chatbot`)
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/chatbot/chat` | 대화 요청 (Orchestrator → Agent 라우팅) |
+| POST | `/api/chatbot/sessionuser` | 세션 사용자 설정 |
+| POST | `/api/chatbot/roomhistory` | 채팅방 히스토리 조회 |
+| POST | `/api/chatbot/editroomname` | 채팅방 이름 변경 |
+| POST | `/api/chatbot/deleteroom` | 채팅방 삭제 |
 
-**Response**
-```json
-{
-  "floorplan_id": "FP_20250204_001",
-  "topology_graph": {
-    "nodes": [...],
-    "edges": [...]
-  },
-  "analysis_result": {
-    "total_area": 84.5,
-    "room_count": 3,
-    "bay_count": 4,
-    "balcony_ratio": 0.12
-  },
-  "summary": "3Bay 4룸 구조의 일반적인 아파트 도면입니다..."
-}
-```
+#### 관리자 (`/api/admin`)
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET | `/api/admin/stats` | 대시보드 통계 |
+| GET | `/api/admin/logs` | 활동 로그 조회 |
+| GET | `/api/admin/floorplans` | 전체 도면 관리 |
 
-### 도면 평가 API
+### FastAPI (Python, 포트 8000)
 
-#### `POST /api/floorplan/evaluate`
-사내 기준 문서를 기반으로 도면을 평가합니다.
-
-**Request**
-```http
-POST /api/floorplan/evaluate
-Content-Type: application/json
-
-{
-  "floorplan_id": "FP_20250204_001",
-  "criteria": "internal_standard_v1.0"
-}
-```
-
-**Response**
-```json
-{
-  "evaluation_id": "EVAL_001",
-  "overall_score": 85,
-  "items": [
-    {
-      "category": "공간 효율성",
-      "score": 90,
-      "comment": "전용면적 대비 거실 비율이 적정합니다."
-    },
-    {
-      "category": "발코니 설계",
-      "score": 75,
-      "comment": "발코니 면적이 다소 작습니다."
-    }
-  ]
-}
-```
-
-
-### 유사 도면 검색 API
-
-#### `GET /api/floorplan/similar`
-유사한 도면을 검색합니다.
-
-**Request**
-```http
-GET /api/floorplan/similar?floorplan_id=FP_20250204_001&limit=5
-```
-
-**Response**
-```json
-{
-  "query_floorplan": "FP_20250204_001",
-  "similar_floorplans": [
-    {
-      "floorplan_id": "FP_20250120_045",
-      "similarity_score": 0.92,
-      "thumbnail": "data:image/png;base64,..."
-    },
-    ...
-  ]
-}
-```
-
-
-### 법규·조례 조회 API
-
-#### `GET /api/regulation/query`
-주소 또는 필지 정보로 관련 법규를 조회합니다.
-
-**Request**
-```http
-GET /api/regulation/query?address=서울특별시 강남구 역삼동 123-45
-```
-
-**Response**
-```json
-{
-  "address": "서울특별시 강남구 역삼동 123-45",
-  "land_info": {
-    "zone": "제2종일반주거지역",
-    "building_coverage": 0.60,
-    "floor_area_ratio": 2.50
-  },
-  "regulations": [
-    {
-      "regulation_id": "REG_001",
-      "title": "건축법 제60조 (건폐율)",
-      "content": "..."
-    },
-    ...
-  ]
-}
-```
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/analyze` | CV 파이프라인 실행 (OBJ→OCR→STR→SPA→Aggregator→sLLM) |
+| POST | `/generate-metadata` | 도면 메타데이터 생성 (임베딩 포함) |
+| POST | `/orchestrate` | 챗봇 질의 처리 (의도 분류 → 에이전트 라우팅) |
+| GET | `/health` | 서버 상태 확인 |
 
 ---
 
@@ -380,97 +312,87 @@ GET /api/regulation/query?address=서울특별시 강남구 역삼동 123-45
 
 ## 8. 디렉토리 구조
 ```
-SKN20-final/
+SKN20-FINAL-3TEAM/
 │
 ├── 📄 README.md                          # 프로젝트 설명서
+├── 📂 .github/workflows/                 # CI/CD (GitHub Actions 자동 배포)
 │
 ├── 📂 Backend/                           # Spring Boot 백엔드
 │   ├── pom.xml                          # Maven 의존성 관리
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/              # Java 소스 코드
-│   │   │   └── resources/             # 설정 파일
-│   │   └── test/                      # 테스트 코드
-│   └── target/                         # 빌드 산출물
+│   └── src/main/
+│       ├── java/com/example/skn20/
+│       │   ├── config/                  # Security, Web, Mail 설정
+│       │   ├── controller/              # REST API 컨트롤러
+│       │   │   ├── AuthController       # 인증 (로그인/회원가입)
+│       │   │   ├── FloorPlanController  # 도면 분석/저장
+│       │   │   ├── ChatbotController    # 챗봇
+│       │   │   └── AdminController      # 관리자
+│       │   ├── entity/                  # JPA 엔티티
+│       │   ├── dto/                     # 요청/응답 DTO
+│       │   ├── repository/              # 데이터 접근 계층
+│       │   ├── service/                 # 비즈니스 로직
+│       │   │   ├── FloorPlanService     # 도면 처리
+│       │   │   ├── ChatbotService       # 챗봇 서비스
+│       │   │   ├── S3Service            # AWS S3 이미지 저장
+│       │   │   └── AdminService         # 관리자 기능
+│       │   └── security/                # JWT 인증 필터
+│       └── resources/                   # 설정 파일, 초기 데이터
 │
 ├── 📂 final-frontend-ts/                 # React TypeScript 프론트엔드
-│   ├── package.json                    # npm 의존성
-│   ├── vite.config.ts                  # Vite 설정
-│   ├── tsconfig.json                   # TypeScript 설정
-│   ├── public/                         # 정적 파일
+│   ├── package.json
+│   ├── vite.config.ts
 │   └── src/
 │       ├── App.tsx                     # 루트 컴포넌트
 │       ├── main.tsx                    # 앱 진입점
-│       ├── app/                        # 앱 설정
 │       ├── features/                   # 기능별 모듈
-│       │   ├── admin/                 # 관리자 기능
-│       │   ├── auth/                  # 인증/인가
-│       │   ├── chat/                  # 챗봇
-│       │   ├── floor-plan/            # 도면 분석
-│       │   └── profile/               # 프로필
+│       │   ├── admin/                 # 관리자 대시보드
+│       │   ├── auth/                  # 로그인/회원가입/비밀번호 재설정
+│       │   ├── chat/                  # 챗봇 (도면검색 / 법규조회)
+│       │   ├── floor-plan/            # 도면 업로드 & 분석 뷰어
+│       │   └── profile/               # 사용자 프로필
 │       └── shared/                     # 공유 모듈
-│           ├── api/                   # API 클라이언트
-│           ├── components/            # 공통 컴포넌트
-│           ├── contexts/              # React Context
-│           ├── hooks/                 # Custom Hooks
-│           ├── types/                 # TypeScript 타입
-│           └── utils/                 # 유틸리티 함수
+│           ├── api/                   # Axios HTTP 클라이언트
+│           ├── components/            # 공통 UI (Sidebar, Button 등)
+│           ├── contexts/              # Auth, Theme Context
+│           └── hooks/                 # Custom Hooks
 │
-├── 📂 python/                            # Python AI 서버
+├── 📂 python/                            # Python AI 서버 (FastAPI)
 │   ├── main.py                         # FastAPI 앱 진입점
 │   ├── requirements.txt                # Python 의존성
-│   ├── README_API.md                   # API 문서
 │   │
-│   ├── api_models/                     # API 스키마
-│   │   └── schemas.py                 # Pydantic 모델
+│   ├── agents/                         # Agent 오케스트레이션
+│   │   ├── orchestrator.py            # 의도 분류 & 에이전트 라우팅
+│   │   ├── cv_analysis_agent.py       # 도면 분석 에이전트
+│   │   ├── floorplan_search_agent.py  # 도면 검색 에이전트
+│   │   └── regulation_search_agent.py # 법규 조회 에이전트
 │   │
-│   ├── api_utils/                      # API 유틸리티
-│   │   └── image_utils.py             # 이미지 처리
+│   ├── api_models/                     # API 스키마 (Pydantic)
+│   ├── api_utils/                      # 이미지 처리 유틸리티
 │   │
 │   ├── CV/                             # Computer Vision 모듈
 │   │   ├── cv_inference/              # CV 추론 파이프라인
 │   │   │   ├── pipeline.py           # 메인 파이프라인
-│   │   │   ├── config.py             # 설정
-│   │   │   ├── aggregator.py         # 결과 통합
+│   │   │   ├── aggregator.py         # 결과 통합 및 후처리
 │   │   │   ├── visualizer.py         # 시각화
+│   │   │   ├── models/               # 모델 래퍼 (OBJ, OCR, STR, SPA)
 │   │   │   ├── model/                # 모델별 학습/평가 코드
-│   │   │   │   ├── OBJ/source_code/  # OBJ 모델 학습 코드
-│   │   │   │   ├── OCR/source_code/  # OCR 모델 학습 코드
-│   │   │   │   ├── STR/source_code/  # STR 모델 학습 코드
-│   │   │   │   └── SPA/source_code/  # SPA 모델 학습 코드
-│   │   │   ├── models/               # 모델 래퍼 클래스
-│   │   │   │   ├── base_model.py     # 베이스 모델
-│   │   │   │   ├── obj_model.py      # 객체 검출 (YOLOv5)
-│   │   │   │   ├── ocr_model.py      # OCR (YOLOv5+CRNN)
-│   │   │   │   ├── str_model.py      # 구조 분석 (DeepLabV3+)
-│   │   │   │   └── spa_model.py      # 공간 분석 (DeepLabV3+)
 │   │   │   └── yolov5/               # YOLOv5 소스 코드
-│   │   ├── rag_data/                  # RAG 데이터
 │   │   ├── rag_system/                # RAG 시스템
-│   │   │   ├── config.py             # RAG 설정
-│   │   │   ├── embeddings.py         # 임베딩 생성
 │   │   │   ├── llm_client.py         # LLM 클라이언트
-│   │   │   ├── prompts.py            # 프롬프트 템플릿
-│   │   │   └── schemas.py            # 데이터 스키마
-│   │   └── test_images/               # 테스트 이미지
+│   │   │   ├── embeddings.py         # 임베딩 생성
+│   │   │   └── prompts.py            # 프롬프트 템플릿
+│   │   └── rag_data/                  # RAG 참조 데이터
 │   │
 │   ├── services/                       # 비즈니스 로직
-│   │   ├── cv_service.py              # CV 서비스
-│   │   ├── rag_service.py             # RAG 서비스
+│   │   ├── cv_inference_service.py    # CV 파이프라인 서비스
+│   │   ├── floorplan_analysis_service.py    # 도면 분석
+│   │   ├── floorplan_text_search_service.py # 도면 텍스트 검색 (Hybrid RAG)
+│   │   ├── floorplan_image_search_service.py # 도면 이미지 유사도 검색
+│   │   ├── chatbot_law_service.py     # 법규·조례 챗봇
+│   │   ├── internal_eval_service.py   # 사내 기준 평가
 │   │   ├── embedding_service.py       # 임베딩 서비스
-│   │   ├── pgvector_service.py        # 벡터 DB 서비스
-│   │   └── chatbot_service.py         # 챗봇 서비스
+│   │   └── runpod_client.py           # RunPod Serverless 클라이언트
 │   │
-│   ├── temp_input/                     # 업로드된 이미지 임시 저장
-│   └── temp_output/                    # 분석 결과 저장
-│       └── APT_FP_OBJ_*/              # 도면별 결과 폴더
-│           ├── analysis_result.json   # 분석 결과
-│           ├── llm_analysis.json      # LLM 분석
-│           ├── topology_graph.json    # 위상 그래프
-│           └── source_result.json     # 원본 결과
+│   └── eval/                           # 평가 모듈
 │
-└── 📂 산출물/                            # 프로젝트 산출물
-    ├── 1주차/                          # 1주차 산출물
-    ├── 2주차/                          # 2주차 산출물
-    └── 3주차/                          # 3주차 산출물
-        └── finetunned_models/         # Fine-tuned 모델
+└── 📂 산출물/                            # 프로젝트 산출물 (주차별)

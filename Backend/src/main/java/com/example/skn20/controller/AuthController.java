@@ -20,7 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173" })
+@CrossOrigin(origins = { "http://localhost:3000", "http://localhost:5173", "http://43.200.42.14:3000" })
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;

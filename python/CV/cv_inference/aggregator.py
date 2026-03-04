@@ -235,24 +235,18 @@ class ResultAggregator:
         space_polygon = self._segmentation_to_polygon(space.get("segmentation", []))
 
         if not space_polygon:
-            print(f"[DEBUG] _split_space_by_line: No polygon for space {space_id_prefix}")
             return [space]
 
         try:
             # 분할선을 공간 경계를 넘어 확장
             extended_line = self._extend_line_through_polygon(split_line, space_polygon)
-            print(f"[DEBUG] _split_space_by_line: split_line={list(split_line.coords)}")
-            print(f"[DEBUG] _split_space_by_line: extended_line={list(extended_line.coords)}")
 
             # shapely split으로 공간 분할
             result = split(space_polygon, extended_line)
-            print(f"[DEBUG] _split_space_by_line: result type={type(result).__name__}")
 
             if isinstance(result, GeometryCollection) and len(result.geoms) >= 2:
-                print(f"[DEBUG] _split_space_by_line: {len(result.geoms)} geoms found")
                 split_spaces = []
                 for i, geom in enumerate(result.geoms):
-                    print(f"[DEBUG]   geom[{i}]: type={type(geom).__name__}, area={geom.area if hasattr(geom, 'area') else 'N/A'}")
                     if not isinstance(geom, Polygon) or geom.area < 1000:
                         continue
 
@@ -272,13 +266,10 @@ class ResultAggregator:
                     new_space["id"] = f"{space_id_prefix}_{i}"
                     split_spaces.append(new_space)
 
-                print(f"[DEBUG] _split_space_by_line: {len(split_spaces)} valid spaces")
                 if len(split_spaces) >= 2:
                     return split_spaces
-            else:
-                print(f"[DEBUG] _split_space_by_line: Not GeometryCollection or <2 geoms")
-        except Exception as e:
-            print(f"[DEBUG] _split_space_by_line: Exception: {e}")
+        except Exception:
+            pass
 
         return [space]
 
@@ -432,21 +423,15 @@ class ResultAggregator:
                 if splitting_wall:
                     # 벽체로 공간 분할
                     split_spaces = self._split_space_by_wall(space, splitting_wall)
-                    print(f"[DEBUG] Space {space['id']} split by WALL: {len(split_spaces)} parts")
 
                     # 벽체 분할 실패 시 (1개만 반환) OCR 중간점 fallback
                     if len(split_spaces) < 2:
-                        print(f"[DEBUG] Space {space['id']} WALL split failed, trying OCR midpoint...")
                         split_spaces = self._split_space_by_ocr_midpoint(space, ocr_positions)
-                        print(f"[DEBUG]   OCR midpoint result: {len(split_spaces)} parts")
 
                     processed_spaces.extend(split_spaces)
                 else:
                     # 벽체 없으면 OCR 중간점 기준으로 분할 (fallback)
-                    print(f"[DEBUG] Space {space['id']} no wall found, trying OCR midpoint...")
-                    print(f"[DEBUG]   OCR positions: {[(o['text'], o['centroid']) for o in ocr_positions]}")
                     split_spaces = self._split_space_by_ocr_midpoint(space, ocr_positions)
-                    print(f"[DEBUG]   Result: {len(split_spaces)} parts")
                     processed_spaces.extend(split_spaces)
             else:
                 processed_spaces.append(space)

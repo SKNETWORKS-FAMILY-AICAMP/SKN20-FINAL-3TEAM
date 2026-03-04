@@ -25,6 +25,7 @@ class FloorplanSearchAgent(BaseAgent):
     def __init__(self):
         self._rag = None
         self._config = None
+        self._db_pool = None
 
     def _load_components(self):
         if self._rag is not None:
@@ -41,10 +42,16 @@ class FloorplanSearchAgent(BaseAgent):
             "password": self._config.POSTGRES_PASSWORD,
         }
 
-        from floorplan.pipeline import ArchitecturalHybridRAG
+        from psycopg2.pool import ThreadedConnectionPool
+        self._db_pool = ThreadedConnectionPool(minconn=1, maxconn=4, **db_config)
+
+        from services.floorplan_text_search_service import ArchitecturalHybridRAG
         self._rag = ArchitecturalHybridRAG(
             db_config=db_config,
             openai_api_key=self._config.OPENAI_API_KEY,
+            llm_backend=self._config.LLM_BACKEND,
+            vllm_base_url=self._config.VLLM_BASE_URL,
+            vllm_search_model_name=self._config.VLLM_SEARCH_MODEL_NAME,
         )
         logger.info("FloorplanSearchAgent 컴포넌트 로드 완료")
 
@@ -103,7 +110,9 @@ class FloorplanSearchAgent(BaseAgent):
     # ===== image_search 모드 =====
 
     def _execute_image_search(self, cv_result: CVAnalysisResult) -> dict:
-        """CV 분석 결과 → 섹션 1,2 답변 + document 기반 유사 도면 검색"""
+        """CV 분석 결과 → 분석 텍스트 + 유사 도면 검색 (image_search 모듈 사용)"""
+        from services.floorplan_image_search_service import search_similar
+
         logger.info("=" * 50)
         logger.info("[image_search] 이미지 분석 + 유사 도면 검색 시작")
         logger.info("=" * 50)
@@ -113,8 +122,7 @@ class FloorplanSearchAgent(BaseAgent):
         analysis_text = self._generate_answer_sections_2_3(cv_result)
         logger.info("[1/3] 분석 텍스트 생성 완료")
 
-        # 2. 메트릭 핵심 정보 + Overall summary → 검색 쿼리 구성
-        #    → _analyze_query()가 자동으로 필터 추출 + _retrieve_hybrid()가 벡터+텍스트 하이브리드 검색
+        # 2. 검색 쿼리 + 필터 구성
         metrics = cv_result.metrics or {}
         metric_parts = []
         if metrics.get("structure_type"):
@@ -133,27 +141,30 @@ class FloorplanSearchAgent(BaseAgent):
         summary_match = re.search(r'Overall summary:\s*(.+?)(?:\n|$)', analysis_text)
         overall_summary = summary_match.group(1).strip() if summary_match else ""
 
-        # 메트릭 요약 + Overall summary 결합
         metrics_prefix = ", ".join(metric_parts) + ". " if metric_parts else ""
         search_query = metrics_prefix + overall_summary
         if not search_query.strip():
             search_query = (cv_result.document or "")[:200]
 
-        # 메트릭에서 명시적 필터 구성 (LLM 추출 필터보다 정확)
-        explicit_filters = {}
+        filters = {}
         for key in ("structure_type", "room_count", "bay_count", "bathroom_count", "windowless_count"):
             if metrics.get(key) is not None:
-                explicit_filters[key] = metrics[key]
+                filters[key] = metrics[key]
         if metrics.get("living_room_ratio") is not None:
-            explicit_filters["living_room_ratio"] = {"op": "동일", "val": metrics["living_room_ratio"]}
+            filters["living_room_ratio"] = {"op": "동일", "val": metrics["living_room_ratio"]}
 
+        # 3. 유사 도면 검색 (image_search 모듈 — 임베딩 유사도 + 필터 완화)
         logger.info("[2/3] 유사 도면 검색 시작...")
-        logger.info("  검색 쿼리: %s", search_query)
-        logger.info("  명시적 필터: %s", explicit_filters)
-
-        search_result = self._rag.search_by_description(
-            search_query, top_k=3, explicit_filters=explicit_filters,
-        )
+        conn = self._db_pool.getconn()
+        try:
+            search_result = search_similar(
+                conn=conn,
+                description=search_query,
+                filters=filters,
+                top_k=3,
+            )
+        finally:
+            self._db_pool.putconn(conn)
         docs = search_result["docs"]
         total_count = search_result["total_count"]
         floorplan_ids = [row[0] for row in docs] if docs else []
@@ -163,7 +174,7 @@ class FloorplanSearchAgent(BaseAgent):
             len(floorplan_ids), total_count, floorplan_ids,
         )
 
-        # 3. 유사 도면 구조화된 설명 생성 (LLM)
+        # 4. 유사 도면 구조화된 설명 생성 (LLM)
         answer = analysis_text
         if docs:
             logger.info("[3/3] 유사 도면 구조화된 설명 생성 중 (LLM)...")
@@ -196,65 +207,103 @@ class FloorplanSearchAgent(BaseAgent):
         system_prompt = self._build_image_mode_system_prompt()
         user_content = self._build_image_mode_user_content(metrics, document)
 
+        logger.info(
+            "[Step1-도면분석] 프롬프트 준비 — system=%d chars, user=%d chars, model=%s",
+            len(system_prompt), len(user_content), self._rag.llm_model_name,
+        )
+
         response = self._rag.client.chat.completions.create(
-            model="gpt-5.2-2025-12-11",
+            model=self._rag.llm_model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
+            max_tokens=1500,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        return (response.choices[0].message.content or "").strip()
+
+        usage = response.usage
+        finish = response.choices[0].finish_reason
+        if usage:
+            logger.info(
+                "[Step1-도면분석] 토큰 사용량 — prompt=%d, completion=%d, total=%d, finish=%s",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, finish,
+            )
+        if finish == "length":
+            logger.warning("[Step1-도면분석] ⚠️ max_tokens에서 잘림! 출력이 불완전할 수 있음")
+
+        raw = response.choices[0].message.content or ""
+        raw = re.sub(r"<think>[\s\S]*?</think>\s*", "", raw)
+        raw = re.sub(r"</?think>\s*", "", raw)
+        # 내부 전문 용어 제거: (space_12), (edge), (contains.windows) 등
+        raw = re.sub(
+            r"\s*\((?:space_?\d+|edge[^)]*|door/window[^)]*|window[^)]*|node[^)]*|contains\.[^)]*|발코니측[^)]*|창호[^)]*|거실-주방[^)]*연결[^)]*)\)\s*",
+            "", raw,
+        )
+        raw = re.sub(r"\bspace_?\d+\b", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\(\s*\)", "", raw)
+        raw = re.sub(r"  +", " ", raw)
+        logger.info("[Step1-도면분석] 응답 길이 — %d chars", len(raw.strip()))
+        return raw.strip()
 
     def _build_image_mode_system_prompt(self) -> str:
-        """기존 _generate_answer() 프롬프트에서 섹션 1 제거한 버전"""
-        return """You are a **specialized sLLM for architectural floor plan analysis**.
+        """CV 분석 결과를 정해진 포맷으로 출력하는 sLLM 전용 프롬프트"""
+        return """주어진 메타데이터와 document를 아래 고정 형식에 맞춰 한국어로 출력하라.
+값을 그대로 사용하고, 판단·평가·추천은 절대 하지 마라.
 
-Your role is to describe the uploaded floor plan image analysis results:
-1. Present the **metadata of the floor plan in a neutral manner**
-2. Summarize the **document content clearly and concisely**
-
-You must **never perform judgment, evaluation, recommendation, or interpretation**.
-
-========================
-Output Format (Korean)
-========================
-
-1. 도면 기본 정보 📊
-■ 공간 구성 여부의 값은 다음 표현으로 고정한다.
-- true → 존재
-- false → 없음
-
-출력 형식(고정):
+### 1. 도면 기본 정보 📊
 ■ 공간 개수
-    - 방 개수: {room_count}
-    - 화장실 개수: {bathroom_count}
-    - Bay 개수: {bay_count}
-    - 무창 공간 개수: {windowless_count}
+• 방: {room_count}
+• 화장실: {bathroom_count}
+• Bay: {bay_count}
+• 무창 공간: {windowless_count}
 ■ 전체 면적 대비 공간 비율 (%)
-    - 거실 공간: {living_room_ratio}
-    - 주방 공간: {kitchen_ratio}
-    - 욕실 공간: {bathroom_ratio}
-    - 발코니 공간: {balcony_ratio}
+• 거실: {living_room_ratio}
+• 주방: {kitchen_ratio}
+• 욕실: {bathroom_ratio}
+• 발코니: {balcony_ratio}
 ■ 구조 및 성능
-    - 건물 구조 유형: {structure_type}
-    - 환기: {ventilation_quality}
+• 건물 구조 유형: {structure_type}
+• 환기: {ventilation_quality}
 ■ 공간 구성 여부
-    - 특화 공간: {has_special_space}
-    - 기타 공간: {has_etc_space}
-■ 종합 평가
-    - 평가 결과: {compliance_grade}
+• 특화 공간: {has_special_space}
+• 기타 공간: {has_etc_space}
 
-2. 도면 공간 구성 설명 🧩
-* Overall summary: 1–2 sentences
-* Followed by space-by-space descriptions (■ prefix)
-* One sentence per space
-* If multiple spaces have exactly the same description, merge into one line
+### 2. 도면 공간 구성 설명 🧩
+■ 종합 등급: {compliance_grade}
+• 적합 항목: {compliance_fit_items를 그대로 사용, 없으면 없음}
+• 부적합 항목: {compliance_unfit_items를 그대로 사용, 없으면 없음}
+■ 핵심 설계 평가
+[평가 항목명] ...
+■ 주요 공간별 상세 분석
+[공간명] ...
+
+## FEW-SHOT EXAMPLES
+
+### 핵심 설계 평가 문장 스타일
+Source: "거실 채광 우수. 주방 환기 미흡. 드레스룸 연결 구조."
+
+Correct:
+[채광] 거실의 채광 환경이 우수합니다.
+[환기] 주방의 환기 성능이 미흡합니다.
+[안방] 드레스룸이 연결된 구조입니다.
+
+Wrong:
+[평가 항목명] ...
+
+## 중단 규칙
+동일 공간이 여러 개면 하나로 합쳐라. 절대 반복하지 마라. 위 항목을 모두 작성하면 즉시 종료하라.
 """
 
     def _build_image_mode_user_content(self, metrics: dict, document: str) -> str:
+        # boolean → 한글 변환 (sLLM이 true/false를 그대로 출력하는 문제 방지)
+        display = {**metrics}
+        for key in ("has_special_space", "has_etc_space"):
+            if key in display:
+                display[key] = "존재" if display[key] else "없음"
         return (
-            f"도면 메타데이터:\n{json.dumps(metrics, ensure_ascii=False, indent=2)}\n\n"
+            f"도면 메타데이터:\n{json.dumps(display, ensure_ascii=False, indent=2)}\n\n"
             f"도면 분석 document:\n{document}\n\n"
             "위 데이터를 기반으로 '1. 도면 기본 정보'와 '2. 도면 공간 구성 설명'을 작성하세요."
         )

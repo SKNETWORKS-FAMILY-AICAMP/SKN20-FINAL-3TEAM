@@ -58,8 +58,6 @@ public class FloorPlanService {
 				}
 			});
 
-			System.out.println("[FloorPlanService] Python 서버로 요청 전송 중...");
-			
 			// Python 서버로 POST 요청
 			HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 			ResponseEntity<PythonAnalysisResponse> response = restTemplate.exchange(
@@ -75,7 +73,6 @@ public class FloorPlanService {
 			throw new RuntimeException("Python 서버로부터 응답을 받지 못했습니다.");
 		}
 
-		System.out.println("[FloorPlanService] 응답 변환 중...");
 		FloorplanPreviewResponse result = FloorplanPreviewResponse.builder()
 				.topologyJson(pythonResponse.getTopologyJson())                   // 1번
 				.topologyImageUrl(pythonResponse.getTopologyImageUrl())           // 2번
@@ -101,7 +98,6 @@ public class FloorPlanService {
 		return result;
 		
 		} catch (Exception e) {
-			e.printStackTrace();
 			throw e;
 		}
 	}
@@ -203,7 +199,6 @@ public class FloorPlanService {
 		String contentType = file.getContentType() != null ? file.getContentType() : "image/png";
 		String s3Url = s3Service.upload(s3Key, file.getBytes(), contentType);
 
-		System.out.println("[FloorPlanService] S3 업로드 완료: " + s3Url);
 		return s3Url;
 	}
 

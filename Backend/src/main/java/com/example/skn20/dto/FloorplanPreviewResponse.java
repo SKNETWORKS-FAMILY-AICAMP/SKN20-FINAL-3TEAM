@@ -40,5 +40,5 @@ public class FloorplanPreviewResponse {
     private String analysisDescription;   // 상세 분석 설명
     
     // 임베딩 벡터 (프론트에서 저장 시 다시 전달할 데이터)
-    private double[] embedding;           // 1536차원 벡터
+    private double[] embedding;           // 1024차원 벡터 (Qwen3-Embedding-0.6B)
 }

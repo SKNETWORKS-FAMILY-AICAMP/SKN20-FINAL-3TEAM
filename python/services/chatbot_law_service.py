@@ -1,5 +1,5 @@
 """
-chatbot_service_v2.py - RAG 성능 개선 버전
+chatbot_law_service.py - 법규/조례 검색 RAG 서비스
 
 변경사항:
 1. [Reranker] Cross-encoder 기반 재정렬 추가
@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time  # [V2 변경] 성능 측정용
 from typing import Optional, Dict, Any, List, Tuple
 from collections import OrderedDict  # [V2 변경] LRU 캐시용
@@ -23,8 +24,8 @@ from psycopg2.extras import RealDictCursor
 from openai import OpenAI
 
 from CV.rag_system.config import RAGConfig
-from CV.rag_system.embeddings import EmbeddingManager
-from services.pgvector_service import pgvector_service
+from services.internal_eval_service import pgvector_service
+from services.runpod_client import embed_text_sync
 
 logger = logging.getLogger("ChatbotService")
 
@@ -378,17 +379,25 @@ class ChatbotService:
 
     def __init__(self):
         self.config: Optional[RAGConfig] = None
-        self.embedding_manager: Optional[EmbeddingManager] = None
+        self.embedding_manager = None  # RunPod Serverless 사용
         self.openai_client: Optional[OpenAI] = None
-        self.db_conn = None
+        self._local = threading.local()  # 스레드별 DB 커넥션
         self._reranker = None  # [V2 변경] Cross-encoder reranker
         self._reranker_available = False  # [V2 변경] Reranker 사용 가능 여부
         self._embedding_cache = EmbeddingCache(max_size=500)  # [V2 변경] 임베딩 캐시
 
+    @property
+    def db_conn(self):
+        """스레드별 독립 DB 커넥션 반환"""
+        return getattr(self._local, "conn", None)
+
+    @db_conn.setter
+    def db_conn(self, value):
+        self._local.conn = value
+
     def _get_cursor(self):
         """
-        DB 커서 반환 (연결 끊김 시 자동 재연결)
-        - SELECT 1 핑 제거: closed 속성 + OperationalError catch로 대체
+        DB 커서 반환 (연결 끊김 시 자동 재연결, 스레드별 독립 커넥션)
         """
         try:
             if self.db_conn is None or self.db_conn.closed:
@@ -603,9 +612,8 @@ class ChatbotService:
 
         try:
             self.config = RAGConfig()
-            self.embedding_manager = EmbeddingManager()
             self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
-            logger.info("[초기화] OpenAI + Embedding 준비 완료")
+            logger.info("[초기화] OpenAI 준비 완료 (임베딩: RunPod Serverless)")
 
             # RAGConfig에서 DB 연결 정보 로드
             self.DB_CONFIG = {
@@ -636,19 +644,14 @@ class ChatbotService:
 
     def _load_reranker(self) -> None:
         """
-        Cross-encoder Reranker 모델 로드 (lazy loading)
-        - 실패 시 fallback으로 기존 유사도 순서 사용
+        Reranker: RunPod Serverless 사용
+        - 로컬 모델 로딩 불필요, RunPod API 호출로 대체
         """
         try:
-            from sentence_transformers import CrossEncoder
-            start = time.time()
-            self._reranker = CrossEncoder(self.RERANKER_MODEL_NAME)
-            elapsed = time.time() - start
+            from services.runpod_client import rerank_sync
+            self._reranker = rerank_sync  # 함수 참조 저장
             self._reranker_available = True
-            logger.info(f"[초기화] Reranker 로딩 완료 ({elapsed:.1f}s)")
-        except ImportError:
-            logger.warning("[초기화] Reranker 비활성화 (sentence-transformers 미설치)")
-            self._reranker_available = False
+            logger.info("[초기화] Reranker: RunPod Serverless 사용")
         except Exception as e:
             logger.warning(f"[초기화] Reranker 실패 → fallback 사용: {e}")
             self._reranker_available = False
@@ -701,11 +704,9 @@ class ChatbotService:
         try:
             start = time.time()
 
-            # Cross-encoder 입력: [(query, document), ...] 쌍 생성
-            pairs = [(query, r.get("document", "")) for r in results]
-
-            # Cross-encoder 점수 계산
-            scores = self._reranker.predict(pairs)
+            # RunPod 리랭커 호출
+            documents = [r.get("document", "") for r in results]
+            scores = self._reranker(query, documents)
 
             # 결과에 rerank_score 추가
             for i, result in enumerate(results):
@@ -746,9 +747,9 @@ class ChatbotService:
             logger.debug(f"[캐시] HIT - '{cache_key[:30]}...' (히트율: {self._embedding_cache.hit_rate:.1f}%)")
             return cached
 
-        # 캐시 미스: OpenAI API 호출
+        # 캐시 미스: RunPod API 호출
         start = time.time()
-        embedding = self.embedding_manager.embed_text(text)
+        embedding = embed_text_sync(text[:8000])
         elapsed = time.time() - start
 
         # 캐시 저장
