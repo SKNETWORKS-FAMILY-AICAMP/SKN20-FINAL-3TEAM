@@ -2,6 +2,7 @@
 .container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -79,7 +80,7 @@
 }
 
 .leftPanel .card:last-child {
-  flex: 0 0 260px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -150,30 +151,47 @@
   flex-direction: column;
 }
 
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .userName {
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 2px;
+  margin: 0;
+}
+
+.nameInput {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border: 1.5px solid;
+  border-radius: 6px;
+  background: transparent;
+  outline: none;
+  width: 140px;
+}
+
+.nameActionBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.nameActionBtn:hover {
+  background-color: rgba(0, 0, 0, 0.06);
 }
 
 .userEmail {
   font-size: 14px;
-}
-
-.editBtn {
-  background-color: #FCD34D;
-  color: #FFFFFF;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.editBtn:hover {
-  opacity: 0.9;
 }
 
 /* 입력 필드 */

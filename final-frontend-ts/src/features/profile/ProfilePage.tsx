@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BiChat } from 'react-icons/bi';
-import { FiImage, FiCalendar, FiX, FiMail, FiLock } from 'react-icons/fi';
+import { FiImage, FiCalendar, FiX, FiMail, FiLock, FiEdit2, FiCheck } from 'react-icons/fi';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { logout as logoutUtil } from '@/shared/utils/tokenManager';
 import { updateProfile, getCurrentUser, changePassword, sendVerificationMail, verifyMailCode } from '@/features/auth/api/auth.api';
@@ -256,36 +256,66 @@ const ProfilePage: React.FC = () => {
                     {user.name.charAt(0)}
                   </div>
                   <div className={styles.userInfo}>
-                    <h2 className={styles.userName} style={{ color: colors.textPrimary }}>
-                      {user.name}
-                    </h2>
+                    <div className={styles.nameRow}>
+                      {isEditing ? (
+                        <>
+                          <input
+                            type="text"
+                            value={user.name}
+                            onChange={(e) => setUser({ ...user, name: e.target.value })}
+                            className={styles.nameInput}
+                            style={{
+                              color: colors.textPrimary,
+                              borderColor: colors.primary,
+                            }}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSave();
+                              if (e.key === 'Escape') setIsEditing(false);
+                            }}
+                          />
+                          <button
+                            onClick={handleSave}
+                            className={styles.nameActionBtn}
+                            style={{ color: colors.primary }}
+                            title="저장"
+                          >
+                            <FiCheck size={16} />
+                          </button>
+                          <button
+                            onClick={() => setIsEditing(false)}
+                            className={styles.nameActionBtn}
+                            style={{ color: colors.textSecondary }}
+                            title="취소"
+                          >
+                            <FiX size={16} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <h2 className={styles.userName} style={{ color: colors.textPrimary }}>
+                            {user.name}
+                          </h2>
+                          <button
+                            onClick={() => setIsEditing(true)}
+                            className={styles.nameActionBtn}
+                            style={{ color: colors.textSecondary }}
+                            title="이름 수정"
+                          >
+                            <FiEdit2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                     <p className={styles.userEmail} style={{ color: colors.textSecondary }}>
                       <FiMail size={13} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
                       {user.email}
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setIsEditing(!isEditing)} className={styles.editBtn}>
-                  {isEditing ? '취소' : 'Edit'}
-                </button>
               </div>
 
               <div className={styles.formSection}>
-                <div className={styles.formGroup}>
-                  <label className={styles.label} style={{ color: colors.textPrimary }}>이름</label>
-                  <input
-                    type="text"
-                    value={user.name}
-                    onChange={(e) => setUser({ ...user, name: e.target.value })}
-                    disabled={!isEditing}
-                    className={styles.input}
-                    style={{
-                      border: `1px solid ${colors.border}`,
-                      backgroundColor: isEditing ? '#FFFFFF' : colors.inputBg,
-                      color: colors.textPrimary,
-                    }}
-                  />
-                </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label} style={{ color: colors.textPrimary }}>이메일</label>
                   <input
@@ -316,11 +346,6 @@ const ProfilePage: React.FC = () => {
                 </div>
 
                 <div className={styles.buttonGroup}>
-                  {isEditing && (
-                    <button onClick={handleSave} className={styles.saveBtn} style={{ backgroundColor: colors.success }}>
-                      저장하기
-                    </button>
-                  )}
                   <button
                     onClick={handleLogout}
                     className={styles.outlineBtn}
