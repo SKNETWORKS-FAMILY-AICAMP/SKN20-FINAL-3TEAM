@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { FiUser, FiExternalLink } from 'react-icons/fi';
-import { RiRobotFill } from 'react-icons/ri';
+import botIcon from '/bot.png';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import ImageModal from './ImageModal';
 import type { ChatMessageProps, ChatImage } from './types/chat.types';
@@ -24,7 +24,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         className={styles.avatar}
         style={{ backgroundColor: isUser ? colors.primary : colors.secondary }}
       >
-        {isUser ? <FiUser size={18} color="#fff" /> : <RiRobotFill size={18} color="#fff" />}
+        {isUser ? <FiUser size={18} color="#fff" /> : <img src={botIcon} alt="bot" style={{ width: 20, height: 20, objectFit: 'contain' }} />}
       </div>
 
       <div className={styles.content}>
