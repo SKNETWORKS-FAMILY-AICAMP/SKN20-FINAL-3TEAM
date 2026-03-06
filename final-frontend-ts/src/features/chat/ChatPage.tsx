@@ -627,7 +627,7 @@ const ChatPage: React.FC = () => {
                   💬 "3Bay 판상형이고, 거실 비율 25% 이상이고 LDK가 넓은 평면 찾아줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
-                  💬 "(도면이미지 첨부) 이 도면 분석해줘"
+                  💬 "(도면 첨부) 이 도면 분석해줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
                   💬 "서울특별시 도봉구 방학동 645-28 필지 정보 알려줘"

@@ -522,7 +522,7 @@ const FileUploadPage: React.FC = () => {
               <>
                 <div className={styles.dropIcon}><FiFolder size={48} /></div>
                 <p className={styles.dropText} style={{ color: colors.textPrimary }}>
-                  도면 이미지를 끌어다 놓으세요
+                  도면을 끌어다 놓으세요
                 </p>
                 <p className={styles.dropOr} style={{ color: colors.textSecondary }}>
                   또는
