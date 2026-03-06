@@ -129,5 +129,5 @@ python/eval_regulation.py
 python/eval_results/regulation_eval_20260226_100132.md
 
 # RunPod worker (Docker 이미지 빌드용, 모델 가중치 포함)
-runpod-cv-worker/
 ARAE_key.pem
+runpod-cv-worker/CV/**

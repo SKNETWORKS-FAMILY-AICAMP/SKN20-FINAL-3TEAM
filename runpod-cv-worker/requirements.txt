@@ -1,0 +1,32 @@
+# RunPod
+runpod>=1.6.0
+
+# Deep Learning (베이스 이미지에 이미 포함, 재설치 방지)
+# torch, torchvision은 베이스 이미지에 포함됨
+
+# Computer Vision
+opencv-python-headless>=4.5.0
+Pillow>=8.0.0
+albumentations>=1.0.0
+ultralytics>=8.0.0
+
+# Segmentation (DeepLabV3+)
+segmentation-models-pytorch==0.2.1
+
+# Embedding & Reranker
+sentence-transformers>=2.2.0
+
+# Data Processing
+numpy>=1.19.0
+pandas>=1.3.0
+scipy>=1.7.0
+shapely>=2.0.0
+matplotlib>=3.3.0
+seaborn>=0.11.0
+pyyaml>=5.0
+psutil>=5.0
+requests>=2.20.0
+py-cpuinfo>=8.0.0
+
+# Utilities
+tqdm>=4.60.0

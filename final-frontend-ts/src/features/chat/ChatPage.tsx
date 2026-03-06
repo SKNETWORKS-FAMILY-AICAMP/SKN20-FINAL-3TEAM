@@ -624,7 +624,7 @@ const ChatPage: React.FC = () => {
               <div className={styles.emptyExamples}>
                 <p className={styles.emptyExampleLabel} style={{ color: colors.textSecondary }}>사용 예시</p>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
-                  💬 "방 3개, 화장실 2개짜리 도면 찾아줘"
+                  💬 "3Bay 판상형이고, 거실 비율 25% 이상이고 LDK가 넓은 평면 찾아줘"
                 </div>
                 <div className={styles.emptyExampleItem} style={{ backgroundColor: colors.inputBg, color: colors.textSecondary }}>
                   💬 "(도면이미지 첨부) 이 도면 분석해줘"

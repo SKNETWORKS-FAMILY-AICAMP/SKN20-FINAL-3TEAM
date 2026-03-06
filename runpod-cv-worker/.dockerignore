@@ -1,0 +1,14 @@
+# 학습 코드, 데이터셋 등 불필요한 파일 제외
+CV/cv_inference/model/*/source_code/
+CV/cv_inference/model/*/datasets/
+CV/cv_inference/yolov5/.git/
+CV/cv_inference/yolov5/.github/
+CV/cv_inference/yolov5/data/
+CV/cv_inference/yolov5/classify/
+CV/cv_inference/yolov5/segment/
+CV/cv_inference/yolov5/CONTRIBUTING.md
+CV/cv_inference/yolov5/LICENSE
+CV/cv_inference/yolov5/*.md
+__pycache__/
+*.pyc
+.git/
