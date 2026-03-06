@@ -22,7 +22,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
     <div className={styles.container}>
       <div
         className={styles.avatar}
-        style={{ backgroundColor: isUser ? colors.primary : '#9CA3AF' }}
+        style={{ backgroundColor: isUser ? colors.primary : '#B5B5B5' }}
       >
         {isUser ? <FiUser size={18} color="#fff" /> : <img src={botIcon} alt="bot" style={{ width: 20, height: 20, objectFit: 'contain' }} />}
       </div>
