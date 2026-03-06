@@ -76,16 +76,8 @@ class CVService:
         _, buffer = cv2.imencode('.png', image)
         image_b64 = base64.b64encode(buffer).decode('utf-8')
 
-        # 이벤트 루프에서 비동기 호출
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                results = pool.submit(
-                    asyncio.run, cv_inference_async(image_b64, filename)
-                ).result()
-        else:
-            results = asyncio.run(cv_inference_async(image_b64, filename))
+        # worker thread에서 새 이벤트 루프로 비동기 호출
+        results = asyncio.run(cv_inference_async(image_b64, filename))
 
         logger.info("이미지 분석 완료 (RunPod, sync)!")
         return results

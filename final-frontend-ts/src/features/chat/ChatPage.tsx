@@ -27,16 +27,16 @@ import styles from './ChatPage.module.css';
 // ============================================
 const LOADING_MESSAGES: { maxSeconds: number; messages: string[] }[] = [
   {
-    maxSeconds: 10,
+    maxSeconds: 30,
     messages: [
       '요청하신 내용을 분석하고 있어요. 잠시만 기다려 주세요!',
       '관련 자료를 꼼꼼하게 살펴보고 있습니다.',
       '최적의 답변을 드리기 위해 데이터를 확인 중이에요.',
-      'AI가 열심히 일하고 있어요. 곧 결과를 보여드릴게요!',
+      '열심히 확인하고 있어요. 조금만 기다려 주세요!',
     ],
   },
   {
-    maxSeconds: 30,
+    maxSeconds: 60,
     messages: [
       '더 정확한 결과를 위해 심층 분석 중이에요.',
       '자료를 하나하나 대조하며 확인하고 있습니다.',
@@ -50,7 +50,7 @@ const LOADING_MESSAGES: { maxSeconds: number; messages: string[] }[] = [
       '내용이 많아 시간이 조금 걸리고 있어요. 곧 완료됩니다!',
       '최상의 결과를 위해 마지막 검증을 진행하고 있어요.',
       '거의 완료되었습니다. 잠시만요!',
-      '마무리 중이에요. 조금만 더 기다려 주세요!',
+      '결과를 마무리하고 있습니다. 곧 보여드릴게요!',
     ],
   },
 ];

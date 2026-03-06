@@ -398,7 +398,7 @@ const FileUploadPage: React.FC = () => {
             내 도면 등록하기
           </h1>
           <p className={styles.subtitle} style={{ color: colors.textSecondary }}>
-            도면 1장을 업로드하면 AI가 자동 분석합니다
+            도면을 업로드하고 공간 구조를 한 눈에 분석해 보세요. 
           </p>
 
           {/* 도면 업로드/미리보기 영역 */}
