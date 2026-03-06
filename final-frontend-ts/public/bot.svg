@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 95" fill="none" stroke="#fff" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 95" fill="none" stroke="#000" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">
   <!-- Outer triangle -->
   <path d="M50,5 L13,54 L87,54 Z"/>
   <!-- Inner triangle -->
