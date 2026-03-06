@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { FiUser, FiExternalLink } from 'react-icons/fi';
-import botIcon from '/bot.svg';
+import botIcon from '/file.svg';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import ImageModal from './ImageModal';
 import type { ChatMessageProps, ChatImage } from './types/chat.types';
