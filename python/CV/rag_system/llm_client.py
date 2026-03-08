@@ -161,6 +161,7 @@ class LocalLLMClient(LLMClient):
                     response_format=response_model,
                     temperature=self.temperature,
                     extra_body=self._NO_THINK,
+                    max_tokens=8000,
                 )
             except LengthFinishReasonError as e:
                 response = e.completion
