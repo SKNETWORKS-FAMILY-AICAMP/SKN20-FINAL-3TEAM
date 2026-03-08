@@ -29,6 +29,12 @@ ANALYSIS_PROMPT_TEMPLATE = """
 4. 개선 제안 작성
 5. 사내 평가 기준 적합성 평가 (compliance 필드)
 
+# 출력 규칙 (반드시 준수)
+- spaces 배열은 주요 공간 최대 6개만 작성 (거실, 주방, 침실, 화장실 등 핵심 공간 위주)
+- 각 space의 features, connected_spaces는 각각 3개 이내
+- evaluation_comment는 1문장으로 간결하게 작성
+- compliance 필드는 반드시 포함할 것
+
 # 사내 평가 기준 적합성 평가 가이드
 
 ## 평가 기준 요약
