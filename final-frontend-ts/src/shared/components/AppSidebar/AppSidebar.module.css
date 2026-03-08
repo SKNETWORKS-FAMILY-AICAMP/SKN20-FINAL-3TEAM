@@ -38,6 +38,7 @@
   font-size: 1.9rem;
   font-weight: 700;
   font-synthesis: weight;
+  -webkit-text-stroke: 2px currentColor;
   letter-spacing: 0.12em;
   line-height: 1;
   margin: 0;
