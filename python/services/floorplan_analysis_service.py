@@ -38,7 +38,6 @@ class RAGService:
                 self.llm_client = LocalLLMClient(
                     base_url=self.config.VLLM_BASE_URL,
                     model=self.config.VLLM_MODEL_NAME,
-                    temperature=self.config.OPENAI_TEMPERATURE,
                 )
                 logger.info("LLM 백엔드: vLLM (%s)", self.config.VLLM_BASE_URL)
             else:

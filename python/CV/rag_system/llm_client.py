@@ -191,7 +191,6 @@ class LocalLLMClient(LLMClient):
                             response_format=response_model,
                             temperature=retry_temp,
                             extra_body=self._NO_THINK,
-                            max_tokens=8000,
                         )
                         # 재시도 성공
                         usage = response.usage
@@ -215,6 +214,9 @@ class LocalLLMClient(LLMClient):
                 raw = self._strip_think(response.choices[0].message.content)
                 logger.warning("[CV-LLM] 🔧 JSON 복구 시도 (output_len=%d chars)", len(raw))
                 repaired = _repair_truncated_json(raw)
+                # 누락 필수 필드 기본값 보충
+                repaired.setdefault("spaces", [])
+                repaired.setdefault("summary", "토큰 제한으로 분석이 일부 잘렸습니다.")
                 return response_model.model_validate(repaired)
             usage = response.usage
             if usage:
