@@ -212,6 +212,7 @@ class FloorplanSearchAgent(BaseAgent):
             len(system_prompt), len(user_content), self._rag.llm_model_name,
         )
 
+        _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self._rag.llm_backend == "vllm" else {}
         response = self._rag.client.chat.completions.create(
             model=self._rag.llm_model_name,
             messages=[
@@ -220,7 +221,7 @@ class FloorplanSearchAgent(BaseAgent):
             ],
             temperature=0.0,
             max_tokens=1500,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            extra_body=_extra,
         )
 
         usage = response.usage
