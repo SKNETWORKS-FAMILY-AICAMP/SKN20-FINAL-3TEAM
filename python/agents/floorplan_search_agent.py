@@ -212,7 +212,9 @@ class FloorplanSearchAgent(BaseAgent):
             len(system_prompt), len(user_content), self._rag.llm_model_name,
         )
 
-        _extra = {"chat_template_kwargs": {"enable_thinking": False}} if self._rag.llm_backend == "vllm" else {}
+        _is_vllm = self._rag.llm_backend == "vllm"
+        _extra = {"chat_template_kwargs": {"enable_thinking": False}} if _is_vllm else {}
+        _token_kwarg = {"max_tokens": 1500} if _is_vllm else {"max_completion_tokens": 1500}
         response = self._rag.client.chat.completions.create(
             model=self._rag.llm_model_name,
             messages=[
@@ -220,8 +222,8 @@ class FloorplanSearchAgent(BaseAgent):
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
-            max_tokens=1500,
             extra_body=_extra,
+            **_token_kwarg,
         )
 
         usage = response.usage
