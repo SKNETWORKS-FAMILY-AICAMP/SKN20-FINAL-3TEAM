@@ -138,11 +138,7 @@ class FloorplanSearchAgent(BaseAgent):
         if metrics.get("living_room_ratio") is not None:
             metric_parts.append(f"거실 비율 {metrics['living_room_ratio']}%")
 
-        summary_match = re.search(r'Overall summary:\s*(.+?)(?:\n|$)', analysis_text)
-        overall_summary = summary_match.group(1).strip() if summary_match else ""
-
-        metrics_prefix = ", ".join(metric_parts) + ". " if metric_parts else ""
-        search_query = metrics_prefix + overall_summary
+        search_query = ", ".join(metric_parts) + "." if metric_parts else ""
         if not search_query.strip():
             search_query = (cv_result.document or "")[:200]
 

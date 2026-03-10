@@ -209,25 +209,13 @@ def search_similar(
     # 1차: 필터 + 임베딩 유사도
     docs = _search_with_filters(conn, embedding_vector, filters, top_k)
 
-    # 2차: 필터 완화 (결과 부족 시)
-    if len(docs) < top_k and filters:
+    # 2차: 필터 완화 (결과 부족 시) — 1개라도 있으면 중단
+    if len(docs) < 1 and filters:
         for relaxed in relax_filters(filters):
             dropped = [k for k in filters if k not in relaxed]
             logger.info("  필터 완화: %s 제거 → 남은 필터: %s", dropped, list(relaxed.keys()))
             docs = _search_with_filters(conn, embedding_vector, relaxed, top_k)
-            if len(docs) >= top_k:
-                break
-
-    # 3차: 필터 전부 제거 (여전히 부족 시)
-    if len(docs) < top_k:
-        logger.info("  필터 없이 임베딩만으로 검색")
-        no_filter_docs = _search_with_filters(conn, embedding_vector, {}, top_k)
-        existing_ids = {row[0] for row in docs}
-        for row in no_filter_docs:
-            if row[0] not in existing_ids:
-                docs.append(row)
-                existing_ids.add(row[0])
-            if len(docs) >= top_k:
+            if len(docs) >= 1:
                 break
 
     logger.info("유사 도면 검색 완료: %d개 반환", len(docs))
